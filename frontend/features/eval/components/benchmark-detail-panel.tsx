@@ -266,6 +266,15 @@ export function BenchmarkDetailPanel({
 
               <div className="flex flex-wrap items-center gap-2">
                 {selectedVersion ? (
+                  <Link
+                    href={`/model/eval-leaderboards/create?benchmark=${encodeURIComponent(benchmark.name)}&version=${encodeURIComponent(selectedVersion.id)}`}
+                  >
+                    <Button type="button" variant="outline">
+                      创建排行榜
+                    </Button>
+                  </Link>
+                ) : null}
+                {selectedVersion ? (
                   <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/${selectedVersion.id}/edit`}>
                     <Button type="button" variant="outline">
                       编辑 Version

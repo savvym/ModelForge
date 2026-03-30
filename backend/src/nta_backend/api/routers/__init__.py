@@ -1,7 +1,9 @@
 from nta_backend.api.routers import (
     auth,
+    benchmark_leaderboards,
     benchmarks,
     datasets,
+    eval_collections,
     eval_jobs,
     health,
     lake,
@@ -15,8 +17,10 @@ from nta_backend.api.routers import (
 
 __all__ = [
     "auth",
+    "benchmark_leaderboards",
     "benchmarks",
     "datasets",
+    "eval_collections",
     "eval_jobs",
     "health",
     "lake",

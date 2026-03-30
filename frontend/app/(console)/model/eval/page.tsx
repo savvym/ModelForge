@@ -5,15 +5,22 @@ import {
   ConsoleListToolbarCluster
 } from "@/components/console/list-surface";
 import { buttonVariants } from "@/components/ui/button";
-import { getBenchmarkCatalog, getEvalJobs, getEvalTemplates } from "@/features/eval/api";
+import {
+  getBenchmarkCatalog,
+  getBenchmarkLeaderboards,
+  getEvalJobs,
+  getEvalTemplates
+} from "@/features/eval/api";
 import { EvalJobCreateSheet } from "@/features/eval/components/eval-job-create-sheet";
 import { BenchmarkCatalogTable } from "@/features/eval/components/benchmark-catalog-table";
+import { BenchmarkLeaderboardListTable } from "@/features/eval/components/benchmark-leaderboard-list-table";
 import { EvalJobListTable } from "@/features/eval/components/eval-job-list-table";
 import { EvalTemplateListTable } from "@/features/eval/components/eval-template-list-table";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
 import type {
+  BenchmarkLeaderboardSummary,
   BenchmarkDefinitionSummary,
   EvalJobSummary,
   RegistryModelSummary
@@ -21,6 +28,7 @@ import type {
 
 const evalTabs = [
   { key: "jobs", label: "评测任务" },
+  { key: "leaderboards", label: "排行榜" },
   { key: "management", label: "评测管理" },
   { key: "templates", label: "评测模板" }
 ] as const;
@@ -40,6 +48,7 @@ export default async function ModelEvalPage({
   let createFormBenchmarks: BenchmarkDefinitionSummary[] = [];
   let createFormModels: RegistryModelSummary[] = [];
   let filteredJobs: EvalJobSummary[] = [];
+  let leaderboards: BenchmarkLeaderboardSummary[] = [];
 
   if (currentTab === "jobs") {
     const [benchmarksResult, modelsResult, jobsResult] = await Promise.all([
@@ -58,6 +67,32 @@ export default async function ModelEvalPage({
         job.model_name.toLowerCase().includes(query.toLowerCase());
       return matchesQuery;
     });
+  }
+
+  if (currentTab === "leaderboards") {
+    leaderboards = (await getBenchmarkLeaderboards(projectId).catch(() => []))
+      .filter((leaderboard) => {
+        if (!query) {
+          return true;
+        }
+
+        const normalizedQuery = query.toLowerCase();
+        return [
+          leaderboard.name,
+          leaderboard.benchmark_name,
+          leaderboard.benchmark_display_name,
+          leaderboard.benchmark_version_id,
+          leaderboard.benchmark_version_display_name,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((left, right) => {
+        const leftTime = left.latest_eval_at ?? left.created_at;
+        const rightTime = right.latest_eval_at ?? right.created_at;
+        return new Date(rightTime).getTime() - new Date(leftTime).getTime();
+      });
   }
 
   const benchmarks =
@@ -151,6 +186,30 @@ export default async function ModelEvalPage({
           </ConsoleListToolbar>
 
           <EvalJobListTable initialJobs={filteredJobs} />
+        </>
+      ) : null}
+
+      {currentTab === "leaderboards" ? (
+        <>
+          <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
+            <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
+              <ConsoleListSearchForm
+                action="/model/eval"
+                className="max-w-[560px] flex-none"
+                defaultValue={query}
+                inputClassName="min-w-[320px]"
+                placeholder="搜索排行榜名称、Benchmark 或 Version"
+              >
+                <input name="tab" type="hidden" value={currentTab} />
+              </ConsoleListSearchForm>
+            </ConsoleListToolbarCluster>
+
+            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-leaderboards/create">
+              创建排行榜
+            </Link>
+          </ConsoleListToolbar>
+
+          <BenchmarkLeaderboardListTable leaderboards={leaderboards} />
         </>
       ) : null}
 

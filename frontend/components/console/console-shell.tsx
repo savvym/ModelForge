@@ -293,7 +293,11 @@ function isNavItemActive(pathname: string, href: string) {
   if (pathname === href || pathname.startsWith(`${href}/`)) {
     return true;
   }
-  if (href === "/model/eval" && pathname.startsWith("/model/eval-benchmarks")) {
+  if (
+    href === "/model/eval" &&
+    (pathname.startsWith("/model/eval-benchmarks") ||
+      pathname.startsWith("/model/eval-leaderboards"))
+  ) {
     return true;
   }
   return false;

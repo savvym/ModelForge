@@ -343,6 +343,40 @@ export interface BenchmarkVersionSummary {
   latest_eval_at?: string | null;
 }
 
+export interface BenchmarkLeaderboardJobCandidate {
+  eval_job_id: string;
+  eval_job_name: string;
+  model_name: string;
+  model_source?: string | null;
+  score: number;
+  metric_name: string;
+  created_at: string;
+  finished_at?: string | null;
+  judge_model_name?: string | null;
+}
+
+export interface BenchmarkLeaderboardEntry extends BenchmarkLeaderboardJobCandidate {
+  rank: number;
+}
+
+export interface BenchmarkLeaderboardSummary {
+  id: string;
+  name: string;
+  benchmark_name: string;
+  benchmark_display_name: string;
+  benchmark_version_id: string;
+  benchmark_version_display_name: string;
+  score_metric_name?: string | null;
+  job_count: number;
+  latest_eval_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BenchmarkLeaderboardDetail extends BenchmarkLeaderboardSummary {
+  entries: BenchmarkLeaderboardEntry[];
+}
+
 export interface BenchmarkDefinitionSummary {
   name: string;
   display_name: string;
@@ -429,6 +463,17 @@ export interface BenchmarkVersionUpdateInput {
   description?: string | null;
   dataset_source_uri?: string | null;
   enabled?: boolean | null;
+}
+
+export interface BenchmarkLeaderboardCreateInput {
+  name: string;
+  benchmark_name: string;
+  benchmark_version_id: string;
+  eval_job_ids?: string[];
+}
+
+export interface BenchmarkLeaderboardAddJobsInput {
+  eval_job_ids: string[];
 }
 
 // -- Eval Templates --

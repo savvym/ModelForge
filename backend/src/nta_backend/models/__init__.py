@@ -1,5 +1,9 @@
 from nta_backend.models.auth import ApiKey, Project, ProjectMember, User
 from nta_backend.models.benchmark_catalog import BenchmarkDefinition, BenchmarkVersion
+from nta_backend.models.benchmark_leaderboard import (
+    BenchmarkLeaderboard,
+    BenchmarkLeaderboardJob,
+)
 from nta_backend.models.dataset import Dataset, DatasetFile, DatasetVersion
 from nta_backend.models.eval_collection import EvalCollection
 from nta_backend.models.eval_template import EvalTemplate
@@ -13,6 +17,8 @@ __all__ = [
     "ApiKey",
     "BatchJob",
     "BenchmarkDefinition",
+    "BenchmarkLeaderboard",
+    "BenchmarkLeaderboardJob",
     "BenchmarkVersion",
     "Dataset",
     "DatasetFile",

@@ -8,6 +8,7 @@ from nta_backend.api.middleware import install_middleware
 from nta_backend.api.routers import (
     auth,
     benchmarks,
+    benchmark_leaderboards,
     datasets,
     eval_collections,
     eval_jobs,
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     api_router.include_router(health.router, tags=["health"])
     api_router.include_router(auth.router, tags=["auth"])
     api_router.include_router(benchmarks.router, tags=["benchmarks"])
+    api_router.include_router(benchmark_leaderboards.router, tags=["benchmark-leaderboards"])
     api_router.include_router(projects.router, tags=["projects"])
     api_router.include_router(model_providers.router, tags=["model-providers"])
     api_router.include_router(models.router, tags=["models"])

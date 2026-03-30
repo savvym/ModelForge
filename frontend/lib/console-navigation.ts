@@ -74,6 +74,11 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   "model-finetune": { title: "模型精调", description: "训练任务和精调流程管理。", group: "workspace" },
   "model-warehouse": { title: "模型广场", description: "兼容旧路由，实际跳转到模型广场。", group: "overview" },
   "model-eval": { title: "模型评测", description: "评测任务与评测管理入口。", group: "workspace" },
+  "model-eval-leaderboards": {
+    title: "排行榜",
+    description: "按 Benchmark Version 组织和管理模型排行榜。",
+    group: "workspace"
+  },
   "model-eval-create": { title: "创建评测任务", description: "按 Benchmark 与 Version 创建真实评测任务。", group: "workspace" },
   "model-eval-detail": { title: "评测任务详情", description: "查看评测任务指标、样本级结果和产物位置。", group: "workspace" },
   "model-eval-collections": {

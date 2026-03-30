@@ -177,3 +177,27 @@ export function formatEvalDatasetSource(sourceType: string): string {
 
   return sourceType;
 }
+
+export function formatLeaderboardMetricName(metricName?: string | null): string {
+  if (!metricName) {
+    return "--";
+  }
+
+  if (metricName === "judge_template") {
+    return "模板得分";
+  }
+
+  if (metricName === "judge_rubric") {
+    return "Rubric 得分";
+  }
+
+  if (metricName === "judge_quality") {
+    return "质量得分";
+  }
+
+  if (metricName === "acc" || metricName === "accuracy") {
+    return "准确率";
+  }
+
+  return metricName;
+}
