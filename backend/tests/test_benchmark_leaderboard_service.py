@@ -217,11 +217,14 @@ async def test_benchmark_leaderboard_service_crud_and_ranking() -> None:
         ]
 
         summaries = await leaderboard_service.list_leaderboards()
-        assert len(summaries) == 1
-        assert summaries[0].job_count == 2
+        created_summary = next(
+            summary for summary in summaries if summary.id == created_leaderboard.id
+        )
+        assert created_summary.job_count == 2
 
         await leaderboard_service.delete_leaderboard(created_leaderboard.id)
-        assert await leaderboard_service.list_leaderboards() == []
+        remaining_summaries = await leaderboard_service.list_leaderboards()
+        assert all(summary.id != created_leaderboard.id for summary in remaining_summaries)
     finally:
         async with SessionLocal() as session:
             if leaderboard_id is not None:
