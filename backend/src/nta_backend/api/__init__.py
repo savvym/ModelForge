@@ -1,0 +1,3 @@
+from nta_backend.api.app import create_app
+
+__all__ = ["create_app"]

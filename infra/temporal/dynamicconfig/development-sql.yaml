@@ -1,0 +1,8 @@
+frontend.enableClientVersionCheck:
+  - value: false
+    constraints: {}
+
+system.enableReadVisibilityFromES:
+  - value: false
+    constraints: {}
+

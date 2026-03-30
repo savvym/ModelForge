@@ -1,0 +1,373 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.375rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image: none;
+  }
+
+  .console-shell {
+    --background: 217 30% 10%;
+    --foreground: 210 22% 94%;
+    --card: 218 25% 13%;
+    --card-foreground: 210 22% 94%;
+    --primary: 202 100% 63%;
+    --primary-foreground: 217 41% 10%;
+    --secondary: 219 20% 18%;
+    --secondary-foreground: 210 22% 94%;
+    --muted: 219 18% 17%;
+    --muted-foreground: 214 14% 68%;
+    --border: 219 18% 24%;
+    --input: 219 18% 24%;
+    --ring: 202 100% 63%;
+    background:
+      radial-gradient(circle at 82% 18%, rgba(39, 82, 128, 0.13), transparent 24%),
+      radial-gradient(circle at 22% 82%, rgba(19, 53, 88, 0.12), transparent 26%),
+      linear-gradient(180deg, #0a0f14 0%, #0b1016 100%);
+    color: hsl(var(--foreground));
+    color-scheme: dark;
+  }
+
+  ::selection {
+    @apply bg-zinc-900 text-white;
+  }
+
+  .console-shell ::selection {
+    background: rgba(94, 165, 255, 0.85);
+    color: #09111d;
+  }
+
+  .console-shell .bg-white,
+  .console-shell .bg-white\/60,
+  .console-shell .bg-white\/95,
+  .console-shell .bg-white\/96,
+  .console-shell .bg-zinc-50,
+  .console-shell .bg-zinc-50\/50,
+  .console-shell .bg-zinc-50\/60,
+  .console-shell .bg-zinc-50\/70,
+  .console-shell .bg-zinc-50\/80,
+  .console-shell .bg-zinc-50\/90,
+  .console-shell .bg-zinc-100 {
+    background-color: rgba(15, 20, 28, 0.9) !important;
+  }
+
+  .console-shell .bg-muted\/20,
+  .console-shell .bg-muted\/30,
+  .console-shell .bg-muted\/40 {
+    background-color: rgba(18, 24, 33, 0.8) !important;
+  }
+
+  .console-shell .bg-indigo-50 {
+    background-color: rgba(34, 73, 116, 0.3) !important;
+  }
+
+  .console-shell .bg-red-50 {
+    background-color: rgba(92, 24, 42, 0.26) !important;
+  }
+
+  .console-shell .border-zinc-100,
+  .console-shell .border-zinc-200,
+  .console-shell .border-zinc-300 {
+    border-color: rgba(58, 70, 86, 0.92) !important;
+  }
+
+  .console-shell .border-indigo-200 {
+    border-color: rgba(86, 146, 214, 0.34) !important;
+  }
+
+  .console-shell .border-red-200 {
+    border-color: rgba(178, 70, 97, 0.5) !important;
+  }
+
+  .console-shell .text-zinc-950,
+  .console-shell .text-zinc-900,
+  .console-shell .text-zinc-800 {
+    color: #edf4ff !important;
+  }
+
+  .console-shell .text-zinc-700,
+  .console-shell .text-zinc-600 {
+    color: #d7e0ec !important;
+  }
+
+  .console-shell .text-zinc-500,
+  .console-shell .text-zinc-400 {
+    color: #8a98ab !important;
+  }
+
+  .console-shell .text-indigo-700 {
+    color: #9bcdf9 !important;
+  }
+
+  .console-shell .text-red-600,
+  .console-shell .text-red-700 {
+    color: #f0a1b4 !important;
+  }
+
+  .console-shell .hover\:bg-white:hover,
+  .console-shell .hover\:bg-zinc-50:hover,
+  .console-shell .hover\:bg-zinc-100:hover,
+  .console-shell .hover\:bg-indigo-100:hover {
+    background-color: rgba(28, 37, 48, 0.94) !important;
+  }
+
+  .console-shell .hover\:text-zinc-950:hover,
+  .console-shell .hover\:text-zinc-900:hover,
+  .console-shell .hover\:text-zinc-800:hover {
+    color: #f8fbff !important;
+  }
+
+  .console-shell .shadow-sm {
+    box-shadow: 0 14px 38px rgba(2, 6, 23, 0.22) !important;
+  }
+
+  .console-shell main {
+    background:
+      radial-gradient(circle at 72% 8%, rgba(32, 66, 101, 0.08), transparent 20%),
+      linear-gradient(180deg, rgba(8, 12, 18, 0.18) 0%, rgba(8, 12, 18, 0) 32%);
+  }
+
+  .console-workbench,
+  .console-workbench-split {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+    border-top: 1px solid rgba(55, 65, 81, 0.7);
+    border-left: 1px solid rgba(55, 65, 81, 0.7);
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 26px 0 0 0;
+    background:
+      linear-gradient(180deg, rgba(10, 15, 22, 0.78) 0%, rgba(8, 12, 19, 0.58) 42%, rgba(8, 12, 19, 0.18) 76%, rgba(8, 12, 19, 0) 100%),
+      radial-gradient(circle at top right, rgba(64, 120, 179, 0.08), transparent 28%);
+    box-shadow:
+      0 18px 54px rgba(2, 6, 23, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(18px);
+  }
+
+  .console-workbench {
+    flex-direction: column;
+  }
+
+  .console-workbench-split {
+    flex-direction: row;
+  }
+
+  .console-workbench::before,
+  .console-workbench-split::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(148, 163, 184, 0.04) 0%, transparent 18%),
+      radial-gradient(circle at 78% 0%, rgba(56, 189, 248, 0.06), transparent 22%);
+  }
+
+  .console-workbench::after,
+  .console-workbench-split::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 0;
+    bottom: 0;
+    height: 140px;
+    pointer-events: none;
+    z-index: 0;
+    background: linear-gradient(180deg, rgba(8, 12, 19, 0) 0%, rgba(8, 12, 19, 0.26) 70%, rgba(8, 12, 19, 0.54) 100%);
+  }
+
+  .console-workbench > *,
+  .console-workbench-split > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .console-workbench__scroll {
+    position: relative;
+    z-index: 1;
+    overscroll-behavior: contain;
+  }
+
+  .console-shell .console-workbench__scroll,
+  .console-shell .overflow-x-auto,
+  .console-shell .overflow-y-auto,
+  .console-shell .overflow-auto {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 146, 176, 0.3) transparent;
+  }
+
+  .console-shell .console-workbench__scroll::-webkit-scrollbar,
+  .console-shell .overflow-x-auto::-webkit-scrollbar,
+  .console-shell .overflow-y-auto::-webkit-scrollbar,
+  .console-shell .overflow-auto::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .console-shell .console-workbench__scroll::-webkit-scrollbar-track,
+  .console-shell .overflow-x-auto::-webkit-scrollbar-track,
+  .console-shell .overflow-y-auto::-webkit-scrollbar-track,
+  .console-shell .overflow-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .console-shell .console-workbench__scroll::-webkit-scrollbar-thumb,
+  .console-shell .overflow-x-auto::-webkit-scrollbar-thumb,
+  .console-shell .overflow-y-auto::-webkit-scrollbar-thumb,
+  .console-shell .overflow-auto::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: rgba(124, 146, 176, 0.22);
+    background-clip: padding-box;
+  }
+
+  .console-shell .console-workbench__scroll:hover::-webkit-scrollbar-thumb,
+  .console-shell .overflow-x-auto:hover::-webkit-scrollbar-thumb,
+  .console-shell .overflow-y-auto:hover::-webkit-scrollbar-thumb,
+  .console-shell .overflow-auto:hover::-webkit-scrollbar-thumb {
+    background: rgba(124, 146, 176, 0.34);
+    background-clip: padding-box;
+  }
+
+  .console-shell .console-workbench__scroll::-webkit-scrollbar-corner,
+  .console-shell .overflow-x-auto::-webkit-scrollbar-corner,
+  .console-shell .overflow-y-auto::-webkit-scrollbar-corner,
+  .console-shell .overflow-auto::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .console-shell .console-scrollbar-subtle,
+  .console-scrollbar-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 146, 176, 0.18) transparent;
+  }
+
+  .console-shell .console-scrollbar-subtle::-webkit-scrollbar,
+  .console-scrollbar-subtle::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .console-shell .console-scrollbar-subtle::-webkit-scrollbar-track,
+  .console-scrollbar-subtle::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .console-shell .console-scrollbar-subtle::-webkit-scrollbar-thumb,
+  .console-scrollbar-subtle::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: rgba(124, 146, 176, 0.16);
+    background-clip: padding-box;
+  }
+
+  .console-shell .console-scrollbar-subtle:hover::-webkit-scrollbar-thumb,
+  .console-scrollbar-subtle:hover::-webkit-scrollbar-thumb {
+    background: rgba(124, 146, 176, 0.24);
+    background-clip: padding-box;
+  }
+
+  .console-shell .console-scrollbar-drawer,
+  .console-scrollbar-drawer {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 146, 176, 0.14) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .console-shell .console-scrollbar-drawer::-webkit-scrollbar,
+  .console-scrollbar-drawer::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .console-shell .console-scrollbar-drawer::-webkit-scrollbar-track,
+  .console-scrollbar-drawer::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 10px;
+  }
+
+  .console-shell .console-scrollbar-drawer::-webkit-scrollbar-thumb,
+  .console-scrollbar-drawer::-webkit-scrollbar-thumb {
+    border: 1.5px solid transparent;
+    border-radius: 999px;
+    background: rgba(124, 146, 176, 0.12);
+    background-clip: padding-box;
+  }
+
+  .console-shell .console-scrollbar-drawer:hover::-webkit-scrollbar-thumb,
+  .console-scrollbar-drawer:hover::-webkit-scrollbar-thumb {
+    background: rgba(124, 146, 176, 0.18);
+    background-clip: padding-box;
+  }
+
+  .console-shell [data-streamdown="code-block"] {
+    margin: 0.85rem 0 1rem;
+    gap: 0;
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(10, 14, 21, 0.52);
+    padding: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  }
+
+  .console-shell [data-streamdown="code-block-header"] {
+    height: 2.5rem;
+    padding: 0 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #8a98ab;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .console-shell [data-streamdown="code-block-body"] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .console-shell [data-streamdown="code-block-actions"] {
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(10, 14, 21, 0.58);
+    backdrop-filter: blur(10px);
+  }
+
+  .console-shell [data-streamdown="code-block"] pre {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 1rem 1.1rem 1.15rem;
+  }
+
+  .console-shell [data-streamdown="code-block"] code {
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}

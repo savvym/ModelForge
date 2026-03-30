@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "pretty_name": "NTA Bench Network",
+    "family_name": "grounded_rubric_qa",
+    "family_display_name": "Grounded Rubric QA",
+    "dataset_id": null,
+    "paper_url": null,
+    "tags": [
+      "Network",
+      "QA",
+      "Reasoning",
+      "Judge"
+    ],
+    "metrics": [
+      "cl_bench_acc"
+    ],
+    "few_shot_num": 0,
+    "eval_split": "default",
+    "train_split": "",
+    "subset_list": [
+      "default"
+    ],
+    "description": "\n## Overview\n\nNTA Bench Network is a domain benchmark for Tencent Cloud network knowledge, architecture design and troubleshooting scenarios. It uses context-grounded long-form QA with explicit rubric-based judging.\n\n## Task Description\n\n- **Task Type**: Context-grounded domain QA\n- **Input**: Background context from cloud networking documentation plus a question\n- **Output**: A complete answer grounded in the provided context\n- **Evaluation**: LLM judge with all-or-nothing rubric scoring\n\n## Key Features\n\n- Covers foundational concepts, architecture principles, scenario design and troubleshooting\n- Keeps raw dataset schema separate from prompt rendering logic\n- Suitable for benchmark versions sourced from product docs and internal knowledge corpora\n",
+    "prompt_template": "以下是与问题相关的背景信息：\n\n【背景信息】\n{context}\n【背景信息结束】\n\n问题：{question}",
+    "system_prompt": "你是一位腾讯云网络架构专家。请结合题目中给出的背景信息作答，回答应准确、完整，并优先使用腾讯云网络领域的专业表述。",
+    "few_shot_prompt_template": "",
+    "aggregation": "mean",
+    "extra_params": {},
+    "sandbox_config": {},
+    "category": "llm"
+  },
+  "statistics": {
+    "total_samples": 0,
+    "subset_stats": [
+      {
+        "name": "default",
+        "sample_count": 0
+      }
+    ],
+    "computed_at": "2026-03-27T00:00:00Z"
+  },
+  "sample_example": {
+    "data": {
+      "id": "ccn-concept-001-2fa830",
+      "context": "腾讯云云联网支持路由聚合功能，包括 VPC CIDR 聚合和自定义聚合。通过该功能，您可以将云联网传播给专线网关和 VPN 网关的路由条目进行聚合，从而减少网络实例中的路由表规模，简化路由管理。",
+      "question": "请说明云联网中的路由聚合支持哪些类型，以及主要作用对象是谁？",
+      "rubrics": [
+        "明确指出路由聚合支持两类：VPC CIDR 聚合和自定义聚合。",
+        "明确说明聚合的是传播给专线网关和 VPN 网关的路由。"
+      ],
+      "metadata": {
+        "category": "基础概念理解",
+        "sub_category": "路由聚合策略",
+        "difficulty": "easy",
+        "source": "腾讯云官网文档"
+      }
+    },
+    "subset": "default",
+    "truncated": false
+  },
+  "readme": {
+    "zh": "# NTA Bench Network\n\n这是一个腾讯云网络领域的 context-grounded、rubric-based 问答 benchmark。底层执行 family 为 Grounded Rubric QA，评测时通过 judge model 按 rubric 条目进行全有或全无判分。",
+    "en": "# NTA Bench Network\n\nA Tencent Cloud networking benchmark built on the Grounded Rubric QA family, evaluated by an LLM judge using explicit rubric items."
+  },
+  "updated_at": "2026-03-27T00:00:00Z",
+  "translation_updated_at": "2026-03-27T00:00:00Z"
+}
