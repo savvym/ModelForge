@@ -13,6 +13,11 @@ import { EvalTemplateListTable } from "@/features/eval/components/eval-template-
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
+import type {
+  BenchmarkDefinitionSummary,
+  EvalJobSummary,
+  RegistryModelSummary
+} from "@/types/api";
 
 const evalTabs = [
   { key: "jobs", label: "评测任务" },
@@ -32,21 +37,29 @@ export default async function ModelEvalPage({
   const query = resolvedSearchParams.q?.trim() ?? "";
   const createOpen = currentTab === "jobs" && resolvedSearchParams.create === "1";
   const projectId = await getCurrentProjectIdFromCookie();
-  const createFormBenchmarks =
-    currentTab === "jobs" ? await getBenchmarkCatalog(projectId).catch(() => []) : [];
-  const createFormModels =
-    currentTab === "jobs" ? await getRegistryModels(projectId).catch(() => []) : [];
-  const filteredJobs =
-    currentTab === "jobs"
-      ? (await getEvalJobs(projectId).catch(() => [])).filter((job) => {
-          const matchesQuery =
-            !query ||
-            job.name.toLowerCase().includes(query.toLowerCase()) ||
-            job.id.includes(query) ||
-            job.model_name.toLowerCase().includes(query.toLowerCase());
-          return matchesQuery;
-        })
-      : [];
+  let createFormBenchmarks: BenchmarkDefinitionSummary[] = [];
+  let createFormModels: RegistryModelSummary[] = [];
+  let filteredJobs: EvalJobSummary[] = [];
+
+  if (currentTab === "jobs") {
+    const [benchmarksResult, modelsResult, jobsResult] = await Promise.all([
+      getBenchmarkCatalog(projectId).catch(() => []),
+      getRegistryModels(projectId).catch(() => []),
+      getEvalJobs(projectId).catch(() => [])
+    ]);
+
+    createFormBenchmarks = benchmarksResult;
+    createFormModels = modelsResult;
+    filteredJobs = jobsResult.filter((job) => {
+      const matchesQuery =
+        !query ||
+        job.name.toLowerCase().includes(query.toLowerCase()) ||
+        job.id.includes(query) ||
+        job.model_name.toLowerCase().includes(query.toLowerCase());
+      return matchesQuery;
+    });
+  }
+
   const benchmarks =
     currentTab === "management"
       ? (await getBenchmarkCatalog(projectId).catch(() => []))
@@ -97,7 +110,7 @@ export default async function ModelEvalPage({
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-800/80">
         <div className="flex min-w-0 items-center gap-5">
           {evalTabs.map((tab) => (
-            <a
+            <Link
               aria-current={currentTab === tab.key ? "page" : undefined}
               key={tab.key}
               className={cn(
@@ -107,9 +120,10 @@ export default async function ModelEvalPage({
                   : "border-transparent text-slate-500 hover:text-slate-200"
               )}
               href={buildEvalQuery({ tab: tab.key, q: query })}
+              prefetch
             >
               {tab.label}
-            </a>
+            </Link>
           ))}
         </div>
       </div>

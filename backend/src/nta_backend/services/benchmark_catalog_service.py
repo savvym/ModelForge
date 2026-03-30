@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
-from nta_backend.core.object_store import get_object_bytes, put_object_bytes
+from nta_backend.core.object_store import delete_object_prefix, get_object_bytes, put_object_bytes
 from nta_backend.core.project_context import DEFAULT_PROJECT_ID, resolve_active_project_id
 from nta_backend.core.storage_layout import build_project_prefix
 from nta_backend.eval_core.api.registry import get_benchmark
@@ -744,6 +744,52 @@ def _load_version_file_payload(version: BenchmarkVersionRecord) -> _VersionFileP
     raise ValueError("当前 Version 还没有可读取的数据文件。")
 
 
+async def _list_benchmark_eval_job_references(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    benchmark_name: str,
+    version_id: str,
+) -> list[EvalJob]:
+    rows = await session.execute(
+        select(EvalJob)
+        .where(
+            EvalJob.project_id == project_id,
+            EvalJob.benchmark_name == benchmark_name,
+            EvalJob.benchmark_version_id == version_id,
+        )
+        .order_by(EvalJob.created_at.asc(), EvalJob.id.asc())
+    )
+    return list(rows.scalars().all())
+
+
+def _build_benchmark_eval_reference_error(jobs: list[EvalJob]) -> str:
+    preview = "、".join(job.name for job in jobs[:3])
+    if len(jobs) > 3:
+        preview = f"{preview} 等 {len(jobs)} 个任务"
+    return f"该 Version 已被评测任务引用：{preview}。请先处理相关评测任务后再删除。"
+
+
+def _resolve_managed_version_prefix(
+    *,
+    benchmark_name: str,
+    version_id: str,
+    dataset_source_uri: str | None,
+) -> tuple[str, str] | None:
+    normalized_uri = _normalize_optional_text(dataset_source_uri)
+    if not normalized_uri or not normalized_uri.startswith("s3://"):
+        return None
+
+    bucket, object_key = _parse_s3_uri(normalized_uri)
+    pattern = re.compile(
+        rf"^(projects/[^/]+/benchmarks/{re.escape(benchmark_name)}/versions/{re.escape(version_id)}/)"
+    )
+    matched = pattern.match(object_key)
+    if not matched:
+        return None
+    return bucket, matched.group(1)
+
+
 def _materialize_dataset_source(
     *,
     dataset_source_uri: str | None,
@@ -1166,3 +1212,42 @@ class BenchmarkCatalogService:
                     (definition.name, version.version_id), _BenchmarkUsage()
                 ),
             )
+
+    async def delete_benchmark_version(
+        self,
+        benchmark_name: str,
+        version_id: str,
+    ) -> None:
+        managed_prefix: tuple[str, str] | None = None
+
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            definition, version = await resolve_benchmark_version_record(
+                session,
+                benchmark_name=benchmark_name,
+                version_id=version_id,
+            )
+            if definition is None or version is None:
+                raise KeyError(version_id)
+
+            references = await _list_benchmark_eval_job_references(
+                session,
+                project_id=project_id,
+                benchmark_name=definition.name,
+                version_id=version.version_id,
+            )
+            if references:
+                raise ValueError(_build_benchmark_eval_reference_error(references))
+
+            managed_prefix = _resolve_managed_version_prefix(
+                benchmark_name=definition.name,
+                version_id=version.version_id,
+                dataset_source_uri=version.dataset_source_uri,
+            )
+
+            await session.delete(version)
+            await session.commit()
+
+        if managed_prefix is not None:
+            bucket, prefix = managed_prefix
+            delete_object_prefix(bucket, prefix)

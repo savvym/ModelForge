@@ -187,7 +187,7 @@ export function EvalCollectionCreateForm({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="sm"
                 className="h-8 w-8 shrink-0"
                 onClick={() => removeEntry(index)}
                 disabled={entries.length <= 1}

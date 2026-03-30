@@ -6,19 +6,24 @@ from sqlalchemy import delete
 
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal, dispose_engine
-from nta_backend.core.object_store import delete_object, put_object_bytes
+from nta_backend.core.object_store import delete_object, get_object_bytes, put_object_bytes
+from nta_backend.core.project_context import resolve_active_project_id
 from nta_backend.models.benchmark_catalog import (
     BenchmarkDefinition as BenchmarkDefinitionRecord,
     BenchmarkVersion as BenchmarkVersionRecord,
 )
 from nta_backend.models.eval_template import EvalTemplate
+from nta_backend.models.jobs import EvalJob
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
     BenchmarkDefinitionUpdate,
     BenchmarkVersionCreate,
     BenchmarkVersionUpdate,
 )
-from nta_backend.services.benchmark_catalog_service import BenchmarkCatalogService
+from nta_backend.services.benchmark_catalog_service import (
+    BenchmarkCatalogService,
+    resolve_benchmark_version_record,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -362,3 +367,144 @@ async def test_benchmark_version_preview_and_download() -> None:
                 )
             await session.commit()
         delete_object(bucket, object_key)
+
+
+async def test_benchmark_version_delete_respects_references_and_cleans_managed_files() -> None:
+    service = BenchmarkCatalogService()
+    benchmark_name = f"delete_benchmark_{uuid4().hex[:8]}"
+    template_name = f"delete_template_{uuid4().hex[:8]}"
+    template_uuid = None
+    version_id: str | None = None
+    managed_object_key: str | None = None
+    job_id = None
+
+    try:
+        async with SessionLocal() as session:
+            template = EvalTemplate(
+                name=template_name,
+                version=1,
+                prompt="Question: {{input}}\nReference: {{target}}\nAnswer: {{output}}",
+                vars=["input", "target", "output"],
+                template_type="llm_categorical",
+                preset_id="rubric-check",
+                output_type="categorical",
+                output_config={
+                    "label_groups": [
+                        {"key": "pass", "label": "Pass", "labels": ["Pass"], "score_policy": "pass"},
+                        {"key": "fail", "label": "Fail", "labels": ["Fail"], "score_policy": "fail"},
+                    ]
+                },
+                model="GPT-5.4",
+            )
+            session.add(template)
+            await session.commit()
+            await session.refresh(template)
+            template_uuid = template.id
+
+            project_id = await resolve_active_project_id(session)
+            managed_object_key = (
+                f"projects/{project_id}/benchmarks/{benchmark_name}/versions/ver-delete01/dataset.jsonl"
+            )
+
+        created = await service.create_benchmark_definition(
+            BenchmarkDefinitionCreate(
+                name=benchmark_name,
+                display_name="Delete Benchmark",
+                description="benchmark for delete tests",
+                category="llm",
+                field_mapping={
+                    "input_field": "input",
+                    "target_field": "target",
+                    "id_field": "id",
+                },
+                eval_template_id=str(template_uuid),
+            )
+        )
+
+        bucket = get_settings().s3_bucket_dataset_raw
+        put_object_bytes(
+            bucket,
+            managed_object_key,
+            (
+                json.dumps(
+                    {
+                        "id": "sample-1",
+                        "input": "hello",
+                        "target": "world",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            ).encode("utf-8"),
+            content_type="application/x-ndjson",
+        )
+
+        version = await service.create_benchmark_version(
+            created.name,
+            BenchmarkVersionCreate(
+                id="ver-delete01",
+                display_name="Delete Version",
+                dataset_source_uri=f"s3://{bucket}/{managed_object_key}",
+            ),
+        )
+        version_id = version.id
+
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            job = EvalJob(
+                project_id=project_id,
+                name="benchmark-version-delete-job",
+                benchmark_name=created.name,
+                benchmark_version_id=version.id,
+                dataset_source_uri=f"benchmark://{created.name}/versions/{version.id}",
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            job_id = job.id
+
+        with pytest.raises(ValueError, match="已被评测任务引用"):
+            await service.delete_benchmark_version(created.name, version.id)
+
+        async with SessionLocal() as session:
+            if job_id is not None:
+                await session.execute(delete(EvalJob).where(EvalJob.id == job_id))
+                await session.commit()
+
+        await service.delete_benchmark_version(created.name, version.id)
+
+        async with SessionLocal() as session:
+            _, deleted_version = await resolve_benchmark_version_record(
+                session,
+                benchmark_name=created.name,
+                version_id=version.id,
+            )
+            assert deleted_version is None
+
+        with pytest.raises(FileNotFoundError):
+            get_object_bytes(bucket, managed_object_key)
+    finally:
+        async with SessionLocal() as session:
+            if job_id is not None:
+                await session.execute(delete(EvalJob).where(EvalJob.id == job_id))
+            if version_id is not None:
+                await session.execute(
+                    delete(BenchmarkVersionRecord).where(
+                        BenchmarkVersionRecord.version_id == version_id
+                    )
+                )
+            await session.execute(
+                delete(BenchmarkDefinitionRecord).where(
+                    BenchmarkDefinitionRecord.name == benchmark_name
+                )
+            )
+            if template_uuid is not None:
+                await session.execute(
+                    delete(EvalTemplate).where(EvalTemplate.id == template_uuid)
+                )
+            await session.commit()
+        if managed_object_key is not None:
+            try:
+                delete_object(get_settings().s3_bucket_dataset_raw, managed_object_key)
+            except FileNotFoundError:
+                pass

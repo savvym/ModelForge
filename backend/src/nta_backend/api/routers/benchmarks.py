@@ -146,3 +146,20 @@ async def update_benchmark_version(
         raise HTTPException(status_code=404, detail="Benchmark version not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/{benchmark_name}/versions/{version_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_benchmark_version(
+    benchmark_name: str,
+    version_id: str,
+) -> Response:
+    try:
+        await service.delete_benchmark_version(benchmark_name, version_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Benchmark version not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

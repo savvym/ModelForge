@@ -113,6 +113,15 @@ export async function updateBenchmarkVersion(
   });
 }
 
+export async function deleteBenchmarkVersion(
+  benchmarkName: string,
+  versionId: string
+): Promise<void> {
+  await apiFetch<void>(`/benchmarks/${benchmarkName}/versions/${versionId}`, {
+    method: "DELETE"
+  });
+}
+
 export async function getBenchmarkVersionPreview(
   benchmarkName: string,
   versionId: string

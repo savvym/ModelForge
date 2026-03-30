@@ -2,8 +2,19 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Download } from "lucide-react";
 import { ConsoleListTableSurface } from "@/components/console/list-surface";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +27,7 @@ import {
   TableRow
 } from "@/components/ui/table";
 import {
+  deleteBenchmarkVersion,
   getBenchmarkVersionDownloadUrl,
   getBenchmarkVersionPreview
 } from "@/features/eval/api";
@@ -66,6 +78,7 @@ export function BenchmarkDetailPanel({
 }: {
   benchmark: BenchmarkDefinitionDetail;
 }) {
+  const router = useRouter();
   const versions = benchmark.versions;
   const [activeTab, setActiveTab] = React.useState<DetailTab>("details");
   const [previewMode, setPreviewMode] = React.useState<PreviewMode>("table");
@@ -75,6 +88,9 @@ export function BenchmarkDetailPanel({
   >({});
   const [loadingPreviewVersionId, setLoadingPreviewVersionId] = React.useState<string | null>(null);
   const [previewError, setPreviewError] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [deletePending, setDeletePending] = React.useState(false);
 
   const selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null;
@@ -143,9 +159,36 @@ export function BenchmarkDetailPanel({
     window.location.href = getBenchmarkVersionDownloadUrl(benchmark.name, selectedVersion.id);
   }
 
+  async function handleDeleteSelectedVersion() {
+    if (!selectedVersion) {
+      return;
+    }
+
+    setDeletePending(true);
+    setActionError(null);
+
+    try {
+      await deleteBenchmarkVersion(benchmark.name, selectedVersion.id);
+      setDeleteConfirmOpen(false);
+      router.refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "删除 Benchmark Version 失败");
+      setDeleteConfirmOpen(false);
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
   return (
-    <div className="flex h-full min-h-0 flex-1">
-      <Card className="flex min-h-0 w-[320px] flex-col overflow-hidden rounded-none border-0 border-r border-slate-800/70 bg-transparent shadow-none">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      {actionError ? (
+        <div className="mx-4 mb-3 rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+          {actionError}
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1">
+        <Card className="flex min-h-0 w-[320px] flex-col overflow-hidden rounded-none border-0 border-r border-slate-800/70 bg-transparent shadow-none">
         <CardHeader className="border-b border-slate-800/70 bg-transparent px-3 py-2.5">
           <div className="space-y-1">
             <div className="text-[13px] font-medium text-zinc-100">Versions</div>
@@ -203,64 +246,108 @@ export function BenchmarkDetailPanel({
             )}
           </div>
         </CardContent>
-      </Card>
+        </Card>
 
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
-        <CardHeader className="border-b border-slate-800/70 bg-transparent px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <PrimaryTabButton
-                active={activeTab === "details"}
-                label="版本详情"
-                onClick={() => setActiveTab("details")}
-              />
-              <PrimaryTabButton
-                active={activeTab === "preview"}
-                label="数据预览"
-                onClick={() => setActiveTab("preview")}
-              />
-            </div>
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
+          <CardHeader className="border-b border-slate-800/70 bg-transparent px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <PrimaryTabButton
+                  active={activeTab === "details"}
+                  label="版本详情"
+                  onClick={() => setActiveTab("details")}
+                />
+                <PrimaryTabButton
+                  active={activeTab === "preview"}
+                  label="数据预览"
+                  onClick={() => setActiveTab("preview")}
+                />
+              </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {selectedVersion ? (
-                <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/${selectedVersion.id}/edit`}>
-                  <Button type="button" variant="outline">
-                    编辑 Version
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedVersion ? (
+                  <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/${selectedVersion.id}/edit`}>
+                    <Button type="button" variant="outline">
+                      编辑 Version
+                    </Button>
+                  </Link>
+                ) : null}
+                {selectedVersion ? (
+                  <Button
+                    className="border border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+                    disabled={deletePending}
+                    onClick={() => {
+                      setActionError(null);
+                      setDeleteConfirmOpen(true);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    删除 Version
                   </Button>
+                ) : null}
+                <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/create`}>
+                  <Button type="button">新增 Version</Button>
                 </Link>
-              ) : null}
-              <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/create`}>
-                <Button type="button">新增 Version</Button>
-              </Link>
+              </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
 
-        <CardContent className="min-h-0 flex-1 p-0">
-          {selectedVersion ? (
-            activeTab === "details" ? (
-              <BenchmarkVersionDetailTab
-                benchmarkName={benchmark.name}
-                version={selectedVersion}
-              />
+          <CardContent className="min-h-0 flex-1 p-0">
+            {selectedVersion ? (
+              activeTab === "details" ? (
+                <BenchmarkVersionDetailTab
+                  benchmarkName={benchmark.name}
+                  version={selectedVersion}
+                />
+              ) : (
+                <BenchmarkVersionPreviewTab
+                  loading={loadingPreviewVersionId === selectedVersion.id}
+                  onDownload={handleDownloadSelectedVersion}
+                  onPreviewModeChange={setPreviewMode}
+                  preview={selectedPreview}
+                  previewError={previewError}
+                  previewMode={previewMode}
+                  version={selectedVersion}
+                />
+              )
             ) : (
-              <BenchmarkVersionPreviewTab
-                loading={loadingPreviewVersionId === selectedVersion.id}
-                onDownload={handleDownloadSelectedVersion}
-                onPreviewModeChange={setPreviewMode}
-                preview={selectedPreview}
-                previewError={previewError}
-                previewMode={previewMode}
-                version={selectedVersion}
-              />
-            )
-          ) : (
-            <div className="flex min-h-[480px] items-center justify-center p-10 text-sm text-zinc-500">
-              当前 Benchmark 还没有可展示的版本。
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              <div className="flex min-h-[480px] items-center justify-center p-10 text-sm text-zinc-500">
+                当前 Benchmark 还没有可展示的版本。
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!deletePending) {
+            setDeleteConfirmOpen(open);
+          }
+        }}
+        open={deleteConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除 Benchmark Version</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除后将移除当前 Version「{selectedVersion?.display_name ?? "--"}」及其管理入口。
+              如果这个 Version 仍被评测任务引用，系统会先阻止删除。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500/90 text-white hover:bg-red-500"
+              disabled={deletePending}
+              onClick={() => void handleDeleteSelectedVersion()}
+            >
+              {deletePending ? "处理中..." : "删除 Version"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
