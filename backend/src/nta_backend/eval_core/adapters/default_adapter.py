@@ -104,7 +104,7 @@ class DefaultDataAdapter(DataAdapter):
     def _metric_kwargs(self) -> dict[str, Any]:
         """Return extra kwargs passed to ``get_metric``.
 
-        Subclasses (e.g. ``JudgeModelAdapter``) override this to inject
+        Subclasses (e.g. ``GenericBenchmark``) override this to inject
         judge-model parameters.
         """
         return {}

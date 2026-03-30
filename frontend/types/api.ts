@@ -350,16 +350,20 @@ export interface BenchmarkDefinitionSummary {
   family_display_name?: string | null;
   description: string;
   default_eval_method: string;
-  metadata_source: string;
-  runtime_available: boolean;
   requires_judge_model: boolean;
   supports_custom_dataset: boolean;
   dataset_id?: string | null;
   category?: string | null;
+  source_type?: string | null;
   paper_url?: string | null;
   tags: string[];
   metric_names: string[];
   subset_list: string[];
+  eval_template_id?: string | null;
+  eval_template_name?: string | null;
+  eval_template_version?: number | null;
+  eval_template_type?: string | null;
+  eval_template_preset_id?: string | null;
   version_count: number;
   enabled_version_count: number;
   eval_job_count: number;
@@ -371,6 +375,7 @@ export interface BenchmarkDefinitionDetail extends BenchmarkDefinitionSummary {
   sample_schema_json: Record<string, unknown>;
   prompt_schema_json: Record<string, unknown>;
   prompt_config_json: Record<string, unknown>;
+  field_mapping_json?: Record<string, unknown> | null;
   few_shot_num?: number | null;
   eval_split?: string | null;
   train_split?: string | null;
@@ -385,7 +390,7 @@ export interface BenchmarkDefinitionDetail extends BenchmarkDefinitionSummary {
 }
 
 export interface BenchmarkDefinitionCreateInput {
-  name: string;
+  name?: string | null;
   display_name: string;
   description?: string | null;
   category?: string | null;
@@ -395,10 +400,24 @@ export interface BenchmarkDefinitionCreateInput {
   prompt_template?: string | null;
   system_prompt?: string | null;
   requires_judge_model?: boolean;
+  eval_template_id?: string | null;
+}
+
+export interface BenchmarkDefinitionUpdateInput {
+  display_name?: string | null;
+  description?: string | null;
+  category?: string | null;
+  tags?: string[];
+  default_eval_method?: string;
+  field_mapping?: Record<string, unknown> | null;
+  prompt_template?: string | null;
+  system_prompt?: string | null;
+  requires_judge_model?: boolean;
+  eval_template_id?: string | null;
 }
 
 export interface BenchmarkVersionCreateInput {
-  id: string;
+  id?: string | null;
   display_name: string;
   description?: string | null;
   dataset_source_uri?: string | null;
@@ -410,6 +429,50 @@ export interface BenchmarkVersionUpdateInput {
   description?: string | null;
   dataset_source_uri?: string | null;
   enabled?: boolean | null;
+}
+
+// -- Eval Templates --
+
+export interface EvalTemplateSummary {
+  id: string;
+  name: string;
+  version: number;
+  prompt: string;
+  vars: string[];
+  template_type: string;
+  preset_id?: string | null;
+  output_type: string;
+  output_config: Record<string, unknown>;
+  model?: string | null;
+  provider?: string | null;
+  model_params?: Record<string, unknown> | null;
+  description?: string | null;
+  created_at: string;
+}
+
+export interface EvalTemplateCreateInput {
+  name: string;
+  prompt: string;
+  template_type?: string | null;
+  preset_id?: string | null;
+  output_type: string;
+  output_config: Record<string, unknown>;
+  model?: string | null;
+  provider?: string | null;
+  model_params?: Record<string, unknown> | null;
+  description?: string | null;
+}
+
+export interface EvalTemplateUpdateInput {
+  prompt?: string | null;
+  template_type?: string | null;
+  preset_id?: string | null;
+  output_type?: string | null;
+  output_config?: Record<string, unknown> | null;
+  model?: string | null;
+  provider?: string | null;
+  model_params?: Record<string, unknown> | null;
+  description?: string | null;
 }
 
 // -- Eval Collections --

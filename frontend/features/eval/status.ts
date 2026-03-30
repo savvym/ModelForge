@@ -75,8 +75,16 @@ export function formatInferenceMode(mode: string): string {
 }
 
 export function formatEvalMethod(method: string): string {
-  if (method === "judge-model") {
-    return "裁判员模型打分";
+  if (method === "judge-template") {
+    return "评测模板";
+  }
+
+  if (method === "judge-rubric" || method === "judge-model") {
+    return "Rubric 标准打分";
+  }
+
+  if (method === "judge-quality") {
+    return "质量评分";
   }
 
   if (method === "accuracy") {

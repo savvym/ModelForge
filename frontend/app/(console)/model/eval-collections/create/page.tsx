@@ -2,8 +2,7 @@ import { getBenchmarkCatalog } from "@/features/eval/api";
 import { EvalCollectionCreateForm } from "@/features/eval/components/eval-collection-create-form";
 
 export default async function CreateEvalCollectionPage() {
-  const benchmarks = await getBenchmarkCatalog().catch(() => []);
-  const runnableBenchmarks = benchmarks.filter((b) => b.runtime_available);
+  const runnableBenchmarks = await getBenchmarkCatalog().catch(() => []);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">

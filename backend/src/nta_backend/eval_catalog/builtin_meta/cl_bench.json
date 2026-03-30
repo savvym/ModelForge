@@ -8,7 +8,7 @@
       "Reasoning"
     ],
     "metrics": [
-      "acc"
+      "judge_rubric"
     ],
     "few_shot_num": 0,
     "eval_split": "train",

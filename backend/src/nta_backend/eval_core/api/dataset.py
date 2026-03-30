@@ -14,7 +14,6 @@ class Sample(BaseModel):
     id: str
     input: str | list[ChatMessage]
     target: str | list[str] | None = None
-    choices: list[str] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

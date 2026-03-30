@@ -16,10 +16,6 @@ export default async function EditBenchmarkVersionPage({
     notFound();
   }
 
-  if (!benchmark.runtime_available) {
-    notFound();
-  }
-
   const version = benchmark.versions.find((item) => item.id === versionId) ?? null;
   if (!version) {
     notFound();

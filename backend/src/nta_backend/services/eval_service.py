@@ -142,7 +142,7 @@ def _to_summary(job: EvalJob) -> EvalJobSummary:
         progress_done=job.progress_done,
         progress_total=job.progress_total,
         inference_mode=job.inference_mode or "batch",
-        eval_method=job.eval_method or "judge-model",
+        eval_method=job.eval_method or "judge-rubric",
         temporal_workflow_id=job.temporal_workflow_id,
         error_message=job.error_message,
         created_at=job.created_at,
@@ -716,10 +716,11 @@ async def _run_eval_job(
                     loop,
                 )
 
-            # Resolve whether to use a custom adapter or the generic one.
-            from nta_backend.eval_core.api.registry import BENCHMARK_REGISTRY
-
-            benchmark_key = dataset_input.benchmark_name
+            # All benchmarks route through the generic adapter with DB config.
+            benchmark_def = await get_benchmark_definition_record(
+                session, dataset_input.benchmark_name,
+            )
+            benchmark_key = "_generic"
             benchmark_args: dict[str, object] = {
                 "prompt_config": dataset_input.prompt_config,
                 "judge_model_name": judge_model.model_name,
@@ -728,16 +729,32 @@ async def _run_eval_job(
                 "judge_api_format": judge_model.api_format,
                 "judge_timeout_s": _MODEL_TIMEOUT_S,
             }
+            if benchmark_def:
+                benchmark_args["field_mapping"] = benchmark_def.field_mapping_json or {}
+                benchmark_args["eval_method"] = benchmark_def.default_eval_method
 
-            if benchmark_key not in BENCHMARK_REGISTRY or benchmark_key == "_generic":
-                # No custom adapter — route through _generic with DB config.
-                benchmark_def = await get_benchmark_definition_record(
-                    session, dataset_input.benchmark_name,
-                )
-                benchmark_key = "_generic"
-                if benchmark_def:
-                    benchmark_args["field_mapping"] = benchmark_def.field_mapping_json or {}
-                    benchmark_args["eval_method"] = benchmark_def.default_eval_method
+                # If benchmark has an eval template, load and inject it
+                if benchmark_def.eval_template_id:
+                    from nta_backend.models.eval_template import EvalTemplate
+                    from sqlalchemy import select
+
+                    tmpl_result = await session.execute(
+                        select(EvalTemplate).where(
+                            EvalTemplate.id == benchmark_def.eval_template_id
+                        )
+                    )
+                    tmpl = tmpl_result.scalar_one_or_none()
+                    if tmpl:
+                        benchmark_args["eval_method"] = "judge-template"
+                        benchmark_args["template_prompt"] = tmpl.prompt
+                        benchmark_args["template_vars"] = list(tmpl.vars) if tmpl.vars else []
+                        benchmark_args["template_output_type"] = tmpl.output_type
+                        benchmark_args["template_output_config"] = dict(tmpl.output_config) if tmpl.output_config else {}
+                        if tmpl.model:
+                            benchmark_args["judge_model_name"] = tmpl.model
+                        job.eval_template_id = tmpl.id
+                        job.eval_template_version = tmpl.version
+                        await session.commit()
 
             task_config = {
                 "benchmark": benchmark_key,

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from mimetypes import guess_type
+from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -37,6 +39,7 @@ from nta_backend.schemas.benchmark_catalog import (
     BenchmarkVersionSummary,
     BenchmarkVersionUpdate,
 )
+from nta_backend.schemas.object_store import ObjectStoreObjectPreviewResponse
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,59 @@ class _BenchmarkSampleFile:
     media_type: str
 
 
+@dataclass(frozen=True)
+class _EvalTemplateRef:
+    id: UUID
+    name: str
+    version: int
+    template_type: str
+    preset_id: str | None
+
+
+_BENCHMARK_SUPPORTED_TEMPLATE_TYPES = {"llm_categorical", "llm_numeric"}
+_CUSTOM_BENCHMARK_TEMPLATE_VAR_RE = re.compile(r"{(\w+)}")
+_BENCHMARK_PREVIEW_LIMIT_BYTES = 100 * 1024
+_TEXT_PREVIEW_EXTENSIONS = {
+    "css",
+    "csv",
+    "html",
+    "htm",
+    "js",
+    "json",
+    "jsonl",
+    "jsx",
+    "log",
+    "md",
+    "py",
+    "sh",
+    "sql",
+    "ts",
+    "tsx",
+    "txt",
+    "xml",
+    "yaml",
+    "yml",
+}
+_TEXT_PREVIEW_CONTENT_TYPES = {
+    "application/javascript",
+    "application/json",
+    "application/sql",
+    "application/x-ndjson",
+    "application/xml",
+    "application/x-yaml",
+    "text/csv",
+}
+
+
+@dataclass(frozen=True)
+class _VersionFilePayload:
+    file_name: str
+    body: bytes
+    content_type: str | None
+    object_bucket: str | None = None
+    object_key: str | None = None
+
+
 def _normalize_required_text(value: str | None, field_name: str) -> str:
     normalized = (value or "").strip()
     if not normalized:
@@ -69,6 +125,80 @@ def _normalize_required_text(value: str | None, field_name: str) -> str:
 def _normalize_optional_text(value: str | None) -> str | None:
     normalized = (value or "").strip()
     return normalized or None
+
+
+async def _generate_benchmark_name(session: AsyncSession) -> str:
+    for _ in range(16):
+        candidate = f"bench-{uuid4().hex[:8]}"
+        if await _load_single_benchmark_record(session, candidate) is None:
+            return candidate
+    raise ValueError("系统生成 Benchmark ID 失败，请重试。")
+
+
+async def _generate_benchmark_version_id(
+    session: AsyncSession,
+    *,
+    benchmark_id: UUID,
+) -> str:
+    for _ in range(16):
+        candidate = f"ver-{uuid4().hex[:8]}"
+        if not await _version_exists(session, benchmark_id=benchmark_id, version_id=candidate):
+            return candidate
+    raise ValueError("系统生成 Version ID 失败，请重试。")
+
+
+def _build_custom_benchmark_contract(
+    field_mapping: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    mapping = field_mapping or {}
+    properties: dict[str, Any] = {}
+    example: dict[str, Any] = {}
+    required: list[str] = []
+
+    input_template = mapping.get("input_template")
+    if isinstance(input_template, str) and input_template.strip():
+        for field_name in _CUSTOM_BENCHMARK_TEMPLATE_VAR_RE.findall(input_template):
+            properties.setdefault(field_name, {"type": "string"})
+            example.setdefault(field_name, f"{field_name} example")
+            if field_name not in required:
+                required.append(field_name)
+    else:
+        input_field = str(mapping.get("input_field") or "input").strip() or "input"
+        properties[input_field] = {
+            "oneOf": [
+                {"type": "string"},
+                {
+                    "type": "array",
+                    "items": {"type": "object"},
+                },
+            ]
+        }
+        example[input_field] = "What is the capital of France?"
+        required.append(input_field)
+
+    target_field = str(mapping.get("target_field") or "target").strip() or "target"
+    id_field = str(mapping.get("id_field") or "id").strip() or "id"
+    properties.setdefault(
+        target_field,
+        {
+            "oneOf": [
+                {"type": "string"},
+                {"type": "array", "items": {"type": "string"}},
+            ]
+        },
+    )
+    properties.setdefault(id_field, {"type": "string"})
+    example.setdefault(target_field, "Paris")
+    example.setdefault(id_field, "sample-1")
+
+    return (
+        {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        },
+        example,
+    )
 
 
 def _match_version(
@@ -105,22 +235,14 @@ def _serialize_version(
 # ------------------------------------------------------------------
 
 
-def _metadata_source(record: BenchmarkDefinitionRecord) -> str:
-    source = record.source_type or "builtin"
-    if record.is_runnable and source == "builtin":
-        return "builtin+runtime"
-    if record.is_runnable:
-        return "runtime"
-    return source
-
-
 def _serialize_definition(
     *,
     record: BenchmarkDefinitionRecord,
     benchmark_usage: _BenchmarkUsage,
     version_usage: dict[tuple[str, str], _BenchmarkUsage],
+    eval_template: _EvalTemplateRef | None = None,
 ) -> BenchmarkDefinitionSummary:
-    versions = record.versions or []
+    versions = record.__dict__.get("versions") or []
     serialized_versions = [
         _serialize_version(
             version,
@@ -135,16 +257,20 @@ def _serialize_definition(
         family_display_name=record.family_display_name or record.family_name,
         description=record.description or "",
         default_eval_method=record.default_eval_method,
-        metadata_source=_metadata_source(record),
-        runtime_available=bool(record.is_runnable),
         requires_judge_model=record.requires_judge_model,
         supports_custom_dataset=record.supports_custom_dataset,
         dataset_id=record.dataset_id,
         category=record.category,
+        source_type=record.source_type,
         paper_url=record.paper_url,
         tags=list(record.tags) if record.tags else [],
         metric_names=list(record.metric_names) if record.metric_names else [],
         subset_list=list(record.subset_list) if record.subset_list else [],
+        eval_template_id=str(eval_template.id) if eval_template else None,
+        eval_template_name=eval_template.name if eval_template else None,
+        eval_template_version=eval_template.version if eval_template else None,
+        eval_template_type=eval_template.template_type if eval_template else None,
+        eval_template_preset_id=eval_template.preset_id if eval_template else None,
         version_count=len(serialized_versions),
         enabled_version_count=sum(1 for v in serialized_versions if v.enabled),
         eval_job_count=benchmark_usage.eval_job_count,
@@ -158,17 +284,20 @@ def _serialize_definition_detail(
     record: BenchmarkDefinitionRecord,
     benchmark_usage: _BenchmarkUsage,
     version_usage: dict[tuple[str, str], _BenchmarkUsage],
+    eval_template: _EvalTemplateRef | None = None,
 ) -> BenchmarkDefinitionDetail:
     summary = _serialize_definition(
         record=record,
         benchmark_usage=benchmark_usage,
         version_usage=version_usage,
+        eval_template=eval_template,
     )
     return BenchmarkDefinitionDetail(
         **summary.model_dump(),
         sample_schema_json=record.sample_schema_json or {},
         prompt_schema_json=record.prompt_schema_json or {},
         prompt_config_json=record.prompt_config_json or {},
+        field_mapping_json=record.field_mapping_json,
         few_shot_num=record.few_shot_num,
         eval_split=record.eval_split,
         train_split=record.train_split,
@@ -270,6 +399,52 @@ async def _load_single_benchmark_record(
         .where(BenchmarkDefinitionRecord.name == benchmark_name.strip())
     )
     return row.scalar_one_or_none()
+
+
+async def _load_eval_template_refs(
+    session: AsyncSession,
+    template_ids: list[UUID],
+) -> dict[UUID, _EvalTemplateRef]:
+    if not template_ids:
+        return {}
+
+    from nta_backend.models.eval_template import EvalTemplate
+
+    rows = await session.execute(
+        select(EvalTemplate).where(EvalTemplate.id.in_(template_ids))
+    )
+    refs: dict[UUID, _EvalTemplateRef] = {}
+    for template in rows.scalars().all():
+        refs[template.id] = _EvalTemplateRef(
+            id=template.id,
+            name=template.name,
+            version=template.version,
+            template_type=template.template_type,
+            preset_id=template.preset_id,
+        )
+    return refs
+
+
+async def _resolve_eval_template_for_binding(
+    session: AsyncSession,
+    eval_template_id: str | None,
+) -> _EvalTemplateRef | None:
+    normalized = _normalize_optional_text(eval_template_id)
+    if not normalized:
+        return None
+
+    try:
+        template_uuid = UUID(normalized)
+    except ValueError as exc:
+        raise ValueError("评测模板 ID 无效。") from exc
+
+    refs = await _load_eval_template_refs(session, [template_uuid])
+    template = refs.get(template_uuid)
+    if template is None:
+        raise ValueError("所选评测模板不存在。")
+    if template.template_type not in _BENCHMARK_SUPPORTED_TEMPLATE_TYPES:
+        raise ValueError("Benchmark 当前仅支持绑定 LLM 自动评测模板。")
+    return template
 
 
 def _legacy_benchmark_object_key(
@@ -377,7 +552,6 @@ async def _get_or_create_benchmark_definition_record(
         requires_judge_model=runtime_meta.requires_judge_model,
         supports_custom_dataset=runtime_meta.supports_custom_dataset,
         source_type="runtime",
-        is_runnable=True,
     )
     session.add(record)
     await session.flush()
@@ -481,6 +655,95 @@ def _parse_s3_uri(value: str) -> tuple[str, str]:
     return bucket, object_key
 
 
+def _guess_preview_content_type(
+    location: str,
+    stored_content_type: str | None = None,
+) -> str | None:
+    lower_name = PurePosixPath(location).name.lower()
+    if lower_name.endswith(".jsonl"):
+        return "application/x-ndjson"
+    if lower_name.endswith(".md"):
+        return "text/markdown"
+    if stored_content_type and stored_content_type != "application/octet-stream":
+        return stored_content_type
+    guessed, _ = guess_type(PurePosixPath(location).name)
+    return guessed or stored_content_type
+
+
+def _resolve_preview_kind(location: str, content_type: str | None) -> str:
+    lower_name = PurePosixPath(location).name.lower()
+    extension = lower_name.rsplit(".", 1)[-1] if "." in lower_name else ""
+    normalized_content_type = (content_type or "").lower()
+
+    if normalized_content_type == "application/pdf" or extension == "pdf":
+        return "pdf"
+    if normalized_content_type.startswith("image/"):
+        return "image"
+    if (
+        normalized_content_type.startswith("text/")
+        or normalized_content_type in _TEXT_PREVIEW_CONTENT_TYPES
+        or extension in _TEXT_PREVIEW_EXTENSIONS
+    ):
+        return "text"
+    return "unsupported"
+
+
+def _load_version_file_payload(version: BenchmarkVersionRecord) -> _VersionFilePayload:
+    dataset_source_uri = version.dataset_source_uri
+    if dataset_source_uri:
+        if dataset_source_uri.startswith("s3://"):
+            bucket, object_key = _parse_s3_uri(dataset_source_uri)
+            payload = get_object_bytes(bucket, object_key)
+            return _VersionFilePayload(
+                file_name=PurePosixPath(object_key).name or version.version_id,
+                body=payload.body,
+                content_type=_guess_preview_content_type(object_key, payload.content_type),
+                object_bucket=bucket,
+                object_key=object_key,
+            )
+
+        if dataset_source_uri.startswith("file://"):
+            local_path = Path(dataset_source_uri.removeprefix("file://"))
+            if local_path.exists():
+                return _VersionFilePayload(
+                    file_name=local_path.name or version.version_id,
+                    body=local_path.read_bytes(),
+                    content_type=_guess_preview_content_type(
+                        str(local_path),
+                        guess_type(local_path.name)[0],
+                    ),
+                )
+            raise FileNotFoundError(str(local_path))
+
+        if dataset_source_uri.startswith("/"):
+            local_path = Path(dataset_source_uri)
+            if local_path.exists():
+                return _VersionFilePayload(
+                    file_name=local_path.name or version.version_id,
+                    body=local_path.read_bytes(),
+                    content_type=_guess_preview_content_type(
+                        str(local_path),
+                        guess_type(local_path.name)[0],
+                    ),
+                )
+            raise FileNotFoundError(str(local_path))
+
+    if version.dataset_path:
+        local_path = Path(version.dataset_path)
+        if local_path.exists():
+            return _VersionFilePayload(
+                file_name=local_path.name or version.version_id,
+                body=local_path.read_bytes(),
+                content_type=_guess_preview_content_type(
+                    str(local_path),
+                    guess_type(local_path.name)[0],
+                ),
+            )
+        raise FileNotFoundError(str(local_path))
+
+    raise ValueError("当前 Version 还没有可读取的数据文件。")
+
+
 def _materialize_dataset_source(
     *,
     dataset_source_uri: str | None,
@@ -515,20 +778,34 @@ def _inspect_dataset_source(
     benchmark_name: str,
     dataset_source_uri: str | None,
     dataset_path: str | None,
+    benchmark_definition: BenchmarkDefinitionRecord | None = None,
 ) -> _ResolvedVersionSource:
     local_path, normalized_path, normalized_uri, should_cleanup = _materialize_dataset_source(
         dataset_source_uri=dataset_source_uri,
         dataset_path=dataset_path,
     )
     try:
-        benchmark = get_benchmark(
-            benchmark_name,
-            task_config=EvalTaskConfig(
-                benchmark=benchmark_name,
-                model="openai_compatible",
+        if benchmark_definition is not None and benchmark_definition.source_type == "custom":
+            benchmark = get_benchmark(
+                "_generic",
+                task_config=EvalTaskConfig(
+                    benchmark="_generic",
+                    model="openai_compatible",
+                    dataset_path=str(local_path),
+                ),
                 dataset_path=str(local_path),
-            ),
-        )
+                field_mapping=benchmark_definition.field_mapping_json or {},
+                eval_method=benchmark_definition.default_eval_method or "judge-template",
+            )
+        else:
+            benchmark = get_benchmark(
+                benchmark_name,
+                task_config=EvalTaskConfig(
+                    benchmark=benchmark_name,
+                    model="openai_compatible",
+                    dataset_path=str(local_path),
+                ),
+            )
         dataset = benchmark.load_dataset()
         sample_count = sum(len(samples) for samples in dataset.values())
         if sample_count <= 0:
@@ -560,14 +837,31 @@ def _apply_version_update(
 
 
 def _metric_names_for_method(eval_method: str | None) -> list[str]:
-    mapping = {"accuracy": ["acc"], "acc": ["acc"], "judge-model": ["cl_bench_acc"]}
+    mapping = {
+        "accuracy": ["acc"],
+        "acc": ["acc"],
+        "judge-rubric": ["judge_rubric"],
+        "judge-quality": ["judge_quality"],
+        "judge-template": ["judge_template"],
+        "judge-model": ["judge_rubric"],  # backward compat
+    }
     return mapping.get(eval_method or "accuracy", [eval_method or "accuracy"])
 
 
 class BenchmarkCatalogService:
     async def list_benchmarks(self) -> list[BenchmarkDefinitionSummary]:
         async with SessionLocal() as session:
-            records = await _load_benchmark_records(session)
+            records = [
+                record
+                for record in await _load_benchmark_records(session)
+                if record.source_type == "custom"
+            ]
+            template_ids = [
+                template_id
+                for template_id in {record.eval_template_id for record in records}
+                if template_id is not None
+            ]
+            eval_templates = await _load_eval_template_refs(session, template_ids)
             project_id = await resolve_active_project_id(session)
             benchmark_usage, version_usage = await _load_benchmark_usage(session, project_id)
             for record in records:
@@ -577,6 +871,7 @@ class BenchmarkCatalogService:
                     record=record,
                     benchmark_usage=benchmark_usage.get(record.name, _BenchmarkUsage()),
                     version_usage=version_usage,
+                    eval_template=eval_templates.get(record.eval_template_id) if record.eval_template_id else None,
                 )
                 for record in records
             ]
@@ -587,12 +882,17 @@ class BenchmarkCatalogService:
             if record is None:
                 raise KeyError(benchmark_name)
             await _sync_legacy_local_versions(session, benchmark_name, record.versions)
+            eval_template = await _resolve_eval_template_for_binding(
+                session,
+                str(record.eval_template_id) if record.eval_template_id else None,
+            )
             project_id = await resolve_active_project_id(session)
             benchmark_usage, version_usage = await _load_benchmark_usage(session, project_id)
             return _serialize_definition_detail(
                 record=record,
                 benchmark_usage=benchmark_usage.get(record.name, _BenchmarkUsage()),
                 version_usage=version_usage,
+                eval_template=eval_template,
             )
 
     async def get_benchmark_sample_file(self, benchmark_name: str) -> _BenchmarkSampleFile:
@@ -602,36 +902,107 @@ class BenchmarkCatalogService:
                 raise KeyError(benchmark_name)
             return _build_benchmark_sample_file(record)
 
+    async def preview_benchmark_version_file(
+        self,
+        benchmark_name: str,
+        version_id: str,
+    ) -> ObjectStoreObjectPreviewResponse:
+        async with SessionLocal() as session:
+            _, version = await resolve_benchmark_version_record(
+                session,
+                benchmark_name=benchmark_name,
+                version_id=version_id,
+            )
+            if version is None:
+                raise KeyError(version_id)
+
+            payload = _load_version_file_payload(version)
+            preview_kind = _resolve_preview_kind(payload.file_name, payload.content_type)
+
+            if preview_kind != "text":
+                return ObjectStoreObjectPreviewResponse(
+                    bucket=payload.object_bucket or "",
+                    object_key=payload.object_key or payload.file_name,
+                    file_name=payload.file_name,
+                    preview_kind=preview_kind,
+                    content_type=payload.content_type,
+                )
+
+            preview_bytes = payload.body[:_BENCHMARK_PREVIEW_LIMIT_BYTES]
+            return ObjectStoreObjectPreviewResponse(
+                bucket=payload.object_bucket or "",
+                object_key=payload.object_key or payload.file_name,
+                file_name=payload.file_name,
+                preview_kind="text",
+                content_type=payload.content_type,
+                content=preview_bytes.decode("utf-8", errors="replace"),
+                truncated=len(payload.body) > _BENCHMARK_PREVIEW_LIMIT_BYTES,
+                content_bytes=len(payload.body),
+            )
+
+    async def download_benchmark_version_file(
+        self,
+        benchmark_name: str,
+        version_id: str,
+    ) -> tuple[str, bytes, str | None]:
+        async with SessionLocal() as session:
+            _, version = await resolve_benchmark_version_record(
+                session,
+                benchmark_name=benchmark_name,
+                version_id=version_id,
+            )
+            if version is None:
+                raise KeyError(version_id)
+
+            payload = _load_version_file_payload(version)
+            return payload.file_name, payload.body, payload.content_type
+
     async def create_benchmark_definition(
         self, payload: BenchmarkDefinitionCreate,
     ) -> BenchmarkDefinitionSummary:
+        if _normalize_optional_text(payload.eval_template_id) is None:
+            raise ValueError("创建自定义 Benchmark 时必须选择一个评测模板。")
+
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
+            generated_name = _normalize_optional_text(payload.name)
+            benchmark_name = generated_name or await _generate_benchmark_name(session)
 
-            existing = await _load_single_benchmark_record(session, payload.name)
+            existing = await _load_single_benchmark_record(session, benchmark_name)
             if existing is not None:
-                raise ValueError(f"Benchmark '{payload.name}' 已存在。")
+                raise ValueError(f"Benchmark '{benchmark_name}' 已存在。")
+
+            eval_template = await _resolve_eval_template_for_binding(
+                session,
+                payload.eval_template_id,
+            )
+            default_eval_method = "judge-template"
+            requires_judge_model = True
+            sample_schema_json, sample_example_json = _build_custom_benchmark_contract(
+                payload.field_mapping,
+            )
 
             record = BenchmarkDefinitionRecord(
-                name=_normalize_required_text(payload.name, "name"),
+                name=benchmark_name,
                 display_name=_normalize_required_text(payload.display_name, "display_name"),
                 description=_normalize_optional_text(payload.description),
                 category=_normalize_optional_text(payload.category),
                 tags=payload.tags or [],
-                default_eval_method=payload.default_eval_method or "accuracy",
+                default_eval_method=default_eval_method,
                 field_mapping_json=payload.field_mapping,
                 prompt_template=_normalize_optional_text(payload.prompt_template),
                 system_prompt=_normalize_optional_text(payload.system_prompt),
-                requires_judge_model=payload.requires_judge_model,
+                requires_judge_model=requires_judge_model,
                 supports_custom_dataset=True,
-                sample_schema_json={"type": "object"},
+                sample_schema_json=sample_schema_json,
                 prompt_schema_json={"type": "object"},
                 prompt_config_json={},
-                metric_names=_metric_names_for_method(payload.default_eval_method),
+                metric_names=_metric_names_for_method(default_eval_method),
+                eval_template_id=eval_template.id if eval_template else None,
                 aggregator_names=["mean"],
                 source_type="custom",
-                is_runnable=True,
                 adapter_class=None,
+                sample_example_json=sample_example_json,
             )
             session.add(record)
             try:
@@ -644,6 +1015,7 @@ class BenchmarkCatalogService:
                 record=record,
                 benchmark_usage=_BenchmarkUsage(),
                 version_usage={},
+                eval_template=eval_template,
             )
 
     async def update_benchmark_definition(
@@ -658,6 +1030,15 @@ class BenchmarkCatalogService:
             if record.source_type != "custom":
                 raise ValueError("仅支持编辑自定义 Benchmark。")
 
+            eval_template = await _resolve_eval_template_for_binding(
+                session,
+                payload.eval_template_id if "eval_template_id" in payload.model_fields_set else (
+                    str(record.eval_template_id) if record.eval_template_id else None
+                ),
+            )
+            if eval_template is None:
+                raise ValueError("自定义 Benchmark 必须绑定一个评测模板。")
+
             if payload.display_name is not None:
                 record.display_name = _normalize_required_text(payload.display_name, "display_name")
             if payload.description is not None:
@@ -666,17 +1047,21 @@ class BenchmarkCatalogService:
                 record.category = _normalize_optional_text(payload.category)
             if payload.tags is not None:
                 record.tags = payload.tags
-            if payload.default_eval_method is not None:
-                record.default_eval_method = payload.default_eval_method
-                record.metric_names = _metric_names_for_method(payload.default_eval_method)
             if payload.field_mapping is not None:
                 record.field_mapping_json = payload.field_mapping
+                sample_schema_json, sample_example_json = _build_custom_benchmark_contract(
+                    payload.field_mapping,
+                )
+                record.sample_schema_json = sample_schema_json
+                record.sample_example_json = sample_example_json
             if payload.prompt_template is not None:
                 record.prompt_template = _normalize_optional_text(payload.prompt_template)
             if payload.system_prompt is not None:
                 record.system_prompt = _normalize_optional_text(payload.system_prompt)
-            if payload.requires_judge_model is not None:
-                record.requires_judge_model = payload.requires_judge_model
+            record.eval_template_id = eval_template.id
+            record.default_eval_method = "judge-template"
+            record.metric_names = _metric_names_for_method("judge-template")
+            record.requires_judge_model = True
 
             try:
                 await session.commit()
@@ -690,6 +1075,7 @@ class BenchmarkCatalogService:
                 record=record,
                 benchmark_usage=benchmark_usage.get(record.name, _BenchmarkUsage()),
                 version_usage=version_usage,
+                eval_template=eval_template,
             )
 
     async def create_benchmark_version(
@@ -699,23 +1085,28 @@ class BenchmarkCatalogService:
     ) -> BenchmarkVersionSummary:
         async with SessionLocal() as session:
             definition = await get_benchmark_definition_record(session, benchmark_name)
-            if definition is None or not definition.is_runnable:
+            if definition is None:
                 raise KeyError(benchmark_name)
+            version_id = _normalize_optional_text(payload.id) or await _generate_benchmark_version_id(
+                session,
+                benchmark_id=definition.id,
+            )
             if await _version_exists(
                 session,
                 benchmark_id=definition.id,
-                version_id=payload.id,
+                version_id=version_id,
             ):
                 raise ValueError("Benchmark Version ID 已存在。")
             resolved_source = _inspect_dataset_source(
                 benchmark_name=definition.name,
                 dataset_source_uri=_normalize_optional_text(payload.dataset_source_uri),
                 dataset_path=None,
+                benchmark_definition=definition,
             )
 
             version = BenchmarkVersionRecord(
                 benchmark_id=definition.id,
-                version_id=_normalize_required_text(payload.id, "id"),
+                version_id=version_id,
                 display_name=_normalize_required_text(payload.display_name, "display_name"),
                 description=_normalize_optional_text(payload.description),
                 dataset_path=resolved_source.dataset_path,
@@ -756,6 +1147,7 @@ class BenchmarkCatalogService:
                     benchmark_name=definition.name,
                     dataset_source_uri=version.dataset_source_uri,
                     dataset_path=version.dataset_path,
+                    benchmark_definition=definition,
                 )
                 version.dataset_path = resolved_source.dataset_path
                 version.dataset_source_uri = resolved_source.dataset_source_uri

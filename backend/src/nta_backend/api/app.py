@@ -11,6 +11,7 @@ from nta_backend.api.routers import (
     datasets,
     eval_collections,
     eval_jobs,
+    eval_templates,
     health,
     lake,
     model_providers,
@@ -35,12 +36,6 @@ async def lifespan(_: FastAPI):
         settings.app_env,
         settings.api_base_path,
     )
-    from nta_backend.services.benchmark_sync import sync_runtime_benchmark_metadata
-
-    try:
-        await sync_runtime_benchmark_metadata()
-    except Exception:
-        logger.warning("Benchmark sync failed (DB may be unavailable)", exc_info=True)
     yield
     logger.info("API shutdown started")
     await close_redis()
@@ -68,6 +63,7 @@ def create_app() -> FastAPI:
     api_router.include_router(lake.router, tags=["lake"])
     api_router.include_router(eval_collections.router, tags=["eval-collections"])
     api_router.include_router(eval_jobs.router, tags=["eval-jobs"])
+    api_router.include_router(eval_templates.router, tags=["eval-templates"])
     api_router.include_router(uploads.router, tags=["uploads"])
     api_router.include_router(streams.router, tags=["streams"])
 

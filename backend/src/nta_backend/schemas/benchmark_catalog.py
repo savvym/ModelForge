@@ -22,16 +22,20 @@ class BenchmarkDefinitionSummary(BaseModel):
     family_display_name: str | None = None
     description: str
     default_eval_method: str
-    metadata_source: str = "runtime"
-    runtime_available: bool = False
     requires_judge_model: bool = False
     supports_custom_dataset: bool = False
     dataset_id: str | None = None
     category: str | None = None
+    source_type: str | None = None
     paper_url: str | None = None
     tags: list[str] = Field(default_factory=list)
     metric_names: list[str] = Field(default_factory=list)
     subset_list: list[str] = Field(default_factory=list)
+    eval_template_id: str | None = None
+    eval_template_name: str | None = None
+    eval_template_version: int | None = None
+    eval_template_type: str | None = None
+    eval_template_preset_id: str | None = None
     version_count: int = 0
     enabled_version_count: int = 0
     eval_job_count: int = 0
@@ -43,6 +47,7 @@ class BenchmarkDefinitionDetail(BenchmarkDefinitionSummary):
     sample_schema_json: dict = Field(default_factory=dict)
     prompt_schema_json: dict = Field(default_factory=dict)
     prompt_config_json: dict = Field(default_factory=dict)
+    field_mapping_json: dict | None = None
     few_shot_num: int | None = None
     eval_split: str | None = None
     train_split: str | None = None
@@ -57,7 +62,7 @@ class BenchmarkDefinitionDetail(BenchmarkDefinitionSummary):
 
 
 class BenchmarkDefinitionCreate(BaseModel):
-    name: str
+    name: str | None = None
     display_name: str
     description: str | None = None
     category: str | None = None
@@ -67,6 +72,7 @@ class BenchmarkDefinitionCreate(BaseModel):
     prompt_template: str | None = None
     system_prompt: str | None = None
     requires_judge_model: bool = False
+    eval_template_id: str | None = None
 
 
 class BenchmarkDefinitionUpdate(BaseModel):
@@ -79,10 +85,11 @@ class BenchmarkDefinitionUpdate(BaseModel):
     prompt_template: str | None = None
     system_prompt: str | None = None
     requires_judge_model: bool | None = None
+    eval_template_id: str | None = None
 
 
 class BenchmarkVersionCreate(BaseModel):
-    id: str
+    id: str | None = None
     display_name: str
     description: str | None = None
     dataset_source_uri: str | None = None

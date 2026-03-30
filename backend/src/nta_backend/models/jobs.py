@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Text, func
+from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, Text, func
 from sqlalchemy.orm import relationship
 
 from nta_backend.models.base import (
@@ -62,6 +62,8 @@ class EvalJob(Base, UUIDPrimaryKeyMixin, JobStateMixin, TimestampMixin):
     progress_total: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     progress_done: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    eval_template_id: Mapped[PythonUUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    eval_template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     collection_id: Mapped[PythonUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("eval_collections.id", ondelete="SET NULL"),

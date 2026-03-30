@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from nta_backend.eval_core import benchmarks, evaluators, metrics, models
+from nta_backend.eval_core import evaluators, metrics, models
 from nta_backend.eval_core.adapters import generic_adapter as _generic  # noqa: F401 — registers _generic
 from nta_backend.eval_core.api.registry import create_evaluator, get_benchmark, get_model
 from nta_backend.eval_core.config import EvalTaskConfig
 
-_REGISTRATION_MODULES = (benchmarks, evaluators, metrics, models)
+_REGISTRATION_MODULES = (evaluators, metrics, models)
 
 
 def run_task(task_config: EvalTaskConfig | dict[str, object]) -> object:

@@ -1,19 +1,23 @@
+import Link from "next/link";
 import {
   ConsoleListSearchForm,
   ConsoleListToolbar,
   ConsoleListToolbarCluster
 } from "@/components/console/list-surface";
-import { getBenchmarkCatalog, getEvalJobs } from "@/features/eval/api";
+import { buttonVariants } from "@/components/ui/button";
+import { getBenchmarkCatalog, getEvalJobs, getEvalTemplates } from "@/features/eval/api";
 import { EvalJobCreateSheet } from "@/features/eval/components/eval-job-create-sheet";
 import { BenchmarkCatalogTable } from "@/features/eval/components/benchmark-catalog-table";
 import { EvalJobListTable } from "@/features/eval/components/eval-job-list-table";
+import { EvalTemplateListTable } from "@/features/eval/components/eval-template-list-table";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
 
 const evalTabs = [
   { key: "jobs", label: "评测任务" },
-  { key: "management", label: "评测管理" }
+  { key: "management", label: "评测管理" },
+  { key: "templates", label: "评测模板" }
 ] as const;
 
 export default async function ModelEvalPage({
@@ -71,14 +75,21 @@ export default async function ModelEvalPage({
             );
           })
           .sort((left, right) => {
-            if (left.runtime_available !== right.runtime_available) {
-              return left.runtime_available ? -1 : 1;
-            }
             if (left.eval_job_count !== right.eval_job_count) {
               return right.eval_job_count - left.eval_job_count;
             }
             return left.display_name.localeCompare(right.display_name);
           })
+      : [];
+  const templates =
+    currentTab === "templates"
+      ? (await getEvalTemplates().catch(() => []))
+          .filter((t) => {
+            if (!query) return true;
+            const haystack = [t.name, t.description ?? "", t.output_type].join(" ").toLowerCase();
+            return haystack.includes(query.toLowerCase());
+          })
+          .sort((a, b) => a.name.localeCompare(b.name))
       : [];
 
   return (
@@ -143,9 +154,37 @@ export default async function ModelEvalPage({
                 <input name="tab" type="hidden" value={currentTab} />
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
+
+            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-benchmarks/create">
+              创建 Benchmark
+            </Link>
           </ConsoleListToolbar>
 
           <BenchmarkCatalogTable benchmarks={benchmarks} />
+        </>
+      ) : null}
+
+      {currentTab === "templates" ? (
+        <>
+          <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
+            <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
+              <ConsoleListSearchForm
+                action="/model/eval"
+                className="max-w-[560px] flex-none"
+                defaultValue={query}
+                inputClassName="min-w-[320px]"
+                placeholder="搜索模板名称或描述"
+              >
+                <input name="tab" type="hidden" value={currentTab} />
+              </ConsoleListSearchForm>
+            </ConsoleListToolbarCluster>
+
+            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-templates/create">
+              创建模板
+            </Link>
+          </ConsoleListToolbar>
+
+          <EvalTemplateListTable templates={templates} />
         </>
       ) : null}
     </div>

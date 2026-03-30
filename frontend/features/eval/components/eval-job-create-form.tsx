@@ -16,6 +16,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { createEvalJob } from "@/features/eval/api";
+import { formatEvalMethod } from "@/features/eval/status";
 import type {
   BenchmarkDefinitionSummary,
   BenchmarkVersionSummary,
@@ -49,7 +50,7 @@ export function EvalJobCreateForm({
     () =>
       benchmarks.filter(
         (benchmark) =>
-          benchmark.runtime_available && benchmark.versions.some((version) => version.enabled)
+          benchmark.versions.some((version) => version.enabled)
       ),
     [benchmarks]
   );
@@ -166,7 +167,7 @@ export function EvalJobCreateForm({
       inference_mode: "batch",
       task_type: "single-turn",
       eval_mode: "infer-auto",
-      eval_method: benchmark.default_eval_method,
+      eval_method: benchmark.eval_template_id ? "judge-template" : benchmark.default_eval_method,
       judge_model_id: judgeModel?.id ?? null,
       judge_model_name: judgeModel?.name ?? null,
       judge_prompt: null,
@@ -198,7 +199,8 @@ export function EvalJobCreateForm({
     <div className="flex w-full max-w-4xl flex-col gap-5">
       {!availableBenchmarks.length ? (
         <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-8 text-sm text-slate-400">
-          当前还没有可用的 Benchmark Version。请先到评测管理页为该类型登记数据集 Version。
+          当前还没有可用的 Benchmark Version。请先到评测管理页创建 Benchmark，并上传至少一个启用中的
+          Version 数据集。
         </div>
       ) : null}
 
@@ -211,7 +213,7 @@ export function EvalJobCreateForm({
       <form className="space-y-6" onSubmit={form.handleSubmit(handleSubmit)}>
         <div className="grid gap-6 lg:grid-cols-2">
           <FieldBlock
-            description={selectedBenchmark?.description ?? "选择一个 Benchmark。"}
+            description={describeBenchmarkSelection(selectedBenchmark)}
             error={benchmarkError}
             label="Benchmark"
           >
@@ -335,7 +337,7 @@ export function EvalJobCreateForm({
             label="执行配置"
             value={
               selectedBenchmark
-                ? `${selectedBenchmark.default_eval_method} / batch / infer-auto`
+                ? buildExecutionSummary(selectedBenchmark)
                 : "--"
             }
           />
@@ -380,6 +382,34 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
       <div className="mt-1 break-all text-sm text-slate-100">{value}</div>
     </div>
   );
+}
+
+function describeBenchmarkSelection(benchmark: BenchmarkDefinitionSummary | null | undefined) {
+  if (!benchmark) {
+    return "选择一个 Benchmark。";
+  }
+
+  if (benchmark.eval_template_name) {
+    return `${benchmark.description || "已绑定评测模板。"} 当前将使用 ${benchmark.eval_template_name}${
+      benchmark.eval_template_version != null ? ` · v${benchmark.eval_template_version}` : ""
+    } 进行评分。`;
+  }
+
+  return benchmark.description || "选择一个 Benchmark。";
+}
+
+function buildExecutionSummary(benchmark: BenchmarkDefinitionSummary) {
+  const methodLabel = formatEvalMethod(
+    benchmark.eval_template_id ? "judge-template" : benchmark.default_eval_method
+  );
+
+  if (benchmark.eval_template_name) {
+    return `${methodLabel} (${benchmark.eval_template_name}${
+      benchmark.eval_template_version != null ? ` · v${benchmark.eval_template_version}` : ""
+    }) / batch / infer-auto`;
+  }
+
+  return `${methodLabel} / batch / infer-auto`;
 }
 
 function pickDefaultVersion(

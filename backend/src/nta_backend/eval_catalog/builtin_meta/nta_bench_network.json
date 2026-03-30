@@ -12,7 +12,7 @@
       "Judge"
     ],
     "metrics": [
-      "cl_bench_acc"
+      "judge_rubric"
     ],
     "few_shot_num": 0,
     "eval_split": "default",
@@ -20,14 +20,14 @@
     "subset_list": [
       "default"
     ],
-    "description": "\n## Overview\n\nNTA Bench Network is a domain benchmark for Tencent Cloud network knowledge, architecture design and troubleshooting scenarios. It uses context-grounded long-form QA with explicit rubric-based judging.\n\n## Task Description\n\n- **Task Type**: Context-grounded domain QA\n- **Input**: Background context from cloud networking documentation plus a question\n- **Output**: A complete answer grounded in the provided context\n- **Evaluation**: LLM judge with all-or-nothing rubric scoring\n\n## Key Features\n\n- Covers foundational concepts, architecture principles, scenario design and troubleshooting\n- Keeps raw dataset schema separate from prompt rendering logic\n- Suitable for benchmark versions sourced from product docs and internal knowledge corpora\n",
-    "prompt_template": "以下是与问题相关的背景信息：\n\n【背景信息】\n{context}\n【背景信息结束】\n\n问题：{question}",
-    "system_prompt": "你是一位腾讯云网络架构专家。请结合题目中给出的背景信息作答，回答应准确、完整，并优先使用腾讯云网络领域的专业表述。",
+    "description": "\n## Overview\n\nNTA Bench Network is a domain benchmark for Tencent Cloud network knowledge, architecture design and troubleshooting scenarios. It uses context-grounded long-form QA with explicit rubric-based judging.\n\n## Task Description\n\n- **Task Type**: Context-grounded domain QA\n- **Input**: Background context from cloud networking documentation plus a question\n- **Output**: A complete answer grounded in the provided context\n- **Evaluation**: LLM judge with all-or-nothing rubric scoring\n\n## Key Features\n\n- Covers foundational concepts, architecture principles, scenario design and troubleshooting\n- Suitable for benchmark versions sourced from product docs and internal knowledge corpora\n",
+    "prompt_template": "",
+    "system_prompt": "",
     "few_shot_prompt_template": "",
     "aggregation": "mean",
     "extra_params": {},
     "sandbox_config": {},
-    "category": "llm"
+    "category": "domain"
   },
   "statistics": {
     "total_samples": 0,
@@ -37,14 +37,13 @@
         "sample_count": 0
       }
     ],
-    "computed_at": "2026-03-27T00:00:00Z"
+    "computed_at": "2026-03-30T00:00:00Z"
   },
   "sample_example": {
     "data": {
       "id": "ccn-concept-001-2fa830",
-      "context": "腾讯云云联网支持路由聚合功能，包括 VPC CIDR 聚合和自定义聚合。通过该功能，您可以将云联网传播给专线网关和 VPN 网关的路由条目进行聚合，从而减少网络实例中的路由表规模，简化路由管理。",
-      "question": "请说明云联网中的路由聚合支持哪些类型，以及主要作用对象是谁？",
-      "rubrics": [
+      "input": "背景信息：腾讯云云联网支持路由聚合功能，包括 VPC CIDR 聚合和自定义聚合。通过该功能，您可以将云联网传播给专线网关和 VPN 网关的路由条目进行聚合，从而减少网络实例中的路由表规模，简化路由管理。\n\n问题：请说明云联网中的路由聚合支持哪些类型，以及主要作用对象是谁？",
+      "target": [
         "明确指出路由聚合支持两类：VPC CIDR 聚合和自定义聚合。",
         "明确说明聚合的是传播给专线网关和 VPN 网关的路由。"
       ],
@@ -59,9 +58,9 @@
     "truncated": false
   },
   "readme": {
-    "zh": "# NTA Bench Network\n\n这是一个腾讯云网络领域的 context-grounded、rubric-based 问答 benchmark。底层执行 family 为 Grounded Rubric QA，评测时通过 judge model 按 rubric 条目进行全有或全无判分。",
-    "en": "# NTA Bench Network\n\nA Tencent Cloud networking benchmark built on the Grounded Rubric QA family, evaluated by an LLM judge using explicit rubric items."
+    "zh": "# NTA Bench Network\n\n这是一个腾讯云网络领域的 rubric-based 问答 benchmark。评测时通过 judge model 按 rubric 条目进行全有或全无判分。\n\n## 数据格式\n\n```json\n{\"id\": \"...\", \"input\": \"背景+问题文本\", \"target\": [\"rubric 1\", \"rubric 2\"], \"metadata\": {...}}\n```",
+    "en": "# NTA Bench Network\n\nA Tencent Cloud networking benchmark evaluated by an LLM judge using explicit rubric items.\n\n## Data Format\n\n```json\n{\"id\": \"...\", \"input\": \"context + question text\", \"target\": [\"rubric 1\", \"rubric 2\"], \"metadata\": {...}}\n```"
   },
-  "updated_at": "2026-03-27T00:00:00Z",
-  "translation_updated_at": "2026-03-27T00:00:00Z"
+  "updated_at": "2026-03-30T00:00:00Z",
+  "translation_updated_at": "2026-03-30T00:00:00Z"
 }

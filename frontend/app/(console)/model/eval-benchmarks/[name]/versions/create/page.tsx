@@ -16,10 +16,6 @@ export default async function CreateBenchmarkVersionPage({
     notFound();
   }
 
-  if (!benchmark.runtime_available) {
-    notFound();
-  }
-
   return (
     <BenchmarkVersionEditorForm
       benchmark={{ name: benchmark.name, display_name: benchmark.display_name }}

@@ -75,10 +75,6 @@ class EvalCollectionService:
                     raise ValueError(
                         f"Benchmark '{entry.benchmark_name}' 不存在。"
                     )
-                if not definition.is_runnable:
-                    raise ValueError(
-                        f"Benchmark '{entry.benchmark_name}' 当前不可运行。"
-                    )
                 _, version = await resolve_benchmark_version_record(
                     session,
                     benchmark_name=entry.benchmark_name,

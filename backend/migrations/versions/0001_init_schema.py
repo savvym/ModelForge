@@ -360,7 +360,6 @@ def upgrade() -> None:
         sa.Column("field_mapping_json", postgresql.JSONB, nullable=True),
         sa.Column("adapter_class", sa.String(255), nullable=True),
         sa.Column("source_type", sa.String(32), nullable=True, server_default="builtin"),
-        sa.Column("is_runnable", sa.Boolean, nullable=True, server_default="false"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
@@ -527,7 +526,7 @@ def _seed_builtin_benchmarks() -> None:
             continue
 
         row["id"] = str(uuid4())
-        row["default_eval_method"] = "not-implemented"
+        row["default_eval_method"] = "judge-rubric"
         row["sample_schema_json"] = json.dumps({"type": "object"})
         row["prompt_schema_json"] = json.dumps({"type": "object"})
         row["prompt_config_json"] = json.dumps({})
@@ -543,7 +542,7 @@ def _seed_builtin_benchmarks() -> None:
                     prompt_template, system_prompt, few_shot_prompt_template,
                     few_shot_num, eval_split, train_split,
                     sample_example_json, statistics_json, readme_json,
-                    source_type, is_runnable
+                    source_type
                 ) VALUES (
                     :id, :name, :display_name, :description, :default_eval_method,
                     CAST(:sample_schema_json AS jsonb), CAST(:prompt_schema_json AS jsonb), CAST(:prompt_config_json AS jsonb),
@@ -553,7 +552,7 @@ def _seed_builtin_benchmarks() -> None:
                     :prompt_template, :system_prompt, :few_shot_prompt_template,
                     :few_shot_num, :eval_split, :train_split,
                     CAST(:sample_example_json AS jsonb), CAST(:statistics_json AS jsonb), CAST(:readme_json AS jsonb),
-                    :source_type, :is_runnable
+                    :source_type
                 )
             """),
             row,
@@ -628,7 +627,6 @@ def _load_meta_file(path: str) -> dict | None:
         "statistics_json": json.dumps(_normalize_optional_dict(payload.get("statistics"))),
         "readme_json": json.dumps(_normalize_optional_dict(payload.get("readme"))),
         "source_type": "builtin",
-        "is_runnable": False,
     }
 
 

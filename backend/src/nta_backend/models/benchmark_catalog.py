@@ -1,4 +1,5 @@
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from nta_backend.models.base import (
@@ -59,10 +60,16 @@ class BenchmarkDefinition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # -- Field mapping (for generic adapter) --
     field_mapping_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # -- Eval template --
+    eval_template_id: Mapped[PythonUUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("eval_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # -- Runtime / operational --
     adapter_class: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(32), nullable=True, default="builtin")
-    is_runnable: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
 
     # -- Relationships --
     versions = relationship(

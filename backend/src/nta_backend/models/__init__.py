@@ -2,6 +2,7 @@ from nta_backend.models.auth import ApiKey, Project, ProjectMember, User
 from nta_backend.models.benchmark_catalog import BenchmarkDefinition, BenchmarkVersion
 from nta_backend.models.dataset import Dataset, DatasetFile, DatasetVersion
 from nta_backend.models.eval_collection import EvalCollection
+from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.jobs import BatchJob, EvalJob, EvalJobMetric, JobLog
 from nta_backend.models.lake import LakeAsset, LakeBatch
 from nta_backend.models.modeling import Endpoint, Model, ModelProvider
@@ -19,6 +20,7 @@ __all__ = [
     "EvalCollection",
     "Endpoint",
     "EvalJob",
+    "EvalTemplate",
     "EvalJobMetric",
     "JobLog",
     "LakeAsset",

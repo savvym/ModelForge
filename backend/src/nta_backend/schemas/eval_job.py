@@ -97,7 +97,7 @@ class EvalJobCreate(BaseModel):
     inference_mode: str = "batch"
     task_type: str = "single-turn"
     eval_mode: str = "infer-auto"
-    eval_method: str = "judge-model"
+    eval_method: str = "judge-rubric"
     endpoint_name: str | None = None
     judge_model_id: UUID | None = None
     judge_model_name: str | None = "Doubao-Seed-2.0-pro 250415"

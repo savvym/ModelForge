@@ -2,7 +2,7 @@
 
 import { FileUp, FolderOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { ConsoleBreadcrumb } from "@/components/console/console-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,16 +53,26 @@ export function BenchmarkVersionEditorForm({
   });
   const isBusy = isPending || isUploading;
 
+  useEffect(() => {
+    if (mode === "create" && !form.id) {
+      setForm((current) => ({ ...current, id: buildDraftVersionId() }));
+    }
+  }, [form.id, mode]);
+
   function updateField(key: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   async function uploadFile(file: File) {
-    const versionId = form.id.trim();
+    let versionId = form.id.trim();
+    if (!versionId && mode === "create") {
+      versionId = buildDraftVersionId();
+      setForm((current) => ({ ...current, id: versionId }));
+    }
     if (!versionId) {
       setFeedback({
         tone: "error",
-        text: "请先填写 Version ID，再上传数据文件到对象存储。"
+        text: "系统暂时无法生成 Version ID，请刷新页面后重试。"
       });
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -109,8 +119,8 @@ export function BenchmarkVersionEditorForm({
   }
 
   function submit() {
-    if (!form.id.trim() || !form.display_name.trim()) {
-      setFeedback({ tone: "error", text: "请填写 Version ID 和展示名称。" });
+    if (!form.display_name.trim()) {
+      setFeedback({ tone: "error", text: "请填写展示名称。" });
       return;
     }
     if (!form.dataset_source_uri.trim()) {
@@ -137,7 +147,7 @@ export function BenchmarkVersionEditorForm({
             await updateBenchmarkVersion(benchmark.name, initialVersion.id, payload);
           } else {
             await createBenchmarkVersion(benchmark.name, {
-              id: form.id.trim(),
+              id: form.id.trim() || undefined,
               ...payload
             });
           }
@@ -207,18 +217,25 @@ export function BenchmarkVersionEditorForm({
           <CardTitle className="text-base text-slate-50">Version 配置</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
-          <Field
-            disabled={mode === "edit"}
-            label="Version ID"
-            onChange={(value) => updateField("id", value)}
-            placeholder="例如 cl_bench_smoke_1"
-            value={form.id}
-          />
+          {mode === "edit" ? (
+            <Field
+              disabled
+              label="Version ID"
+              onChange={(value) => updateField("id", value)}
+              placeholder="系统生成"
+              value={form.id}
+            />
+          ) : null}
           <Field
             label="展示名称"
             onChange={(value) => updateField("display_name", value)}
             placeholder="例如 CL-bench Smoke (1条)"
             value={form.display_name}
+            hint={
+              mode === "create"
+                ? "系统会自动生成以 ver- 开头的 Version ID。"
+                : undefined
+            }
           />
           <Field
             label="数据源 URI"
@@ -313,13 +330,15 @@ function Field({
   value,
   onChange,
   placeholder,
-  disabled = false
+  disabled = false,
+  hint
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   disabled?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -330,8 +349,16 @@ function Field({
         placeholder={placeholder}
         value={value}
       />
+      {hint ? <p className="text-xs text-slate-500">{hint}</p> : null}
     </div>
   );
+}
+
+function buildDraftVersionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `ver-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+  }
+  return `ver-${Math.random().toString(16).slice(2, 10).padEnd(8, "0").slice(0, 8)}`;
 }
 
 function SelectField({

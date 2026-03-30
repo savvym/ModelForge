@@ -3,6 +3,7 @@ import type {
   BenchmarkDefinitionCreateInput,
   BenchmarkDefinitionDetail,
   BenchmarkDefinitionSummary,
+  BenchmarkDefinitionUpdateInput,
   BenchmarkVersionCreateInput,
   CollectionRunInput,
   CollectionRunResponse,
@@ -12,8 +13,12 @@ import type {
   EvalJobCreateInput,
   EvalJobDetail,
   EvalJobSummary,
+  EvalTemplateCreateInput,
+  EvalTemplateSummary,
+  EvalTemplateUpdateInput,
   BenchmarkVersionSummary,
-  BenchmarkVersionUpdateInput
+  BenchmarkVersionUpdateInput,
+  ObjectStoreObjectPreviewResponse
 } from "@/types/api";
 
 export async function getEvalJobs(projectId?: string | null): Promise<EvalJobSummary[]> {
@@ -70,6 +75,17 @@ export async function createBenchmarkDefinition(
   });
 }
 
+export async function updateBenchmarkDefinition(
+  benchmarkName: string,
+  payload: BenchmarkDefinitionUpdateInput
+): Promise<BenchmarkDefinitionSummary> {
+  return apiFetch<BenchmarkDefinitionSummary>(`/benchmarks/${benchmarkName}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 export function getBenchmarkSampleFileUrl(benchmarkName: string): string {
   return `${getApiBaseUrl()}/benchmarks/${encodeURIComponent(benchmarkName)}/sample-file`;
 }
@@ -92,6 +108,63 @@ export async function updateBenchmarkVersion(
 ): Promise<BenchmarkVersionSummary> {
   return apiFetch<BenchmarkVersionSummary>(`/benchmarks/${benchmarkName}/versions/${versionId}`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getBenchmarkVersionPreview(
+  benchmarkName: string,
+  versionId: string
+): Promise<ObjectStoreObjectPreviewResponse> {
+  return apiFetch<ObjectStoreObjectPreviewResponse>(
+    `/benchmarks/${benchmarkName}/versions/${versionId}/preview`
+  );
+}
+
+export function getBenchmarkVersionDownloadUrl(
+  benchmarkName: string,
+  versionId: string
+): string {
+  return `${getApiBaseUrl()}/benchmarks/${encodeURIComponent(benchmarkName)}/versions/${encodeURIComponent(versionId)}/download`;
+}
+
+// -- Eval Templates --
+
+export async function getEvalTemplates(): Promise<EvalTemplateSummary[]> {
+  return apiFetch<EvalTemplateSummary[]>("/eval-templates");
+}
+
+export async function getEvalTemplate(
+  name: string,
+  version?: number
+): Promise<EvalTemplateSummary> {
+  const params = version != null ? `?version=${version}` : "";
+  return apiFetch<EvalTemplateSummary>(`/eval-templates/${name}${params}`);
+}
+
+export async function getEvalTemplateVersions(
+  name: string
+): Promise<EvalTemplateSummary[]> {
+  return apiFetch<EvalTemplateSummary[]>(`/eval-templates/${name}/versions`);
+}
+
+export async function createEvalTemplate(
+  payload: EvalTemplateCreateInput
+): Promise<EvalTemplateSummary> {
+  return apiFetch<EvalTemplateSummary>("/eval-templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateEvalTemplate(
+  name: string,
+  payload: EvalTemplateUpdateInput
+): Promise<EvalTemplateSummary> {
+  return apiFetch<EvalTemplateSummary>(`/eval-templates/${name}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });

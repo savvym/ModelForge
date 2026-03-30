@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
+import { getPresetLabel, getTemplateTypeLabel } from "@/features/eval/eval-template-meta";
 import { formatEvalMethod } from "@/features/eval/status";
 import type { BenchmarkDefinitionSummary } from "@/types/api";
 
@@ -25,9 +26,9 @@ export function BenchmarkCatalogTable({
         <TableHeader>
           <TableRow>
             <TableHead>Benchmark</TableHead>
-            <TableHead>运行时</TableHead>
             <TableHead>版本数</TableHead>
             <TableHead>默认评测方式</TableHead>
+            <TableHead>评测模板</TableHead>
             <TableHead>Judge</TableHead>
             <TableHead>任务数</TableHead>
             <TableHead>最近运行</TableHead>
@@ -37,7 +38,8 @@ export function BenchmarkCatalogTable({
           {empty ? (
             <TableRow className="hover:bg-transparent">
               <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={7}>
-                当前没有可管理的 Benchmark。
+                当前还没有自定义 Benchmark。请先创建一个模板驱动的 Benchmark，并上传至少一个
+                Version 数据集。
               </TableCell>
             </TableRow>
           ) : (
@@ -61,16 +63,31 @@ export function BenchmarkCatalogTable({
                     </div>
                   </Link>
                 </TableCell>
-                <TableCell className="align-top">
-                  <Badge variant={benchmark.runtime_available ? "default" : "secondary"}>
-                    {benchmark.runtime_available ? "已接入" : "仅元信息"}
-                  </Badge>
-                </TableCell>
                 <TableCell className="align-top text-slate-300">
                   {benchmark.enabled_version_count}/{benchmark.version_count}
                 </TableCell>
                 <TableCell className="align-top text-slate-300">
                   {formatEvalMethod(benchmark.default_eval_method)}
+                </TableCell>
+                <TableCell className="min-w-[220px] align-top">
+                  {benchmark.eval_template_name ? (
+                    <div className="space-y-1">
+                      <div className="text-slate-200">
+                        {benchmark.eval_template_name}
+                        {benchmark.eval_template_version != null
+                          ? ` · v${benchmark.eval_template_version}`
+                          : ""}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {getTemplateTypeLabel(benchmark.eval_template_type)}
+                        {benchmark.eval_template_preset_id
+                          ? ` · ${getPresetLabel(benchmark.eval_template_preset_id)}`
+                          : ""}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">--</span>
+                  )}
                 </TableCell>
                 <TableCell className="align-top">
                   <Badge variant={benchmark.requires_judge_model ? "default" : "outline"}>

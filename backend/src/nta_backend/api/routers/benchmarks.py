@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
@@ -9,6 +10,7 @@ from nta_backend.schemas.benchmark_catalog import (
     BenchmarkVersionSummary,
     BenchmarkVersionUpdate,
 )
+from nta_backend.schemas.object_store import ObjectStoreObjectPreviewResponse
 from nta_backend.services.benchmark_catalog_service import BenchmarkCatalogService
 
 router = APIRouter(prefix="/benchmarks")
@@ -67,6 +69,48 @@ async def download_benchmark_sample_file(benchmark_name: str) -> Response:
         headers={
             "Content-Disposition": f'attachment; filename="{sample_file.file_name}"',
         },
+    )
+
+
+@router.get(
+    "/{benchmark_name}/versions/{version_id}/preview",
+    response_model=ObjectStoreObjectPreviewResponse,
+)
+async def preview_benchmark_version_file(
+    benchmark_name: str,
+    version_id: str,
+) -> ObjectStoreObjectPreviewResponse:
+    try:
+        return await service.preview_benchmark_version_file(benchmark_name, version_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Benchmark version not found") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Benchmark version file not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{benchmark_name}/versions/{version_id}/download")
+async def download_benchmark_version_file(
+    benchmark_name: str,
+    version_id: str,
+) -> StreamingResponse:
+    try:
+        file_name, body, content_type = await service.download_benchmark_version_file(
+            benchmark_name,
+            version_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Benchmark version not found") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Benchmark version file not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return StreamingResponse(
+        iter([body]),
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
     )
 
 
