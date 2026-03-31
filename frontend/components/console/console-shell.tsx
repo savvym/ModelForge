@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import {
   Bot,
   Boxes,
@@ -76,6 +76,46 @@ export function ConsoleShell({
     document.cookie = `${CURRENT_PROJECT_COOKIE}=${encodeURIComponent(activeProject.id)}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
   }, [activeProject, selectedProjectId]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const prefetchConsoleRoutes = () => {
+      startTransition(() => {
+        for (const href of navPrefetchTargets) {
+          if (href !== pathname) {
+            router.prefetch(href);
+          }
+        }
+      });
+    };
+
+    const browserWindow = window as Window &
+      typeof globalThis & {
+        requestIdleCallback?: (
+          callback: IdleRequestCallback,
+          options?: IdleRequestOptions
+        ) => number;
+        cancelIdleCallback?: (handle: number) => void;
+      };
+
+    if (
+      typeof browserWindow.requestIdleCallback === "function" &&
+      typeof browserWindow.cancelIdleCallback === "function"
+    ) {
+      const idleId = browserWindow.requestIdleCallback(() => {
+        prefetchConsoleRoutes();
+      }, { timeout: 1200 });
+      return () => browserWindow.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = browserWindow.setTimeout(() => {
+      prefetchConsoleRoutes();
+    }, 120);
+    return () => browserWindow.clearTimeout(timeoutId);
+  }, [pathname, router]);
+
   function handleProjectChange(projectId: string) {
     document.cookie = `${CURRENT_PROJECT_COOKIE}=${encodeURIComponent(projectId)}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
     setSelectedProjectId(projectId);
@@ -100,13 +140,13 @@ export function ConsoleShell({
           >
             {isNavCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
-          <Link
+          <ConsoleNavLink
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-transparent bg-transparent text-teal-300/80 transition-colors hover:border-slate-700/80 hover:bg-slate-800/40 hover:text-teal-200"
             href="/overview"
             title="返回概览"
           >
             <Boxes className="h-4 w-4" />
-          </Link>
+          </ConsoleNavLink>
 
           {projects.length ? (
             <div className="header-project-group min-w-0 rounded-xl border border-transparent bg-transparent transition-colors hover:border-slate-700/80 hover:bg-slate-800/40 focus-within:border-slate-700/80 focus-within:bg-slate-800/40">
@@ -173,7 +213,7 @@ export function ConsoleShell({
                     const Icon = iconByHref[item.href] ?? LayoutDashboard;
 
                     return (
-                      <Link
+                      <ConsoleNavLink
                         aria-label={item.title}
                         className={cn(
                           "group relative flex h-8 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white",
@@ -187,7 +227,7 @@ export function ConsoleShell({
                         <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-700 bg-[#111923] px-2 py-1 text-xs font-medium text-slate-200 shadow-lg group-hover:block">
                           {item.title}
                         </span>
-                      </Link>
+                      </ConsoleNavLink>
                     );
                   })}
                 </div>
@@ -207,7 +247,7 @@ export function ConsoleShell({
                       const Icon = iconByHref[item.href] ?? LayoutDashboard;
 
                       return (
-                        <Link
+                        <ConsoleNavLink
                           key={item.href}
                           href={item.href}
                           className={cn(
@@ -217,7 +257,7 @@ export function ConsoleShell({
                         >
                           <Icon className={cn("h-4 w-4 shrink-0 text-slate-400", active && "text-sky-300")} />
                           <span className="truncate">{item.title}</span>
-                        </Link>
+                        </ConsoleNavLink>
                       );
                     })}
                   </div>
@@ -270,6 +310,10 @@ const iconByHref: Record<string, LucideIcon> = {
   "/project": FolderCog
 } as const;
 
+const navPrefetchTargets = Array.from(
+  new Set(["/overview", ...consoleNavSections.flatMap((section) => section.items.map((item) => item.href))])
+);
+
 function HeaderIconButton({
   icon: Icon,
   label
@@ -286,6 +330,32 @@ function HeaderIconButton({
     >
       <Icon className="h-4 w-4" />
     </button>
+  );
+}
+
+function ConsoleNavLink({
+  href,
+  children,
+  ...props
+}: React.ComponentProps<typeof Link>) {
+  const router = useRouter();
+
+  function handlePrefetch() {
+    startTransition(() => {
+      router.prefetch(href.toString());
+    });
+  }
+
+  return (
+    <Link
+      {...props}
+      href={href}
+      onFocus={handlePrefetch}
+      onMouseEnter={handlePrefetch}
+      prefetch
+    >
+      {children}
+    </Link>
   );
 }
 

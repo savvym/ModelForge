@@ -205,38 +205,12 @@ export function BenchmarkLeaderboardDetailPanel({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-[26px] font-semibold tracking-tight text-slate-50">
-            {leaderboard.name}
-          </h1>
-          <p className="text-sm text-slate-400">
-            基于 {leaderboard.benchmark_display_name} / {leaderboard.benchmark_version_display_name}
-            的模型排行榜。只有使用同一 Benchmark Version 且已完成的任务，才会纳入排序。
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Link href="/model/eval?tab=leaderboards">
-            <Button variant="outline">返回排行榜</Button>
-          </Link>
-          <Link href={`/model/eval-benchmarks/${leaderboard.benchmark_name}`}>
-            <Button variant="outline">查看 Benchmark</Button>
-          </Link>
-          <Link href="/model/eval?tab=jobs&create=1">
-            <Button variant="outline">创建评测任务</Button>
-          </Link>
-          <Button onClick={() => setAddDialogOpen(true)} variant="outline">
-            添加评测任务
-          </Button>
-          <Button
-            className="border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
-            onClick={() => setDeleteConfirmOpen(true)}
-            variant="outline"
-          >
-            删除排行榜
-          </Button>
-        </div>
+      <div className="flex items-center gap-2 text-sm text-slate-400">
+        <Link className="transition-colors hover:text-slate-200" href="/model/eval?tab=leaderboards">
+          排行榜
+        </Link>
+        <span className="text-slate-600">&gt;</span>
+        <span className="text-slate-100">{leaderboard.name}</span>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -253,10 +227,26 @@ export function BenchmarkLeaderboardDetailPanel({
       </div>
 
       <div className="rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)]">
-        <div className="border-b border-slate-800/80 px-4 py-3">
-          <div className="text-sm font-medium text-slate-100">排行榜明细</div>
-          <div className="mt-1 text-xs text-slate-500">
-            当前按得分从高到低排序。同分时，最近完成的任务排在前面。
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/80 px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-slate-100">排行榜明细</div>
+            <div className="mt-1 text-xs text-slate-500">
+              当前按得分从高到低排序。同分时，最近完成的任务排在前面。
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setAddDialogOpen(true)} size="sm" variant="outline">
+              添加评测任务
+            </Button>
+            <Button
+              className="border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+              onClick={() => setDeleteConfirmOpen(true)}
+              size="sm"
+              variant="outline"
+            >
+              删除排行榜
+            </Button>
           </div>
         </div>
 

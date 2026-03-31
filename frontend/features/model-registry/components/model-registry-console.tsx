@@ -730,15 +730,15 @@ export function ModelRegistryConsole({
         }}
         open={!!testingModel}
       >
-        <SheetContent className="gap-0 p-0 sm:max-w-2xl">
+        <SheetContent className="w-full gap-0 overflow-hidden border-l border-slate-800/85 bg-[linear-gradient(180deg,rgba(10,15,22,0.98),rgba(8,12,19,0.95))] p-0 text-slate-100 shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-2xl [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-slate-500 [&>button]:hover:bg-slate-800/80 [&>button]:hover:text-slate-100">
           <div className="flex h-full flex-col">
-            <SheetHeader className="border-b border-slate-800 px-6 py-5 pr-12">
-              <SheetTitle>测试模型</SheetTitle>
-              <SheetDescription>
+            <SheetHeader className="border-b border-slate-800/80 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_38%),linear-gradient(180deg,rgba(15,23,34,0.94),rgba(10,15,22,0.92))] px-6 py-5 pr-12">
+              <SheetTitle className="text-slate-50">测试模型</SheetTitle>
+              <SheetDescription className="text-slate-400">
                 {testingModel ? (
                   <>
                     通过 {testingModel.provider_name ?? "当前 Provider"} 对模型{" "}
-                    <span className="font-medium text-zinc-700">{testingModel.name}</span> 发起一次最小调用，
+                    <span className="font-medium text-slate-100">{testingModel.name}</span> 发起一次最小调用，
                     验证模型是否可以正常返回结果。
                   </>
                 ) : (
@@ -820,7 +820,7 @@ export function ModelRegistryConsole({
               ) : null}
             </div>
 
-            <SheetFooter className="border-t border-slate-800 px-6 py-4">
+            <SheetFooter className="border-t border-slate-800/80 px-6 py-4">
               <Button
                 disabled={isTestingModel || !testingModel}
                 onClick={() => {
@@ -829,7 +829,11 @@ export function ModelRegistryConsole({
               >
                 {isTestingModel ? "测试中..." : "开始测试"}
               </Button>
-              <Button onClick={closeModelTest} variant="outline">
+              <Button
+                className="border-slate-700/90 text-slate-200 hover:border-slate-600 hover:bg-slate-800/70"
+                onClick={closeModelTest}
+                variant="outline"
+              >
                 关闭
               </Button>
             </SheetFooter>
