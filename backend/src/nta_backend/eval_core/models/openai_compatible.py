@@ -33,11 +33,14 @@ def call_openai_compatible_chat(
 
     headers = {"Content-Type": "application/json"}
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        if normalized_api_format == "google":
+            headers["x-goog-api-key"] = api_key
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
 
     try:
         response = httpx.post(
-            _normalize_request_url(api_url, normalized_api_format),
+            _normalize_request_url(api_url, normalized_api_format, model_name=model_name),
             headers=headers,
             json=payload,
             timeout=timeout_s,
@@ -48,7 +51,7 @@ def call_openai_compatible_chat(
         return ModelOutput(sample_id=sample_id, error=str(exc))
 
     text = _extract_output_text(body, normalized_api_format)
-    usage = _extract_usage(body.get("usage"), normalized_api_format)
+    usage = _extract_usage(body, normalized_api_format)
     return ModelOutput(
         sample_id=sample_id,
         text=text,
@@ -107,9 +110,16 @@ def _serialize_message(message: ChatMessage | dict[str, str]) -> dict[str, str]:
     return {"role": str(message["role"]), "content": str(message["content"])}
 
 
-def _normalize_request_url(api_url: str, api_format: str) -> str:
+def _normalize_request_url(
+    api_url: str,
+    api_format: str,
+    *,
+    model_name: str | None = None,
+) -> str:
     if api_format == "responses":
         return _normalize_responses_url(api_url)
+    if api_format == "google":
+        return _normalize_google_generate_content_url(api_url, model_name or "")
     return _normalize_chat_completions_url(api_url)
 
 
@@ -131,9 +141,24 @@ def _normalize_responses_url(api_url: str) -> str:
     return f"{normalized}/v1/responses"
 
 
+def _normalize_google_generate_content_url(api_url: str, model_name: str) -> str:
+    normalized = api_url.strip().rstrip("/")
+    normalized_model_name = model_name.strip().removeprefix("models/")
+    if normalized.endswith(":generateContent"):
+        return normalized
+    if normalized.endswith(f"/models/{normalized_model_name}"):
+        return f"{normalized}:generateContent"
+    if normalized.endswith("/models"):
+        return f"{normalized}/{normalized_model_name}:generateContent"
+    return f"{normalized}/models/{normalized_model_name}:generateContent"
+
+
 def _normalize_api_format(value: str | None) -> str:
-    if value == "responses":
+    normalized = (value or "").strip().lower()
+    if normalized in {"responses", "openai-responses"}:
         return "responses"
+    if normalized in {"google", "google-genai", "google-generativeai"}:
+        return "google"
     return "chat-completions"
 
 
@@ -154,6 +179,13 @@ def _build_request_payload(
             payload["max_output_tokens"] = max_tokens
         return payload
 
+    if api_format == "google":
+        return _build_google_payload(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
     payload = {
         "model": model_name,
         "messages": messages,
@@ -167,6 +199,8 @@ def _build_request_payload(
 def _extract_output_text(payload: dict[str, Any], api_format: str) -> str:
     if api_format == "responses":
         return _extract_responses_text(payload)
+    if api_format == "google":
+        return _extract_google_text(payload)
     return _extract_chat_completions_text(payload)
 
 
@@ -216,13 +250,81 @@ def _extract_responses_text(payload: dict[str, Any]) -> str:
 def _extract_usage(payload: Any, api_format: str) -> ModelUsage | None:
     if not isinstance(payload, dict):
         return None
+    if api_format == "google":
+        usage_metadata = payload.get("usageMetadata")
+        if not isinstance(usage_metadata, dict):
+            return None
+        return ModelUsage(
+            input_tokens=_as_int(usage_metadata.get("promptTokenCount")),
+            output_tokens=_as_int(usage_metadata.get("candidatesTokenCount")),
+            total_tokens=_as_int(usage_metadata.get("totalTokenCount")),
+        )
+    usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else payload
+    if not isinstance(usage, dict):
+        return None
     input_key = "input_tokens" if api_format == "responses" else "prompt_tokens"
     output_key = "output_tokens" if api_format == "responses" else "completion_tokens"
     return ModelUsage(
-        input_tokens=_as_int(payload.get(input_key)),
-        output_tokens=_as_int(payload.get(output_key)),
-        total_tokens=_as_int(payload.get("total_tokens")),
+        input_tokens=_as_int(usage.get(input_key)),
+        output_tokens=_as_int(usage.get(output_key)),
+        total_tokens=_as_int(usage.get("total_tokens")),
     )
+
+
+def _build_google_payload(
+    *,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int | None,
+) -> dict[str, Any]:
+    system_messages: list[str] = []
+    contents: list[dict[str, Any]] = []
+
+    for message in messages:
+        content = message["content"].strip()
+        if not content:
+            continue
+        if message["role"] == "system":
+            system_messages.append(content)
+            continue
+        contents.append(
+            {
+                "role": "model" if message["role"] == "assistant" else "user",
+                "parts": [{"text": content}],
+            }
+        )
+
+    payload: dict[str, Any] = {
+        "contents": contents,
+        "generationConfig": {"temperature": temperature},
+    }
+    if max_tokens is not None:
+        payload["generationConfig"]["maxOutputTokens"] = max_tokens
+    if system_messages:
+        payload["systemInstruction"] = {
+            "parts": [{"text": "\n\n".join(system_messages)}]
+        }
+    return payload
+
+
+def _extract_google_text(payload: dict[str, Any]) -> str:
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return ""
+    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
+    if not isinstance(content, dict):
+        return ""
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        return ""
+    chunks: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        text = _extract_text(part.get("text"))
+        if text:
+            chunks.append(text)
+    return "\n".join(chunk for chunk in chunks if chunk).strip()
 
 
 def _responses_input_from_messages(messages: list[dict[str, str]]) -> str:
@@ -263,6 +365,8 @@ def _extract_text(value: Any) -> str | None:
 
 
 def _as_int(value: Any) -> int | None:
-    if isinstance(value, int):
-        return value
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
     return None

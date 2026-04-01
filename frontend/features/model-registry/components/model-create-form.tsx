@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createRegistryModel, updateRegistryModel } from "@/features/model-registry/api";
+import { modelApiFormatOptions } from "@/features/model-registry/api-format";
 import { ModelRegistryBreadcrumb } from "@/features/model-registry/components/model-registry-breadcrumb";
 import { cn } from "@/lib/utils";
 import type { ModelProviderSummary, RegistryModelSummary } from "@/types/api";
@@ -224,10 +225,7 @@ export function ModelCreateForm({
           <SelectField
             label="API 格式"
             onChange={(value) => updateField("api_format", value)}
-            options={[
-              { label: "OpenAI Chat Completions", value: "chat-completions" },
-              { label: "OpenAI Responses", value: "responses" }
-            ]}
+            options={modelApiFormatOptions}
             value={form.api_format}
           />
           <SelectField

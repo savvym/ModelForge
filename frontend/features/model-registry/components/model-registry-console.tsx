@@ -45,6 +45,7 @@ import {
   updateModelProvider,
   updateRegistryModel
 } from "@/features/model-registry/api";
+import { formatModelApiFormat } from "@/features/model-registry/api-format";
 import { cn } from "@/lib/utils";
 import type {
   ModelProviderSummary,
@@ -87,7 +88,7 @@ function formatDateTime(value?: string | null) {
 }
 
 function formatProviderFormat(value: string) {
-  return value === "responses" ? "OpenAI Responses" : "OpenAI Chat";
+  return formatModelApiFormat(value);
 }
 
 function formatProviderType(value?: string | null) {

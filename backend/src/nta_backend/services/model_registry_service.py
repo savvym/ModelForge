@@ -45,6 +45,34 @@ def _normalize_base_url(value: str) -> str:
     return normalized
 
 
+def _normalize_api_format(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"responses", "openai-responses"}:
+        return "responses"
+    if normalized in {"google", "google-genai", "google-generativeai"}:
+        return "google"
+    return "chat-completions"
+
+
+def _provider_type_for_api_format(api_format: str) -> str:
+    if _normalize_api_format(api_format) == "google":
+        return "google-generativeai"
+    return "openai-compatible"
+
+
+def _normalize_google_model_code(model_code: str) -> str:
+    normalized = model_code.strip()
+    if normalized.startswith("models/"):
+        return normalized.removeprefix("models/")
+    return normalized
+
+
+def _normalize_google_request_url(base_url: str, model_code: str, *, stream: bool = False) -> str:
+    normalized_base_url = _normalize_base_url(base_url)
+    action = "streamGenerateContent?alt=sse" if stream else "generateContent"
+    return f"{normalized_base_url}/models/{_normalize_google_model_code(model_code)}:{action}"
+
+
 def _normalize_model_token(token: str) -> str:
     lowered = token.lower()
 
@@ -249,23 +277,47 @@ async def _get_model_or_raise(
 async def _fetch_provider_models(provider: ModelProvider) -> list[dict[str, Any]]:
     headers = _provider_request_headers(provider)
     url = f"{_normalize_base_url(provider.base_url)}/models"
+    api_format = _normalize_api_format(provider.api_format)
+    remote_models: list[dict[str, Any]] = []
+    page_token: str | None = None
+
     async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        payload = response.json()
+        while True:
+            params = {"pageToken": page_token} if api_format == "google" and page_token else None
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            payload = response.json()
 
-    data = payload.get("data")
-    if not isinstance(data, list):
-        raise ValueError("Provider `/models` response is invalid")
+            if api_format == "google":
+                models = payload.get("models")
+                if not isinstance(models, list):
+                    raise ValueError("Google `/models` response is invalid")
+                remote_models.extend(_google_remote_models(models))
+                page_token = payload.get("nextPageToken")
+                if not isinstance(page_token, str) or not page_token:
+                    break
+                continue
 
-    return [item for item in data if isinstance(item, dict) and item.get("id")]
+            data = payload.get("data")
+            if not isinstance(data, list):
+                raise ValueError("Provider `/models` response is invalid")
+            remote_models.extend(
+                item for item in data if isinstance(item, dict) and item.get("id")
+            )
+            break
+
+    return remote_models
 
 
 def _provider_request_headers(provider: ModelProvider) -> dict[str, str]:
     headers: dict[str, str] = {"Accept": "application/json"}
+    normalized_api_format = _normalize_api_format(provider.api_format)
     if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
-    if provider.organization:
+        if normalized_api_format == "google":
+            headers["x-goog-api-key"] = provider.api_key
+        else:
+            headers["Authorization"] = f"Bearer {provider.api_key}"
+    if provider.organization and normalized_api_format != "google":
         headers["OpenAI-Organization"] = provider.organization
     if provider.headers_json:
         headers.update(
@@ -276,6 +328,26 @@ def _provider_request_headers(provider: ModelProvider) -> dict[str, str]:
             }
         )
     return headers
+
+
+def _google_remote_models(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized_models: list[dict[str, Any]] = []
+    for model in models:
+        raw_name = model.get("name")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            continue
+        model_code = _normalize_google_model_code(raw_name)
+        if not model_code:
+            continue
+        normalized_models.append(
+            {
+                **model,
+                "id": model_code,
+                "name": model.get("displayName") or model_code,
+                "google_name": raw_name,
+            }
+        )
+    return normalized_models
 
 
 def _extract_text(value: Any) -> str:
@@ -308,6 +380,57 @@ def _extract_chat_completion_text(payload: dict[str, Any]) -> str:
     if not text:
         raise ValueError("Provider chat completion response did not include message content")
     return text
+
+
+def _extract_google_text(payload: dict[str, Any]) -> str:
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise ValueError("Google generateContent response is invalid")
+
+    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
+    if not isinstance(content, dict):
+        raise ValueError("Google generateContent response did not include content")
+
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        raise ValueError("Google generateContent response did not include parts")
+
+    chunks: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        text = _extract_text(part.get("text"))
+        if text:
+            chunks.append(text)
+
+    joined = "\n".join(chunk for chunk in chunks if chunk).strip()
+    if not joined:
+        raise ValueError("Google generateContent response did not include text output")
+    return joined
+
+
+def _extract_google_stream_text(payload: dict[str, Any]) -> str | None:
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return None
+
+    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
+    if not isinstance(content, dict):
+        return None
+
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        return None
+
+    chunks: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        text = _extract_text(part.get("text"))
+        if text:
+            chunks.append(text)
+    joined = "\n".join(chunk for chunk in chunks if chunk).strip()
+    return joined or None
 
 
 def _extract_responses_text(payload: dict[str, Any]) -> str:
@@ -381,19 +504,98 @@ def _extract_chat_completion_reasoning_text(payload: dict[str, Any]) -> str | No
     return None
 
 
+def _extract_google_reasoning_text(payload: dict[str, Any]) -> str | None:
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return None
+
+    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
+    if not isinstance(content, dict):
+        return None
+
+    parts = content.get("parts")
+    if not isinstance(parts, list):
+        return None
+
+    chunks: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if part.get("thought") is True:
+            thought_text = _extract_text(part.get("text"))
+            if thought_text:
+                chunks.append(thought_text)
+
+    joined = "\n\n".join(chunk for chunk in chunks if chunk).strip()
+    return joined or None
+
+
 def _extract_usage_tokens(payload: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
     usage = payload.get("usage")
-    if not isinstance(usage, dict):
+    usage_metadata = payload.get("usageMetadata")
+    if isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
+        output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
+        total_tokens = usage.get("total_tokens")
+    elif isinstance(usage_metadata, dict):
+        input_tokens = usage_metadata.get("promptTokenCount")
+        output_tokens = usage_metadata.get("candidatesTokenCount")
+        total_tokens = usage_metadata.get("totalTokenCount")
+    else:
         return None, None, None
-
-    input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
-    output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
-    total_tokens = usage.get("total_tokens")
 
     return (
         int(input_tokens) if isinstance(input_tokens, int | float) else None,
         int(output_tokens) if isinstance(output_tokens, int | float) else None,
         int(total_tokens) if isinstance(total_tokens, int | float) else None,
+    )
+
+
+def _google_payload_from_messages(
+    messages: list[dict[str, str]],
+    *,
+    max_output_tokens: int,
+    temperature: float | None = None,
+    parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    system_messages: list[str] = []
+    contents: list[dict[str, Any]] = []
+
+    for message in messages:
+        role = message["role"]
+        content = message["content"].strip()
+        if not content:
+            continue
+        if role == "system":
+            system_messages.append(content)
+            continue
+        contents.append(
+            {
+                "role": "model" if role == "assistant" else "user",
+                "parts": [{"text": content}],
+            }
+        )
+
+    if not contents:
+        raise ValueError("Google generateContent 请求至少需要一条 user/assistant 消息。")
+
+    payload: dict[str, Any] = {
+        "contents": contents,
+        "generationConfig": {
+            "maxOutputTokens": max_output_tokens,
+        },
+    }
+    if temperature is not None:
+        payload["generationConfig"]["temperature"] = temperature
+    if system_messages:
+        payload["systemInstruction"] = {
+            "parts": [{"text": "\n\n".join(system_messages)}]
+        }
+
+    return _merge_generation_parameters(
+        payload,
+        parameters,
+        api_format="google",
     )
 
 
@@ -435,7 +637,8 @@ def _merge_generation_parameters(
         return request_body
 
     merged = dict(request_body)
-    if api_format == "responses":
+    normalized_api_format = _normalize_api_format(api_format)
+    if normalized_api_format == "responses":
         field_map = {
             "temperature": "temperature",
             "top_p": "top_p",
@@ -443,6 +646,14 @@ def _merge_generation_parameters(
             "stop": "stop",
             "max_tokens": "max_output_tokens",
             "max_output_tokens": "max_output_tokens",
+        }
+    elif normalized_api_format == "google":
+        field_map = {
+            "temperature": "temperature",
+            "top_p": "topP",
+            "stop": "stopSequences",
+            "max_tokens": "maxOutputTokens",
+            "max_output_tokens": "maxOutputTokens",
         }
     else:
         field_map = {
@@ -458,7 +669,12 @@ def _merge_generation_parameters(
     for source_key, target_key in field_map.items():
         value = parameters.get(source_key)
         if value is not None:
-            merged[target_key] = value
+            if normalized_api_format == "google":
+                generation_config = dict(merged.get("generationConfig") or {})
+                generation_config[target_key] = value
+                merged["generationConfig"] = generation_config
+            else:
+                merged[target_key] = value
     return merged
 
 
@@ -555,9 +771,9 @@ class ModelRegistryService:
             provider = ModelProvider(
                 project_id=project_id,
                 name=payload.name.strip(),
-                provider_type=payload.provider_type,
+                provider_type=_provider_type_for_api_format(payload.api_format),
                 adapter=payload.adapter,
-                api_format=payload.api_format,
+                api_format=_normalize_api_format(payload.api_format),
                 base_url=_normalize_base_url(payload.base_url),
                 api_key=payload.api_key.strip() if payload.api_key else None,
                 organization=payload.organization.strip() if payload.organization else None,
@@ -583,7 +799,8 @@ class ModelRegistryService:
             if "name" in changes and changes["name"] is not None:
                 provider.name = changes["name"].strip()
             if "api_format" in changes and changes["api_format"] is not None:
-                provider.api_format = changes["api_format"]
+                provider.api_format = _normalize_api_format(changes["api_format"])
+                provider.provider_type = _provider_type_for_api_format(provider.api_format)
             if "base_url" in changes and changes["base_url"] is not None:
                 provider.base_url = _normalize_base_url(changes["base_url"])
             if "api_key" in changes:
@@ -750,7 +967,7 @@ class ModelRegistryService:
                 model_code=payload.model_code.strip(),
                 vendor=(payload.vendor.strip() if payload.vendor else None) or provider_name,
                 source=payload.source,
-                api_format=payload.api_format,
+                api_format=_normalize_api_format(payload.api_format),
                 category=payload.category.strip() if payload.category else None,
                 description=payload.description.strip() if payload.description else None,
                 is_provider_managed=False,
@@ -797,7 +1014,7 @@ class ModelRegistryService:
             elif "provider_id" in changes:
                 model.vendor = provider_name
             if "api_format" in changes and changes["api_format"] is not None:
-                model.api_format = changes["api_format"]
+                model.api_format = _normalize_api_format(changes["api_format"])
             if "category" in changes:
                 model.category = (
                     changes["category"].strip()
@@ -845,7 +1062,9 @@ class ModelRegistryService:
             if not model_code:
                 raise ValueError("当前模型缺少模型 ID，无法发起测试。")
 
-            api_format = (model.api_format or provider.api_format or "chat-completions").strip()
+            api_format = _normalize_api_format(
+                model.api_format or provider.api_format or "chat-completions"
+            )
             base_url = _normalize_base_url(provider.base_url)
             headers = _provider_request_headers(provider)
             headers["Content-Type"] = "application/json"
@@ -857,6 +1076,22 @@ class ModelRegistryService:
                     "input": payload.prompt.strip(),
                     "max_output_tokens": 256,
                 }
+            elif api_format == "google":
+                url = _normalize_google_request_url(base_url, model_code)
+                request_body = _google_payload_from_messages(
+                    [
+                        {
+                            "role": "system",
+                            "content": "You are running a connectivity smoke test. Reply briefly.",
+                        },
+                        {
+                            "role": "user",
+                            "content": payload.prompt.strip(),
+                        },
+                    ],
+                    max_output_tokens=256,
+                    temperature=0.2,
+                )
             else:
                 url = f"{base_url}/chat/completions"
                 request_body = {
@@ -884,6 +1119,8 @@ class ModelRegistryService:
 
             if api_format == "responses":
                 output_text = _extract_responses_text(response_payload)
+            elif api_format == "google":
+                output_text = _extract_google_text(response_payload)
             else:
                 output_text = _extract_chat_completion_text(response_payload)
 
@@ -927,7 +1164,9 @@ class ModelRegistryService:
             if not messages:
                 raise ValueError("请输入至少一条有效消息。")
 
-            api_format = (model.api_format or provider.api_format or "chat-completions").strip()
+            api_format = _normalize_api_format(
+                model.api_format or provider.api_format or "chat-completions"
+            )
             base_url = _normalize_base_url(provider.base_url)
             headers = _provider_request_headers(provider)
             headers["Content-Type"] = "application/json"
@@ -950,6 +1189,14 @@ class ModelRegistryService:
                     request_body,
                     payload.parameters,
                     api_format=api_format,
+                )
+            elif api_format == "google":
+                url = _normalize_google_request_url(base_url, model_code)
+                request_body = _google_payload_from_messages(
+                    messages,
+                    max_output_tokens=2048,
+                    temperature=0.6,
+                    parameters=payload.parameters,
                 )
             else:
                 url = f"{base_url}/chat/completions"
@@ -977,6 +1224,9 @@ class ModelRegistryService:
             if api_format == "responses":
                 output_text = _extract_responses_text(response_payload)
                 reasoning_text = _extract_responses_reasoning_text(response_payload)
+            elif api_format == "google":
+                output_text = _extract_google_text(response_payload)
+                reasoning_text = _extract_google_reasoning_text(response_payload)
             else:
                 output_text = _extract_chat_completion_text(response_payload)
                 reasoning_text = _extract_chat_completion_reasoning_text(response_payload)
@@ -1026,7 +1276,9 @@ class ModelRegistryService:
             if not messages:
                 raise ValueError("请输入至少一条有效消息。")
 
-            api_format = (model.api_format or provider.api_format or "chat-completions").strip()
+            api_format = _normalize_api_format(
+                model.api_format or provider.api_format or "chat-completions"
+            )
             base_url = _normalize_base_url(provider.base_url)
             headers = _provider_request_headers(provider)
             headers["Content-Type"] = "application/json"
@@ -1069,6 +1321,14 @@ class ModelRegistryService:
                         request_body,
                         payload.parameters,
                         api_format=api_format,
+                    )
+                elif api_format == "google":
+                    url = _normalize_google_request_url(base_url, model_code, stream=True)
+                    request_body = _google_payload_from_messages(
+                        messages,
+                        max_output_tokens=2048,
+                        temperature=0.6,
+                        parameters=payload.parameters,
                     )
                 else:
                     url = f"{base_url}/chat/completions"
@@ -1183,6 +1443,24 @@ class ModelRegistryService:
                                                         "delta": reasoning_text,
                                                     }
                                                 )
+                            elif api_format == "google":
+                                delta = _extract_google_stream_text(payload_data)
+                                if delta:
+                                    yield _sse_payload(
+                                        {
+                                            "type": "text_delta",
+                                            "delta": delta,
+                                        }
+                                    )
+                                reasoning_delta = _extract_google_reasoning_text(payload_data)
+                                if reasoning_delta:
+                                    yielded_reasoning = True
+                                    yield _sse_payload(
+                                        {
+                                            "type": "reasoning_delta",
+                                            "delta": reasoning_delta,
+                                        }
+                                    )
                             else:
                                 choices = payload_data.get("choices")
                                 if isinstance(choices, list) and choices:
