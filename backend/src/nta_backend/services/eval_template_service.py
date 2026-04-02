@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nta_backend.core.db import SessionLocal
-from nta_backend.eval_core.template_utils import collect_template_vars
+from nta_backend.evaluation.runtime.template_utils import collect_template_vars
 from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.schemas.eval_template import (
     EvalTemplateCreate,

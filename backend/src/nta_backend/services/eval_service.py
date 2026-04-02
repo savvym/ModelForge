@@ -30,8 +30,8 @@ from nta_backend.core.storage_layout import (
     build_eval_job_code,
     build_eval_job_prefix,
 )
-from nta_backend.eval_core.api.evaluator import EvalCancelledError
-from nta_backend.eval_core.run import run_task
+from nta_backend.evaluation.runtime.api.evaluator import EvalCancelledError
+from nta_backend.evaluation.runtime.run import run_task
 from nta_backend.models.jobs import EvalJob, EvalJobMetric
 from nta_backend.models.modeling import Model, ModelProvider
 from nta_backend.schemas.eval_job import (

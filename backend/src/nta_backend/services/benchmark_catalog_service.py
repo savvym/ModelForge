@@ -21,8 +21,8 @@ from nta_backend.core.db import SessionLocal
 from nta_backend.core.object_store import delete_object_prefix, get_object_bytes, put_object_bytes
 from nta_backend.core.project_context import DEFAULT_PROJECT_ID, resolve_active_project_id
 from nta_backend.core.storage_layout import build_project_prefix
-from nta_backend.eval_core.api.registry import get_benchmark
-from nta_backend.eval_core.config import EvalTaskConfig
+from nta_backend.evaluation.runtime.api.registry import get_benchmark
+from nta_backend.evaluation.runtime.config import EvalTaskConfig
 from nta_backend.models.benchmark_catalog import (
     BenchmarkDefinition as BenchmarkDefinitionRecord,
 )
@@ -535,7 +535,7 @@ async def _get_or_create_benchmark_definition_record(
         return record
 
     # Fallback: create from runtime registry if benchmark is runnable but not in DB
-    from nta_backend.eval_core.api.registry import get_benchmark_meta
+    from nta_backend.evaluation.runtime.api.registry import get_benchmark_meta
 
     runtime_meta = get_benchmark_meta(benchmark_name.strip())
     if runtime_meta is None:

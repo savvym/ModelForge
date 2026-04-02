@@ -31,7 +31,7 @@ from nta_backend.core.storage_layout import (
     build_dataset_source_key,
     build_dataset_version_prefix,
 )
-from nta_backend.eval import normalize_eval_dataset_bytes
+from nta_backend.evaluation import normalize_eval_dataset_bytes
 from nta_backend.models.dataset import Dataset, DatasetFile, DatasetVersion
 from nta_backend.models.jobs import EvalJob
 from nta_backend.schemas.dataset import (
