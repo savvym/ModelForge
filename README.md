@@ -13,26 +13,26 @@
 1. 启动基础设施
 
 ```bash
-make infra-up
+make infra.up
 ```
 
 2. 启动后端依赖并执行数据库迁移
 
 ```bash
-make backend-sync
-make backend-migrate
+make backend.sync
+make backend.migrate
 ```
 
 3. 启动后端开发进程
 
 ```bash
-make backend-dev
+make backend.dev
 ```
 
 4. 启动前端
 
 ```bash
-make frontend-dev
+make frontend.dev
 ```
 
 5. 打开控制台
@@ -41,15 +41,15 @@ make frontend-dev
 open http://localhost:8081
 ```
 
-`make backend-dev` 会同时启动 API 和 Worker。API 修改后由 `uvicorn --reload` 热更新，Worker 修改 `backend/apps`、`backend/src`、`backend/migrations` 下的 Python 文件后会自动重启。
+`make backend.dev` 会同时启动 API 和 Worker。API 修改后由 `uvicorn --reload` 热更新，Worker 修改 `backend/apps`、`backend/src`、`backend/migrations` 下的 Python 文件后会自动重启。
 
 后端进程会额外把运行日志写入 `backend/logs/api.log` 和 `backend/logs/worker.log`，可通过根目录 `.env` 里的 `LOG_DIR`、`LOG_LEVEL`、`LOG_MAX_BYTES`、`LOG_BACKUP_COUNT` 调整。
 
 如果只想单独启动一侧，仍然可以使用：
 
 ```bash
-make api-dev
-make worker-dev
+make backend.api
+make backend.worker
 ```
 
 ## 生产部署
@@ -73,37 +73,40 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod
 3. 校验 Compose 配置
 
 ```bash
-make prod-config PROD_ENV_FILE=infra/compose/.env.prod
+make prod.config PROD_ENV_FILE=infra/compose/.env.prod
 ```
 
 4. 全新环境首次部署
 
 ```bash
-make prod-release-with-migrate PROD_ENV_FILE=infra/compose/.env.prod
+make prod.release-with-migrate PROD_ENV_FILE=infra/compose/.env.prod
 ```
 
 5. 已有环境发布新版本
 
 ```bash
-make prod-release PROD_ENV_FILE=infra/compose/.env.prod
+make prod.release PROD_ENV_FILE=infra/compose/.env.prod
 ```
 
 6. 如果本次发布包含数据库 schema 变更，再执行迁移
 
 ```bash
-make prod-migrate PROD_ENV_FILE=infra/compose/.env.prod
+make prod.migrate PROD_ENV_FILE=infra/compose/.env.prod
 ```
+
+
+> 兼容说明：旧命令（如 `make infra-up`、`make backend-dev`）仍可用，推荐逐步迁移到新的命名空间风格目标（如 `make infra.up`、`make backend.dev`）。
 
 ## 常用命令
 
 查看生产环境日志：
 
 ```bash
-make prod-logs PROD_ENV_FILE=infra/compose/.env.prod
+make prod.logs PROD_ENV_FILE=infra/compose/.env.prod
 ```
 
 停止生产环境：
 
 ```bash
-make prod-down PROD_ENV_FILE=infra/compose/.env.prod
+make prod.down PROD_ENV_FILE=infra/compose/.env.prod
 ```
