@@ -43,8 +43,7 @@ export const consoleNavSections: ConsoleNavSection[] = [
     title: "模型定制",
     items: [
       { title: "模型精调", href: "/model/finetune", group: "workspace" },
-      { title: "模型评测", href: "/model/eval", group: "workspace" },
-      { title: "评测套件", href: "/model/eval-collections", group: "workspace" }
+      { title: "模型评测", href: "/model/eval", group: "workspace" }
     ]
   },
   {
@@ -81,11 +80,6 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   },
   "model-eval-create": { title: "创建评测任务", description: "按 Benchmark 与 Version 创建真实评测任务。", group: "workspace" },
   "model-eval-detail": { title: "评测任务详情", description: "查看评测任务指标、样本级结果和产物位置。", group: "workspace" },
-  "model-eval-collections": {
-    title: "评测套件",
-    description: "组合多个 Benchmark 创建评测套件，一键发起综合评测。",
-    group: "workspace"
-  },
   "model-eval-benchmarks": {
     title: "评测管理",
     description: "兼容旧路由，实际归属到模型评测下的评测管理标签。",

@@ -1,5 +1,4 @@
 from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, Text, func
-from sqlalchemy.orm import relationship
 
 from nta_backend.models.base import (
     JSONB,
@@ -64,18 +63,6 @@ class EvalJob(Base, UUIDPrimaryKeyMixin, JobStateMixin, TimestampMixin):
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     eval_template_id: Mapped[PythonUUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     eval_template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    collection_id: Mapped[PythonUUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("eval_collections.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-
-    collection = relationship(
-        "EvalCollection",
-        back_populates="jobs",
-        foreign_keys=[collection_id],
-    )
 
 
 class EvalJobMetric(Base, UUIDPrimaryKeyMixin, TimestampMixin):

@@ -7,10 +7,9 @@ from nta_backend import __version__
 from nta_backend.api.middleware import install_middleware
 from nta_backend.api.routers import (
     auth,
-    benchmarks,
     benchmark_leaderboards,
+    benchmarks,
     datasets,
-    eval_collections,
     eval_jobs,
     eval_templates,
     health,
@@ -63,7 +62,6 @@ def create_app() -> FastAPI:
     api_router.include_router(models.router, tags=["models"])
     api_router.include_router(datasets.router, tags=["datasets"])
     api_router.include_router(lake.router, tags=["lake"])
-    api_router.include_router(eval_collections.router, tags=["eval-collections"])
     api_router.include_router(eval_jobs.router, tags=["eval-jobs"])
     api_router.include_router(eval_templates.router, tags=["eval-templates"])
     api_router.include_router(uploads.router, tags=["uploads"])

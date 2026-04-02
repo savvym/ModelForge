@@ -520,51 +520,6 @@ export interface EvalTemplateUpdateInput {
   description?: string | null;
 }
 
-// -- Eval Collections --
-
-export interface CollectionDatasetEntry {
-  benchmark_name: string;
-  version_id: string;
-  weight: number;
-}
-
-export interface EvalCollectionSummary {
-  id: string;
-  name: string;
-  description?: string | null;
-  dataset_count: number;
-  job_count: number;
-  created_at: string;
-}
-
-export interface EvalCollectionDetail extends EvalCollectionSummary {
-  schema_json: {
-    name: string;
-    datasets: CollectionDatasetEntry[];
-  };
-  jobs: EvalJobSummary[];
-}
-
-export interface EvalCollectionCreateInput {
-  name: string;
-  description?: string | null;
-  datasets: CollectionDatasetEntry[];
-}
-
-export interface CollectionRunInput {
-  model_id?: string | null;
-  model_name: string;
-  model_source: string;
-  access_source: string;
-  judge_model_id?: string | null;
-  judge_model_name?: string | null;
-}
-
-export interface CollectionRunResponse {
-  collection_id: string;
-  jobs: EvalJobSummary[];
-}
-
 export interface WorkflowLaunchResponse {
   job_id: string;
   workflow_id: string;

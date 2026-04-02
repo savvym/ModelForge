@@ -9,11 +9,6 @@ import type {
   BenchmarkDefinitionSummary,
   BenchmarkDefinitionUpdateInput,
   BenchmarkVersionCreateInput,
-  CollectionRunInput,
-  CollectionRunResponse,
-  EvalCollectionCreateInput,
-  EvalCollectionDetail,
-  EvalCollectionSummary,
   EvalJobCreateInput,
   EvalJobDetail,
   EvalJobSummary,
@@ -261,42 +256,5 @@ export async function updateEvalTemplate(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
-  });
-}
-
-// -- Eval Collections --
-
-export async function getEvalCollections(): Promise<EvalCollectionSummary[]> {
-  return apiFetch<EvalCollectionSummary[]>("/eval-collections");
-}
-
-export async function getEvalCollection(collectionId: string): Promise<EvalCollectionDetail> {
-  return apiFetch<EvalCollectionDetail>(`/eval-collections/${collectionId}`);
-}
-
-export async function createEvalCollection(
-  payload: EvalCollectionCreateInput
-): Promise<EvalCollectionSummary> {
-  return apiFetch<EvalCollectionSummary>("/eval-collections", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export async function runEvalCollection(
-  collectionId: string,
-  payload: CollectionRunInput
-): Promise<CollectionRunResponse> {
-  return apiFetch<CollectionRunResponse>(`/eval-collections/${collectionId}/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export async function deleteEvalCollection(collectionId: string): Promise<void> {
-  return apiFetch<void>(`/eval-collections/${collectionId}`, {
-    method: "DELETE"
   });
 }

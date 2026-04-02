@@ -5,7 +5,6 @@ from nta_backend.models.benchmark_leaderboard import (
     BenchmarkLeaderboardJob,
 )
 from nta_backend.models.dataset import Dataset, DatasetFile, DatasetVersion
-from nta_backend.models.eval_collection import EvalCollection
 from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.jobs import BatchJob, EvalJob, EvalJobMetric, JobLog
 from nta_backend.models.lake import LakeAsset, LakeBatch
@@ -23,7 +22,6 @@ __all__ = [
     "Dataset",
     "DatasetFile",
     "DatasetVersion",
-    "EvalCollection",
     "Endpoint",
     "EvalJob",
     "EvalTemplate",
