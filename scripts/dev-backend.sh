@@ -28,6 +28,8 @@ trap 'cleanup 130' INT TERM
 
 cd "$BACKEND_DIR"
 
+"$UV_BIN" sync
+
 PYTHONPATH=src "$UV_BIN" run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000 &
 API_PID=$!
 

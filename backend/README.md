@@ -29,7 +29,6 @@
 ## 开发
 
 ```bash
-uv sync
 PYTHONPATH=src uv run python -m alembic upgrade head
 ```
 

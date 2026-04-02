@@ -16,10 +16,9 @@
 make infra.up
 ```
 
-2. 启动后端依赖并执行数据库迁移
+2. 执行数据库迁移
 
 ```bash
-make backend.sync
 make backend.migrate
 ```
 

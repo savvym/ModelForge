@@ -14,11 +14,11 @@ DEV_ENV_FILE ?= infra/compose/.env.example
 	help \
 	dev \
 	infra.up infra.down infra.logs \
-	backend.sync backend.migrate backend.dev backend.api backend.worker backend.test \
+	backend.migrate backend.dev backend.api backend.worker backend.test \
 	frontend.dev \
 	format \
 	prod.config prod.build prod.up prod.down prod.logs prod.migrate prod.release prod.release-with-migrate \
-	infra-up infra-down infra-logs backend-sync backend-migrate backend-dev api-dev worker-dev frontend-dev \
+	infra-up infra-down infra-logs backend-migrate backend-dev api-dev worker-dev frontend-dev \
 	prod-config prod-build prod-up prod-down prod-logs prod-migrate prod-release prod-release-with-migrate
 
 help: ## Show available targets
@@ -44,19 +44,19 @@ infra.logs: ## Tail local infrastructure logs
 
 # ----- Backend --------------------------------------------------------------
 
-backend.sync: ## Install/sync backend dependencies
-	cd backend && $(UV) sync
-
 backend.migrate: ## Run backend DB migrations
+	cd backend && $(UV) sync
 	cd backend && PYTHONPATH=src $(UV) run python -m alembic upgrade head
 
 backend.dev: ## Start backend API + worker dev processes
 	./scripts/dev-backend.sh
 
 backend.api: ## Start backend API only
+	cd backend && $(UV) sync
 	cd backend && PYTHONPATH=src $(UV) run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
 
 backend.worker: ## Start backend worker only
+	cd backend && $(UV) sync
 	cd backend && $(UV) run python -m apps.worker.dev
 
 backend.test: ## Run backend tests
@@ -101,7 +101,6 @@ prod.release-with-migrate: ## Release production and run migration
 infra-up: infra.up ## Alias: infra.up
 infra-down: infra.down ## Alias: infra.down
 infra-logs: infra.logs ## Alias: infra.logs
-backend-sync: backend.sync ## Alias: backend.sync
 backend-migrate: backend.migrate ## Alias: backend.migrate
 backend-dev: backend.dev ## Alias: backend.dev
 api-dev: backend.api ## Alias: backend.api
