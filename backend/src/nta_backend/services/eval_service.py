@@ -4,6 +4,7 @@ import asyncio
 import json
 import shutil
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from mimetypes import guess_type
@@ -49,8 +50,6 @@ from nta_backend.services.benchmark_catalog_service import (
 REPO_ROOT = Path(__file__).resolve().parents[4]
 LOCAL_EVALRUNS_ROOT = REPO_ROOT / "backend" / ".evalruns"
 EVAL_ARTIFACT_BUCKET = get_settings().s3_bucket_eval_artifacts
-_BACKGROUND_EVAL_TASKS: set[asyncio.Task[None]] = set()
-_BACKGROUND_EVAL_HANDLES: dict[UUID, _BackgroundEvalHandle] = {}
 _MODEL_TIMEOUT_S = 180.0
 _MODEL_MAX_TOKENS = 4096
 
@@ -66,6 +65,13 @@ _STATUS_PROGRESS = {
 }
 _DELETE_BLOCKED_STATUSES = frozenset({"preparing", "inferencing", "scoring"})
 _STOPPABLE_STATUSES = frozenset({"queued", "preparing", "inferencing", "scoring", "cancelling"})
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_TEMPORAL_TO_JOB_STATUS = {
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "terminated": "failed",
+    "timed_out": "failed",
+}
 _RUNNING_PROGRESS_FLOOR = {
     "preparing": 5,
     "inferencing": 5,
@@ -89,12 +95,6 @@ class _ResolvedDatasetInput:
     dataset_path: str
     source_uri: str | None
     prompt_config: dict[str, object]
-
-
-@dataclass(frozen=True)
-class _BackgroundEvalHandle:
-    task: asyncio.Task[None]
-    cancel_event: threading.Event
 
 
 def _utc_now() -> datetime:
@@ -149,26 +149,6 @@ def _to_summary(job: EvalJob) -> EvalJobSummary:
         started_at=job.started_at,
         finished_at=job.finished_at,
     )
-
-
-def _spawn_background_eval(
-    job_id: UUID,
-    *,
-    coro: Any,
-    cancel_event: threading.Event,
-) -> None:
-    task = asyncio.create_task(coro)
-    _BACKGROUND_EVAL_TASKS.add(task)
-    _BACKGROUND_EVAL_HANDLES[job_id] = _BackgroundEvalHandle(
-        task=task,
-        cancel_event=cancel_event,
-    )
-
-    def _cleanup(done_task: asyncio.Task[None]) -> None:
-        _BACKGROUND_EVAL_TASKS.discard(done_task)
-        _BACKGROUND_EVAL_HANDLES.pop(job_id, None)
-
-    task.add_done_callback(_cleanup)
 
 
 def _build_s3_uri(bucket: str, object_key: str) -> str:
@@ -388,6 +368,22 @@ async def _mark_eval_job_cancelled(
         job.status = "cancelled"
         job.finished_at = finished_at or _utc_now()
         await session.commit()
+
+
+async def _is_eval_job_cancel_requested(job_id: UUID) -> bool:
+    async with SessionLocal() as session:
+        job = await session.get(EvalJob, job_id)
+        if job is None:
+            return True
+        return job.cancel_requested or job.status == "cancelled"
+
+
+async def _get_eval_job_status(job_id: UUID) -> str:
+    async with SessionLocal() as session:
+        job = await session.get(EvalJob, job_id)
+        if job is None:
+            return "missing"
+        return job.status
 
 
 def _raise_if_cancel_requested(cancel_event: threading.Event) -> None:
@@ -669,11 +665,19 @@ async def _run_eval_job(
     payload: EvalJobCreate,
     *,
     cancel_event: threading.Event,
+    progress_listener: Callable[[int, int], None] | None = None,
 ) -> None:
     async with SessionLocal() as session:
         output_dir: Path | None = None
         try:
             job = await _get_job_or_raise(session, job_id)
+            if job.status == "cancelled":
+                return
+            if job.cancel_requested:
+                job.status = "cancelled"
+                job.finished_at = job.finished_at or _utc_now()
+                await session.commit()
+                return
             output_dir = _eval_output_dir(job)
             output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -715,6 +719,8 @@ async def _run_eval_job(
                     ),
                     loop,
                 )
+                if progress_listener is not None:
+                    loop.call_soon_threadsafe(progress_listener, progress_done, progress_total)
 
             # All benchmarks route through the generic adapter with DB config.
             benchmark_def = await get_benchmark_definition_record(
@@ -792,7 +798,6 @@ async def _run_eval_job(
             job.report_object_uri = report_object_uri
             job.results_prefix_uri = results_prefix_uri
             job.samples_prefix_uri = samples_prefix_uri
-            job.temporal_workflow_id = f"local-eval-{job.id}"
 
             await session.execute(delete(EvalJobMetric).where(EvalJobMetric.eval_job_id == job.id))
             _persist_eval_metrics(session, job.id, report)
@@ -826,6 +831,61 @@ async def _run_eval_job(
                 _cleanup_local_eval_artifacts({output_dir})
 
 
+async def activity_is_eval_job_cancel_requested(*, job_id: str) -> bool:
+    return await _is_eval_job_cancel_requested(UUID(job_id))
+
+
+async def activity_run_eval_job(
+    *,
+    job_id: str,
+    payload_data: dict[str, object],
+    cancel_event: threading.Event,
+    progress_listener: Callable[[int, int], None] | None = None,
+) -> dict[str, str]:
+    payload = EvalJobCreate.model_validate(payload_data)
+    job_uuid = UUID(job_id)
+    await _run_eval_job(
+        job_uuid,
+        payload,
+        cancel_event=cancel_event,
+        progress_listener=progress_listener,
+    )
+    return {"job_id": job_id, "status": await _get_eval_job_status(job_uuid)}
+
+
+async def _get_eval_job_workflow_state(workflow_id: str):
+    from nta_backend.core.temporal import get_workflow_execution_state
+
+    return await get_workflow_execution_state(workflow_id)
+
+
+async def _cancel_eval_job_workflow(workflow_id: str) -> None:
+    from nta_backend.core.temporal import cancel_workflow_execution
+
+    await cancel_workflow_execution(workflow_id)
+
+
+async def _sync_eval_job_with_temporal_state(session, job: EvalJob) -> bool:
+    if not job.temporal_workflow_id or job.status in _TERMINAL_STATUSES:
+        return False
+    try:
+        workflow_state = await _get_eval_job_workflow_state(job.temporal_workflow_id)
+    except Exception:
+        return False
+    target_status = _TEMPORAL_TO_JOB_STATUS.get(workflow_state.status)
+    if target_status is None or target_status == job.status:
+        return False
+    job.status = target_status
+    job.finished_at = job.finished_at or _utc_now()
+    if target_status == "cancelled":
+        job.cancel_requested = True
+    if target_status == "failed":
+        job.error_message = _truncate_error_message(
+            workflow_state.failure_message or "Temporal workflow failed."
+        )
+    return True
+
+
 class EvalJobService:
     async def list_eval_jobs(self) -> list[EvalJobSummary]:
         async with SessionLocal() as session:
@@ -835,7 +895,15 @@ class EvalJobService:
                 .where(EvalJob.project_id == project_id)
                 .order_by(EvalJob.created_at.desc(), EvalJob.id.desc())
             )
-            return [_to_summary(job) for job in rows.scalars().all()]
+            jobs = rows.scalars().all()
+            changed = False
+            for job in jobs:
+                changed = await _sync_eval_job_with_temporal_state(session, job) or changed
+            if changed:
+                await session.commit()
+                for job in jobs:
+                    await session.refresh(job)
+            return [_to_summary(job) for job in jobs]
 
     async def get_eval_job(self, job_id: str) -> EvalJobDetail:
         async with SessionLocal() as session:
@@ -845,6 +913,9 @@ class EvalJobService:
                 project_id=project_id,
                 job_identifier=job_id,
             )
+            if await _sync_eval_job_with_temporal_state(session, job):
+                await session.commit()
+                await session.refresh(job)
             metric_rows = (
                 await session.execute(
                     select(EvalJobMetric)
@@ -937,16 +1008,34 @@ class EvalJobService:
             job.artifact_prefix_uri = artifact_prefix_uri
             job.results_prefix_uri = artifact_prefix_uri
             job.samples_prefix_uri = artifact_prefix_uri
-            job.temporal_workflow_id = f"local-eval-{job.id}"
+            job.temporal_workflow_id = f"eval-job-{job.id}"
             await session.commit()
             await session.refresh(job)
 
-        cancel_event = threading.Event()
-        _spawn_background_eval(
-            job.id,
-            coro=_run_eval_job(job.id, payload, cancel_event=cancel_event),
-            cancel_event=cancel_event,
+        from nta_backend.core.temporal import start_eval_job_workflow
+        from nta_backend.workflows.eval_job import EvalJobWorkflowInput
+
+        workflow_input = EvalJobWorkflowInput(
+            job_id=str(job.id),
+            payload=payload.model_dump(mode="json"),
         )
+
+        try:
+            await start_eval_job_workflow(
+                workflow_input,
+                workflow_id=job.temporal_workflow_id,
+            )
+        except Exception as exc:
+            async with SessionLocal() as session:
+                persisted = await session.get(EvalJob, job.id)
+                if persisted is not None and persisted.status == "queued":
+                    persisted.status = "failed"
+                    persisted.finished_at = _utc_now()
+                    persisted.error_message = _truncate_error_message(
+                        f"Failed to start eval workflow: {exc}"
+                    )
+                    await session.commit()
+            raise RuntimeError("启动评测工作流失败。") from exc
         return _to_summary(job)
 
     async def stop_eval_job(self, job_id: str) -> EvalJobSummary:
@@ -957,25 +1046,38 @@ class EvalJobService:
                 project_id=project_id,
                 job_identifier=job_id,
             )
-            if job.status not in _STOPPABLE_STATUSES:
-                raise ValueError("当前任务状态不支持停止。")
-
-            handle = _BACKGROUND_EVAL_HANDLES.get(job.id)
-            if handle is None:
-                job.cancel_requested = True
-                job.status = "cancelled"
-                job.finished_at = _utc_now()
+            if await _sync_eval_job_with_temporal_state(session, job):
                 await session.commit()
                 await session.refresh(job)
-                return _to_summary(job)
+            if job.status not in _STOPPABLE_STATUSES:
+                raise ValueError("当前任务状态不支持停止。")
+            if not job.temporal_workflow_id:
+                raise ValueError("评测任务未绑定 Temporal workflow，无法停止。")
 
-            handle.cancel_event.set()
             job.cancel_requested = True
             if job.status != "cancelling":
                 job.status = "cancelling"
             await session.commit()
             await session.refresh(job)
-            return _to_summary(job)
+            workflow_id = job.temporal_workflow_id
+            summary = _to_summary(job)
+
+        try:
+            await _cancel_eval_job_workflow(workflow_id)
+        except Exception as exc:
+            async with SessionLocal() as session:
+                project_id = await resolve_active_project_id(session)
+                persisted = await _get_job_by_identifier_or_raise(
+                    session,
+                    project_id=project_id,
+                    job_identifier=job_id,
+                )
+                if await _sync_eval_job_with_temporal_state(session, persisted):
+                    await session.commit()
+                    await session.refresh(persisted)
+                    return _to_summary(persisted)
+            raise RuntimeError("取消评测工作流失败。") from exc
+        return summary
 
     async def delete_eval_job(self, job_id: str) -> None:
         async with SessionLocal() as session:

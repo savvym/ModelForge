@@ -316,17 +316,17 @@ export function BenchmarkLeaderboardDetailPanel({
           }
         }}
       >
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-5xl border-slate-800 bg-[rgba(10,15,23,0.96)] text-slate-100 shadow-[0_32px_90px_rgba(2,6,23,0.56)] backdrop-blur-xl [&>button]:text-slate-500 [&>button:hover]:bg-white/5 [&>button:hover]:text-slate-100">
           <DialogHeader>
-            <DialogTitle>添加评测任务</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-slate-50">添加评测任务</DialogTitle>
+            <DialogDescription className="text-slate-400">
               只展示使用当前 Benchmark Version 且已经完成并产出得分的评测任务。
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm text-slate-400">
                 可选任务 {availableJobs.length} 条，已选 {selectedJobIds.length} 条
               </div>
               <div className="w-full max-w-sm">
@@ -338,7 +338,7 @@ export function BenchmarkLeaderboardDetailPanel({
               </div>
             </div>
 
-            <div className="max-h-[420px] overflow-auto rounded-xl border border-border">
+            <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-800/80 bg-[rgba(7,11,17,0.42)]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -378,13 +378,13 @@ export function BenchmarkLeaderboardDetailPanel({
                 <TableBody>
                   {loadingAvailableJobs ? (
                     <TableRow className="hover:bg-transparent">
-                      <TableCell className="py-12 text-center text-sm text-muted-foreground" colSpan={6}>
+                      <TableCell className="py-12 text-center text-sm text-slate-500" colSpan={6}>
                         可选评测任务加载中...
                       </TableCell>
                     </TableRow>
                   ) : filteredAvailableJobs.length === 0 ? (
                     <TableRow className="hover:bg-transparent">
-                      <TableCell className="py-12 text-center text-sm text-muted-foreground" colSpan={6}>
+                      <TableCell className="py-12 text-center text-sm text-slate-500" colSpan={6}>
                         当前没有可加入排行榜的新任务。
                       </TableCell>
                     </TableRow>

@@ -115,7 +115,7 @@ async def test_delete_eval_job_rejects_running_job() -> None:
                 await session.commit()
 
 
-async def test_stop_eval_job_marks_stale_running_job_cancelled() -> None:
+async def test_stop_eval_job_rejects_stale_running_job_without_temporal_workflow() -> None:
     service = EvalJobService()
 
     async with SessionLocal() as session:
@@ -137,17 +137,139 @@ async def test_stop_eval_job_marks_stale_running_job_cancelled() -> None:
         job_uuid = job.id
 
     try:
+        with pytest.raises(ValueError, match="未绑定 Temporal workflow"):
+            await service.stop_eval_job(str(job_uuid))
+    finally:
+        async with SessionLocal() as session:
+            job = await session.get(EvalJob, job_uuid)
+            if job is not None:
+                await session.delete(job)
+                await session.commit()
+
+
+async def test_stop_eval_job_rejects_missing_temporal_workflow_id() -> None:
+    service = EvalJobService()
+
+    async with SessionLocal() as session:
+        project_id = await resolve_active_project_id(session)
+        job = EvalJob(
+            project_id=project_id,
+            name=f"tmp-eval-missing-workflow-{uuid4().hex[:8]}",
+            status="inferencing",
+            model_source="model-square",
+            model_name="test-model",
+            inference_mode="batch",
+            eval_method="judge-model",
+            dataset_name="test-dataset",
+        )
+        session.add(job)
+        await session.commit()
+        job_uuid = job.id
+
+    try:
+        with pytest.raises(ValueError, match="未绑定 Temporal workflow"):
+            await service.stop_eval_job(str(job_uuid))
+    finally:
+        async with SessionLocal() as session:
+            job = await session.get(EvalJob, job_uuid)
+            if job is not None:
+                await session.delete(job)
+                await session.commit()
+
+
+async def test_stop_eval_job_marks_temporal_backed_running_job_cancelling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = EvalJobService()
+
+    async def _noop_cancel(_workflow_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(eval_service, "_cancel_eval_job_workflow", _noop_cancel)
+
+    async with SessionLocal() as session:
+        project_id = await resolve_active_project_id(session)
+        job = EvalJob(
+            project_id=project_id,
+            name=f"tmp-eval-temporal-stop-{uuid4().hex[:8]}",
+            status="inferencing",
+            model_source="model-square",
+            model_name="test-model",
+            inference_mode="batch",
+            eval_method="judge-model",
+            dataset_name="test-dataset",
+            progress_total=12,
+            progress_done=3,
+            temporal_workflow_id=f"eval-job-{uuid4()}",
+        )
+        session.add(job)
+        await session.commit()
+        job_uuid = job.id
+
+    try:
         summary = await service.stop_eval_job(str(job_uuid))
-        assert summary.status == "cancelled"
-        assert summary.progress_done == 4
-        assert summary.progress_total == 10
-        assert summary.progress_percent == 40
+        assert summary.status == "cancelling"
+        assert summary.progress_done == 3
+        assert summary.progress_total == 12
+        assert summary.progress_percent == 25
 
         async with SessionLocal() as session:
             persisted = await session.get(EvalJob, job_uuid)
             assert persisted is not None
-            assert persisted.status == "cancelled"
+            assert persisted.status == "cancelling"
             assert persisted.cancel_requested is True
+            assert persisted.finished_at is None
+    finally:
+        async with SessionLocal() as session:
+            job = await session.get(EvalJob, job_uuid)
+            if job is not None:
+                await session.delete(job)
+                await session.commit()
+
+
+async def test_list_eval_jobs_syncs_failed_temporal_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = EvalJobService()
+
+    class _WorkflowState:
+        status = "failed"
+        is_terminal = True
+        failure_message = "temporal worker mismatch"
+
+    async def _failed_state(_workflow_id: str) -> _WorkflowState:
+        return _WorkflowState()
+
+    monkeypatch.setattr(eval_service, "_get_eval_job_workflow_state", _failed_state)
+
+    async with SessionLocal() as session:
+        project_id = await resolve_active_project_id(session)
+        job = EvalJob(
+            project_id=project_id,
+            name=f"tmp-eval-sync-failed-{uuid4().hex[:8]}",
+            status="queued",
+            model_source="model-square",
+            model_name="test-model",
+            inference_mode="batch",
+            eval_method="judge-model",
+            dataset_name="test-dataset",
+            temporal_workflow_id=f"eval-job-{uuid4()}",
+        )
+        session.add(job)
+        await session.commit()
+        job_uuid = job.id
+
+    try:
+        rows = await service.list_eval_jobs()
+        matched = next(row for row in rows if row.name == job.name)
+        assert matched.status == "failed"
+        assert matched.error_message == "temporal worker mismatch"
+
+        async with SessionLocal() as session:
+            persisted = await session.get(EvalJob, job_uuid)
+            assert persisted is not None
+            assert persisted.status == "failed"
+            assert persisted.error_message == "temporal worker mismatch"
             assert persisted.finished_at is not None
     finally:
         async with SessionLocal() as session:
