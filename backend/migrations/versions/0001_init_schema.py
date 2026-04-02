@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Sequence
+from pathlib import Path
 from uuid import uuid4
 
 import sqlalchemy as sa
@@ -23,16 +24,12 @@ branch_labels: Sequence[str] | None = None
 depends_on: Sequence[str] | None = None
 
 # ---------------------------------------------------------------------------
-# Path to builtin benchmark meta JSON files
+# Paths to builtin benchmark meta JSON files
 # ---------------------------------------------------------------------------
-_META_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "..",
-    "src",
-    "nta_backend",
-    "eval_catalog",
-    "builtin_meta",
+_MIGRATIONS_ROOT = Path(__file__).resolve().parents[2]
+_META_DIR_CANDIDATES = (
+    _MIGRATIONS_ROOT / "src" / "nta_backend" / "evaluation" / "catalog" / "builtin_meta",
+    _MIGRATIONS_ROOT / "src" / "nta_backend" / "eval_catalog" / "builtin_meta",
 )
 
 
@@ -511,17 +508,14 @@ def upgrade() -> None:
 
 
 def _seed_builtin_benchmarks() -> None:
-    meta_dir = os.path.normpath(_META_DIR)
-    if not os.path.isdir(meta_dir):
+    meta_dir = next((path for path in _META_DIR_CANDIDATES if path.is_dir()), None)
+    if meta_dir is None:
         return
 
     conn = op.get_bind()
 
-    for filename in sorted(os.listdir(meta_dir)):
-        if not filename.endswith(".json"):
-            continue
-        filepath = os.path.join(meta_dir, filename)
-        row = _load_meta_file(filepath)
+    for filepath in sorted(meta_dir.glob("*.json")):
+        row = _load_meta_file(os.fspath(filepath))
         if row is None:
             continue
 

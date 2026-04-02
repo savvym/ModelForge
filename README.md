@@ -35,13 +35,19 @@ make backend.dev
 make frontend.dev
 ```
 
+也可以直接同时启动前后端：
+
+```bash
+make dev
+```
+
 5. 打开控制台
 
 ```bash
 open http://localhost:8081
 ```
 
-`make backend.dev` 会同时启动 API 和 Worker。API 修改后由 `uvicorn --reload` 热更新，Worker 修改 `backend/apps`、`backend/src`、`backend/migrations` 下的 Python 文件后会自动重启。
+`make backend.dev` 会同时启动 API 和 Worker。`make dev` 会在此基础上再启动前端。API 修改后由 `uvicorn --reload` 热更新，Worker 修改 `backend/apps`、`backend/src`、`backend/migrations` 下的 Python 文件后会自动重启。
 
 后端进程会额外把运行日志写入 `backend/logs/api.log` 和 `backend/logs/worker.log`，可通过根目录 `.env` 里的 `LOG_DIR`、`LOG_LEVEL`、`LOG_MAX_BYTES`、`LOG_BACKUP_COUNT` 调整。
 

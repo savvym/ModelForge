@@ -3,8 +3,8 @@
 初始化迁移：
 
 ```bash
-uv run alembic revision --autogenerate -m "init schema"
-uv run alembic upgrade head
+PYTHONPATH=src uv run python -m alembic revision --autogenerate -m "init schema"
+PYTHONPATH=src uv run python -m alembic upgrade head
 ```
 
 当前模型来源：
@@ -15,4 +15,3 @@ uv run alembic upgrade head
 - `src/nta_backend/models/jobs.py`
 - `src/nta_backend/models/usage.py`
 - `src/nta_backend/models/security.py`
-

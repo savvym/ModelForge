@@ -12,6 +12,7 @@ DEV_ENV_FILE ?= infra/compose/.env.example
 
 .PHONY: \
 	help \
+	dev \
 	infra.up infra.down infra.logs \
 	backend.sync backend.migrate backend.dev backend.api backend.worker backend.test \
 	frontend.dev \
@@ -22,6 +23,9 @@ DEV_ENV_FILE ?= infra/compose/.env.example
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+dev: ## Start backend API/worker and frontend dev server (infra must already be running)
+	./scripts/dev-stack.sh
 
 # ----- Infrastructure -------------------------------------------------------
 
@@ -44,13 +48,13 @@ backend.sync: ## Install/sync backend dependencies
 	cd backend && $(UV) sync
 
 backend.migrate: ## Run backend DB migrations
-	cd backend && $(UV) run alembic upgrade head
+	cd backend && PYTHONPATH=src $(UV) run python -m alembic upgrade head
 
 backend.dev: ## Start backend API + worker dev processes
 	./scripts/dev-backend.sh
 
 backend.api: ## Start backend API only
-	cd backend && $(UV) run uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && PYTHONPATH=src $(UV) run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
 
 backend.worker: ## Start backend worker only
 	cd backend && $(UV) run python -m apps.worker.dev

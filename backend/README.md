@@ -30,7 +30,7 @@
 
 ```bash
 uv sync
-uv run alembic upgrade head
+PYTHONPATH=src uv run python -m alembic upgrade head
 ```
 
 推荐从仓库根目录启动：
