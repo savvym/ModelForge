@@ -1,9 +1,5 @@
 import { apiFetch, getApiBaseUrl } from "@/lib/api-client/http";
 import type {
-  BenchmarkLeaderboardAddJobsInput,
-  BenchmarkLeaderboardDetail,
-  BenchmarkLeaderboardJobCandidate,
-  BenchmarkLeaderboardSummary,
   BenchmarkDefinitionCreateInput,
   BenchmarkDefinitionDetail,
   BenchmarkDefinitionSummary,
@@ -73,87 +69,6 @@ export async function getBenchmarkCatalog(
   projectId?: string | null
 ): Promise<BenchmarkDefinitionSummary[]> {
   return apiFetch<BenchmarkDefinitionSummary[]>("/benchmarks", { projectId });
-}
-
-export async function getBenchmarkLeaderboards(
-  projectId?: string | null
-): Promise<BenchmarkLeaderboardSummary[]> {
-  return apiFetch<BenchmarkLeaderboardSummary[]>("/benchmark-leaderboards", { projectId });
-}
-
-export async function getBenchmarkLeaderboard(
-  leaderboardId: string,
-  projectId?: string | null
-): Promise<BenchmarkLeaderboardDetail> {
-  return apiFetch<BenchmarkLeaderboardDetail>(`/benchmark-leaderboards/${leaderboardId}`, {
-    projectId
-  });
-}
-
-export async function getAvailableBenchmarkLeaderboardJobs(
-  params: {
-    benchmarkName: string;
-    benchmarkVersionId: string;
-    excludeLeaderboardId?: string | null;
-  },
-  projectId?: string | null
-): Promise<BenchmarkLeaderboardJobCandidate[]> {
-  const searchParams = new URLSearchParams();
-  searchParams.set("benchmark_name", params.benchmarkName);
-  searchParams.set("benchmark_version_id", params.benchmarkVersionId);
-  if (params.excludeLeaderboardId) {
-    searchParams.set("exclude_leaderboard_id", params.excludeLeaderboardId);
-  }
-  return apiFetch<BenchmarkLeaderboardJobCandidate[]>(
-    `/benchmark-leaderboards/available-jobs?${searchParams.toString()}`,
-    { projectId }
-  );
-}
-
-export async function createBenchmarkLeaderboard(
-  payload: {
-    name: string;
-    benchmark_name: string;
-    benchmark_version_id: string;
-    eval_job_ids?: string[];
-  }
-): Promise<BenchmarkLeaderboardSummary> {
-  return apiFetch<BenchmarkLeaderboardSummary>("/benchmark-leaderboards", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export async function addBenchmarkLeaderboardJobs(
-  leaderboardId: string,
-  payload: BenchmarkLeaderboardAddJobsInput
-): Promise<BenchmarkLeaderboardDetail> {
-  return apiFetch<BenchmarkLeaderboardDetail>(`/benchmark-leaderboards/${leaderboardId}/jobs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export async function removeBenchmarkLeaderboardJob(
-  leaderboardId: string,
-  evalJobId: string
-): Promise<void> {
-  return apiFetch<void>(
-    `/benchmark-leaderboards/${leaderboardId}/jobs/${encodeURIComponent(evalJobId)}`,
-    {
-      method: "DELETE"
-    }
-  );
-}
-
-export async function deleteBenchmarkLeaderboard(
-  leaderboardId: string
-): Promise<void> {
-  return apiFetch<void>(`/benchmark-leaderboards/${leaderboardId}`, {
-    method: "DELETE"
-  });
 }
 
 export async function getBenchmark(
