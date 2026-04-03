@@ -756,6 +756,52 @@ export interface EvaluationRunCancelResponseV2 {
   status: string;
 }
 
+export interface EvaluationLeaderboardRunCandidateV2 {
+  run_id: string;
+  run_name: string;
+  model_name: string;
+  score: number;
+  metric_name: string;
+  created_at: string;
+  finished_at?: string | null;
+}
+
+export interface EvaluationLeaderboardEntryV2 extends EvaluationLeaderboardRunCandidateV2 {
+  rank: number;
+}
+
+export interface EvaluationLeaderboardSummaryV2 {
+  id: string;
+  name: string;
+  description?: string | null;
+  target_kind: "spec" | "suite";
+  target_name: string;
+  target_display_name: string;
+  target_version: string;
+  target_version_display_name: string;
+  score_metric_name: string;
+  run_count: number;
+  latest_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationLeaderboardDetailV2 extends EvaluationLeaderboardSummaryV2 {
+  entries: EvaluationLeaderboardEntryV2[];
+}
+
+export interface EvaluationLeaderboardCreateInputV2 {
+  name: string;
+  description?: string | null;
+  target: EvaluationTargetRefV2;
+  score_metric_name?: string;
+  run_ids?: string[];
+}
+
+export interface EvaluationLeaderboardAddRunsInputV2 {
+  run_ids: string[];
+}
+
 export interface EvalSpecVersionCreateInputV2 {
   version: string;
   display_name: string;

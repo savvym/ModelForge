@@ -19,6 +19,11 @@ import type {
   BenchmarkVersionUpdateInput,
   ObjectStoreObjectPreviewResponse,
   EvaluationCatalogResponseV2,
+  EvaluationLeaderboardAddRunsInputV2,
+  EvaluationLeaderboardCreateInputV2,
+  EvaluationLeaderboardDetailV2,
+  EvaluationLeaderboardRunCandidateV2,
+  EvaluationLeaderboardSummaryV2,
   EvaluationRunCancelResponseV2,
   EvaluationRunCreateInputV2,
   EvaluationRunDetailV2,
@@ -313,6 +318,90 @@ export async function cancelEvaluationRun(
 
 export async function deleteEvaluationRun(runId: string): Promise<void> {
   return apiFetch<void>(`/api/v2/evaluation-runs/${runId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function getEvaluationLeaderboards(
+  projectId?: string | null
+): Promise<EvaluationLeaderboardSummaryV2[]> {
+  return apiFetch<EvaluationLeaderboardSummaryV2[]>("/api/v2/evaluation-leaderboards", {
+    projectId
+  });
+}
+
+export async function getEvaluationLeaderboard(
+  leaderboardId: string,
+  projectId?: string | null
+): Promise<EvaluationLeaderboardDetailV2> {
+  return apiFetch<EvaluationLeaderboardDetailV2>(
+    `/api/v2/evaluation-leaderboards/${leaderboardId}`,
+    { projectId }
+  );
+}
+
+export async function getAvailableEvaluationLeaderboardRuns(
+  params: {
+    kind: "spec" | "suite";
+    name: string;
+    version: string;
+    excludeLeaderboardId?: string | null;
+  },
+  projectId?: string | null
+): Promise<EvaluationLeaderboardRunCandidateV2[]> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("kind", params.kind);
+  searchParams.set("name", params.name);
+  searchParams.set("version", params.version);
+  if (params.excludeLeaderboardId) {
+    searchParams.set("exclude_leaderboard_id", params.excludeLeaderboardId);
+  }
+  return apiFetch<EvaluationLeaderboardRunCandidateV2[]>(
+    `/api/v2/evaluation-leaderboards/available-runs?${searchParams.toString()}`,
+    { projectId }
+  );
+}
+
+export async function createEvaluationLeaderboard(
+  payload: EvaluationLeaderboardCreateInputV2
+): Promise<EvaluationLeaderboardSummaryV2> {
+  return apiFetch<EvaluationLeaderboardSummaryV2>("/api/v2/evaluation-leaderboards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function addEvaluationLeaderboardRuns(
+  leaderboardId: string,
+  payload: EvaluationLeaderboardAddRunsInputV2
+): Promise<EvaluationLeaderboardDetailV2> {
+  return apiFetch<EvaluationLeaderboardDetailV2>(
+    `/api/v2/evaluation-leaderboards/${leaderboardId}/runs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function removeEvaluationLeaderboardRun(
+  leaderboardId: string,
+  runId: string
+): Promise<void> {
+  return apiFetch<void>(
+    `/api/v2/evaluation-leaderboards/${leaderboardId}/runs/${encodeURIComponent(runId)}`,
+    {
+      method: "DELETE"
+    }
+  );
+}
+
+export async function deleteEvaluationLeaderboard(
+  leaderboardId: string
+): Promise<void> {
+  return apiFetch<void>(`/api/v2/evaluation-leaderboards/${leaderboardId}`, {
     method: "DELETE"
   });
 }

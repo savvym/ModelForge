@@ -75,7 +75,7 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   "model-eval": { title: "模型评测", description: "评测任务与评测管理入口。", group: "workspace" },
   "model-eval-leaderboards": {
     title: "排行榜",
-    description: "按 Benchmark Version 组织和管理模型排行榜。",
+    description: "按 Eval Spec / Suite Version 组织和管理模型排行榜。",
     group: "workspace"
   },
   "model-eval-create": { title: "创建评测任务", description: "按 Benchmark 与 Version 创建真实评测任务。", group: "workspace" },

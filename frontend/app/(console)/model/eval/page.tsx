@@ -7,9 +7,11 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import {
   getEvaluationCatalog,
+  getEvaluationLeaderboards,
   getEvaluationRuns
 } from "@/features/eval/api";
 import { EvaluationCatalogV2Panel } from "@/features/eval/components/evaluation-catalog-v2-panel";
+import { EvaluationLeaderboardListTable } from "@/features/eval/components/evaluation-leaderboard-list-table";
 import { EvaluationRunCreateSheet } from "@/features/eval/components/evaluation-run-create-sheet";
 import { EvaluationRunListTable } from "@/features/eval/components/evaluation-run-list-table";
 import { EvaluationTemplateRegistryPanel } from "@/features/eval/components/evaluation-template-registry-panel";
@@ -18,12 +20,14 @@ import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
 import type {
   EvaluationCatalogResponseV2,
+  EvaluationLeaderboardSummaryV2,
   EvaluationRunSummaryV2,
   RegistryModelSummary
 } from "@/types/api";
 
 const evalTabs = [
   { key: "runs", label: "评测任务" },
+  { key: "leaderboards", label: "排行榜" },
   { key: "catalog", label: "评测管理" },
   { key: "templates", label: "模板与策略" }
 ] as const;
@@ -44,6 +48,7 @@ export default async function ModelEvalPage({
   let catalog: EvaluationCatalogResponseV2 | null = null;
   let models: RegistryModelSummary[] = [];
   let runs: EvaluationRunSummaryV2[] = [];
+  let leaderboards: EvaluationLeaderboardSummaryV2[] = [];
 
   if (currentTab === "runs") {
     const [catalogResult, modelsResult, runsResult] = await Promise.all([
@@ -54,6 +59,13 @@ export default async function ModelEvalPage({
     catalog = catalogResult;
     models = modelsResult;
     runs = filterRuns(runsResult, query);
+  }
+
+  if (currentTab === "leaderboards") {
+    leaderboards = filterLeaderboards(
+      await getEvaluationLeaderboards(projectId).catch(() => []),
+      query
+    );
   }
 
   if (currentTab === "catalog" || currentTab === "templates") {
@@ -106,6 +118,30 @@ export default async function ModelEvalPage({
           </ConsoleListToolbar>
 
           <EvaluationRunListTable initialRuns={runs} />
+        </>
+      ) : null}
+
+      {currentTab === "leaderboards" ? (
+        <>
+          <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
+            <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
+              <ConsoleListSearchForm
+                action="/model/eval"
+                className="max-w-[540px] flex-none"
+                defaultValue={query}
+                inputClassName="min-w-[320px]"
+                placeholder="搜索排行榜名称、目标或版本"
+              >
+                <input name="tab" type="hidden" value={currentTab} />
+              </ConsoleListSearchForm>
+            </ConsoleListToolbarCluster>
+
+            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-leaderboards/create">
+              创建排行榜
+            </Link>
+          </ConsoleListToolbar>
+
+          <EvaluationLeaderboardListTable leaderboards={leaderboards} />
         </>
       ) : null}
 
@@ -289,4 +325,28 @@ function filterTemplates(
         .includes(normalizedQuery)
     )
   };
+}
+
+function filterLeaderboards(
+  leaderboards: EvaluationLeaderboardSummaryV2[],
+  query: string
+) {
+  if (!query) {
+    return leaderboards;
+  }
+  const normalizedQuery = query.toLowerCase();
+  return leaderboards.filter((leaderboard) =>
+    [
+      leaderboard.name,
+      leaderboard.description ?? "",
+      leaderboard.target_kind,
+      leaderboard.target_name,
+      leaderboard.target_display_name,
+      leaderboard.target_version,
+      leaderboard.target_version_display_name
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
 }

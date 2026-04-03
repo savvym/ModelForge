@@ -306,6 +306,52 @@ class EvaluationRunCancelResponse(BaseModel):
     status: str
 
 
+class EvaluationLeaderboardRunCandidate(BaseModel):
+    run_id: UUID
+    run_name: str
+    model_name: str
+    score: float
+    metric_name: str
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
+class EvaluationLeaderboardEntry(EvaluationLeaderboardRunCandidate):
+    rank: int
+
+
+class EvaluationLeaderboardSummary(BaseModel):
+    id: UUID
+    name: str
+    description: str | None = None
+    target_kind: Literal["spec", "suite"]
+    target_name: str
+    target_display_name: str
+    target_version: str
+    target_version_display_name: str
+    score_metric_name: str
+    run_count: int = 0
+    latest_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvaluationLeaderboardDetail(EvaluationLeaderboardSummary):
+    entries: list[EvaluationLeaderboardEntry] = Field(default_factory=list)
+
+
+class EvaluationLeaderboardCreate(BaseModel):
+    name: str
+    description: str | None = None
+    target: EvaluationTargetRef
+    score_metric_name: str = "score"
+    run_ids: list[UUID] = Field(default_factory=list)
+
+
+class EvaluationLeaderboardAddRuns(BaseModel):
+    run_ids: list[UUID] = Field(min_length=1)
+
+
 class ModelBindingSnapshot(BaseModel):
     model_id: UUID | None = None
     model_name: str

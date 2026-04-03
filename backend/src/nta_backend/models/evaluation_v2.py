@@ -419,3 +419,72 @@ class EvaluationRunEvent(Base, UUIDPrimaryKeyMixin):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     payload_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EvaluationLeaderboard(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "evaluation_leaderboards"
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
+
+    project_id: Mapped[PythonUUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_spec_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("eval_specs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_spec_version_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("eval_spec_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_suite_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("eval_suites.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_suite_version_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("eval_suite_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    score_metric_name: Mapped[str] = mapped_column(String(120), nullable=False, default="score")
+    score_metric_scope: Mapped[str] = mapped_column(String(32), nullable=False, default="overall")
+
+    source_spec = relationship("EvalSpec")
+    source_spec_version = relationship("EvalSpecVersion")
+    source_suite = relationship("EvalSuite")
+    source_suite_version = relationship("EvalSuiteVersion")
+    runs = relationship(
+        "EvaluationLeaderboardRun",
+        back_populates="leaderboard",
+        cascade="all, delete-orphan",
+        order_by="EvaluationLeaderboardRun.created_at.asc()",
+    )
+
+
+class EvaluationLeaderboardRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "evaluation_leaderboard_runs"
+    __table_args__ = (UniqueConstraint("leaderboard_id", "run_id"),)
+
+    leaderboard_id: Mapped[PythonUUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evaluation_leaderboards.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    run_id: Mapped[PythonUUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evaluation_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    leaderboard = relationship("EvaluationLeaderboard", back_populates="runs")
+    run = relationship("EvaluationRun")
