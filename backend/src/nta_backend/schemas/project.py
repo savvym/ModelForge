@@ -16,7 +16,7 @@ class ProjectSummary(BaseModel):
     resource_count: int = 0
     member_count: int = 0
     dataset_count: int = 0
-    eval_job_count: int = 0
+    evaluation_run_count: int = 0
     created_at: datetime
     updated_at: datetime
 

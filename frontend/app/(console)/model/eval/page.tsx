@@ -6,31 +6,26 @@ import {
 } from "@/components/console/list-surface";
 import { buttonVariants } from "@/components/ui/button";
 import {
-  getBenchmarkCatalog,
-  getBenchmarkLeaderboards,
-  getEvalJobs,
-  getEvalTemplates
+  getEvaluationCatalog,
+  getEvaluationRuns
 } from "@/features/eval/api";
-import { EvalJobCreateSheet } from "@/features/eval/components/eval-job-create-sheet";
-import { BenchmarkCatalogTable } from "@/features/eval/components/benchmark-catalog-table";
-import { BenchmarkLeaderboardListTable } from "@/features/eval/components/benchmark-leaderboard-list-table";
-import { EvalJobListTable } from "@/features/eval/components/eval-job-list-table";
-import { EvalTemplateListTable } from "@/features/eval/components/eval-template-list-table";
+import { EvaluationCatalogV2Panel } from "@/features/eval/components/evaluation-catalog-v2-panel";
+import { EvaluationRunCreateSheet } from "@/features/eval/components/evaluation-run-create-sheet";
+import { EvaluationRunListTable } from "@/features/eval/components/evaluation-run-list-table";
+import { EvaluationTemplateRegistryPanel } from "@/features/eval/components/evaluation-template-registry-panel";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
 import type {
-  BenchmarkLeaderboardSummary,
-  BenchmarkDefinitionSummary,
-  EvalJobSummary,
+  EvaluationCatalogResponseV2,
+  EvaluationRunSummaryV2,
   RegistryModelSummary
 } from "@/types/api";
 
 const evalTabs = [
-  { key: "jobs", label: "评测任务" },
-  { key: "leaderboards", label: "排行榜" },
-  { key: "management", label: "评测管理" },
-  { key: "templates", label: "评测模板" }
+  { key: "runs", label: "评测任务" },
+  { key: "catalog", label: "评测管理" },
+  { key: "templates", label: "模板与策略" }
 ] as const;
 
 export default async function ModelEvalPage({
@@ -41,104 +36,29 @@ export default async function ModelEvalPage({
   const resolvedSearchParams = await searchParams;
   const currentTab = evalTabs.some((tab) => tab.key === resolvedSearchParams.tab)
     ? (resolvedSearchParams.tab as (typeof evalTabs)[number]["key"])
-    : "jobs";
+    : "runs";
   const query = resolvedSearchParams.q?.trim() ?? "";
-  const createOpen = currentTab === "jobs" && resolvedSearchParams.create === "1";
+  const createOpen = currentTab === "runs" && resolvedSearchParams.create === "1";
   const projectId = await getCurrentProjectIdFromCookie();
-  let createFormBenchmarks: BenchmarkDefinitionSummary[] = [];
-  let createFormModels: RegistryModelSummary[] = [];
-  let filteredJobs: EvalJobSummary[] = [];
-  let leaderboards: BenchmarkLeaderboardSummary[] = [];
 
-  if (currentTab === "jobs") {
-    const [benchmarksResult, modelsResult, jobsResult] = await Promise.all([
-      getBenchmarkCatalog(projectId).catch(() => []),
+  let catalog: EvaluationCatalogResponseV2 | null = null;
+  let models: RegistryModelSummary[] = [];
+  let runs: EvaluationRunSummaryV2[] = [];
+
+  if (currentTab === "runs") {
+    const [catalogResult, modelsResult, runsResult] = await Promise.all([
+      getEvaluationCatalog(projectId).catch(() => emptyCatalog()),
       getRegistryModels(projectId).catch(() => []),
-      getEvalJobs(projectId).catch(() => [])
+      getEvaluationRuns(projectId).catch(() => [])
     ]);
-
-    createFormBenchmarks = benchmarksResult;
-    createFormModels = modelsResult;
-    filteredJobs = jobsResult.filter((job) => {
-      const matchesQuery =
-        !query ||
-        job.name.toLowerCase().includes(query.toLowerCase()) ||
-        job.id.includes(query) ||
-        job.model_name.toLowerCase().includes(query.toLowerCase());
-      return matchesQuery;
-    });
+    catalog = catalogResult;
+    models = modelsResult;
+    runs = filterRuns(runsResult, query);
   }
 
-  if (currentTab === "leaderboards") {
-    leaderboards = (await getBenchmarkLeaderboards(projectId).catch(() => []))
-      .filter((leaderboard) => {
-        if (!query) {
-          return true;
-        }
-
-        const normalizedQuery = query.toLowerCase();
-        return [
-          leaderboard.name,
-          leaderboard.benchmark_name,
-          leaderboard.benchmark_display_name,
-          leaderboard.benchmark_version_id,
-          leaderboard.benchmark_version_display_name,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedQuery);
-      })
-      .sort((left, right) => {
-        const leftTime = left.latest_eval_at ?? left.created_at;
-        const rightTime = right.latest_eval_at ?? right.created_at;
-        return new Date(rightTime).getTime() - new Date(leftTime).getTime();
-      });
+  if (currentTab === "catalog" || currentTab === "templates") {
+    catalog = (await getEvaluationCatalog(projectId).catch(() => emptyCatalog()));
   }
-
-  const benchmarks =
-    currentTab === "management"
-      ? (await getBenchmarkCatalog(projectId).catch(() => []))
-          .filter((benchmark) => {
-            if (!query) {
-              return true;
-            }
-            const normalizedQuery = query.toLowerCase();
-            const versionHaystack = benchmark.versions
-              .flatMap((version) => [version.id, version.display_name, version.description])
-              .join(" ")
-              .toLowerCase();
-            const benchmarkHaystack = [
-              benchmark.name,
-              benchmark.display_name,
-              benchmark.description,
-              benchmark.default_eval_method,
-              benchmark.category ?? "",
-              benchmark.tags.join(" "),
-            ]
-              .join(" ")
-              .toLowerCase();
-            return (
-              benchmarkHaystack.includes(normalizedQuery) ||
-              versionHaystack.includes(normalizedQuery)
-            );
-          })
-          .sort((left, right) => {
-            if (left.eval_job_count !== right.eval_job_count) {
-              return right.eval_job_count - left.eval_job_count;
-            }
-            return left.display_name.localeCompare(right.display_name);
-          })
-      : [];
-  const templates =
-    currentTab === "templates"
-      ? (await getEvalTemplates().catch(() => []))
-          .filter((t) => {
-            if (!query) return true;
-            const haystack = [t.name, t.description ?? "", t.output_type].join(" ").toLowerCase();
-            return haystack.includes(query.toLowerCase());
-          })
-          .sort((a, b) => a.name.localeCompare(b.name))
-      : [];
 
   return (
     <div className="space-y-2">
@@ -163,7 +83,7 @@ export default async function ModelEvalPage({
         </div>
       </div>
 
-      {currentTab === "jobs" ? (
+      {currentTab === "runs" && catalog ? (
         <>
           <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
             <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
@@ -178,18 +98,18 @@ export default async function ModelEvalPage({
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
 
-            <EvalJobCreateSheet
-              benchmarks={createFormBenchmarks}
+            <EvaluationRunCreateSheet
+              catalog={catalog}
               initialOpen={createOpen}
-              models={createFormModels}
+              models={models}
             />
           </ConsoleListToolbar>
 
-          <EvalJobListTable initialJobs={filteredJobs} />
+          <EvaluationRunListTable initialRuns={runs} />
         </>
       ) : null}
 
-      {currentTab === "leaderboards" ? (
+      {currentTab === "catalog" && catalog ? (
         <>
           <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
             <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
@@ -198,22 +118,27 @@ export default async function ModelEvalPage({
                 className="max-w-[560px] flex-none"
                 defaultValue={query}
                 inputClassName="min-w-[320px]"
-                placeholder="搜索排行榜名称、Benchmark 或 Version"
+                placeholder="搜索评测套件、类型或版本"
               >
                 <input name="tab" type="hidden" value={currentTab} />
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
 
-            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-leaderboards/create">
-              创建排行榜
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/model/eval-suites/create">
+                创建评测套件
+              </Link>
+              <Link className={buttonVariants({ size: "sm" })} href="/model/eval-specs/create">
+                创建评测类型
+              </Link>
+            </div>
           </ConsoleListToolbar>
 
-          <BenchmarkLeaderboardListTable leaderboards={leaderboards} />
+          <EvaluationCatalogV2Panel catalog={filterCatalog(catalog, query)} />
         </>
       ) : null}
 
-      {currentTab === "management" ? (
+      {currentTab === "templates" && catalog ? (
         <>
           <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
             <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
@@ -222,42 +147,23 @@ export default async function ModelEvalPage({
                 className="max-w-[560px] flex-none"
                 defaultValue={query}
                 inputClassName="min-w-[320px]"
-                placeholder="搜索 Benchmark、Version ID 或版本描述"
+                placeholder="搜索模板、Policy 或策略类型"
               >
                 <input name="tab" type="hidden" value={currentTab} />
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
 
-            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-benchmarks/create">
-              创建 Benchmark
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/model/eval-policies/create">
+                创建 Judge Policy
+              </Link>
+              <Link className={buttonVariants({ size: "sm" })} href="/model/eval-templates/create">
+                创建模板资产
+              </Link>
+            </div>
           </ConsoleListToolbar>
 
-          <BenchmarkCatalogTable benchmarks={benchmarks} />
-        </>
-      ) : null}
-
-      {currentTab === "templates" ? (
-        <>
-          <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
-            <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
-              <ConsoleListSearchForm
-                action="/model/eval"
-                className="max-w-[560px] flex-none"
-                defaultValue={query}
-                inputClassName="min-w-[320px]"
-                placeholder="搜索模板名称或描述"
-              >
-                <input name="tab" type="hidden" value={currentTab} />
-              </ConsoleListSearchForm>
-            </ConsoleListToolbarCluster>
-
-            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-templates/create">
-              创建模板
-            </Link>
-          </ConsoleListToolbar>
-
-          <EvalTemplateListTable templates={templates} />
+          <EvaluationTemplateRegistryPanel catalog={filterTemplates(catalog, query)} />
         </>
       ) : null}
     </div>
@@ -277,4 +183,110 @@ function buildEvalQuery({
     params.set("q", q);
   }
   return `/model/eval?${params.toString()}`;
+}
+
+function emptyCatalog(): EvaluationCatalogResponseV2 {
+  return {
+    specs: [],
+    suites: [],
+    templates: [],
+    judge_policies: []
+  };
+}
+
+function filterRuns(runs: EvaluationRunSummaryV2[], query: string) {
+  if (!query) {
+    return runs;
+  }
+  const normalizedQuery = query.toLowerCase();
+  return runs.filter((run) =>
+    [run.name, run.id, run.model_name ?? "", run.kind, run.status]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
+function filterCatalog(catalog: EvaluationCatalogResponseV2, query: string): EvaluationCatalogResponseV2 {
+  if (!query) {
+    return catalog;
+  }
+  const normalizedQuery = query.toLowerCase();
+  return {
+    ...catalog,
+    suites: catalog.suites.filter((suite) =>
+      [
+        suite.name,
+        suite.display_name,
+        suite.description ?? "",
+        ...suite.versions.flatMap((version) => [
+          version.version,
+          version.display_name,
+          version.description ?? "",
+          ...version.items.map((item) => item.display_name)
+        ])
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery)
+    ),
+    specs: catalog.specs.filter((spec) =>
+      [
+        spec.name,
+        spec.display_name,
+        spec.description ?? "",
+        spec.capability_group ?? "",
+        spec.capability_category ?? "",
+        ...spec.versions.flatMap((version) => [
+          version.version,
+          version.display_name,
+          version.description ?? "",
+          version.engine,
+          version.execution_mode,
+          version.engine_benchmark_name ?? ""
+        ])
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery)
+    )
+  };
+}
+
+function filterTemplates(
+  catalog: EvaluationCatalogResponseV2,
+  query: string
+): EvaluationCatalogResponseV2 {
+  if (!query) {
+    return catalog;
+  }
+  const normalizedQuery = query.toLowerCase();
+  return {
+    ...catalog,
+    templates: catalog.templates.filter((template) =>
+      [
+        template.name,
+        template.display_name,
+        template.description ?? "",
+        template.template_type,
+        ...template.versions.map((version) => `v${version.version}`)
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery)
+    ),
+    judge_policies: catalog.judge_policies.filter((policy) =>
+      [
+        policy.name,
+        policy.display_name,
+        policy.description ?? "",
+        policy.strategy,
+        JSON.stringify(policy.execution_params_json),
+        JSON.stringify(policy.model_selector_json)
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery)
+    )
+  };
 }

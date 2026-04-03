@@ -1,0 +1,84 @@
+from fastapi import APIRouter, HTTPException, status
+
+from nta_backend.schemas.evaluation_v2 import (
+    EvaluationCatalogResponse,
+    EvalSpecCreate,
+    EvalSpecSummary,
+    EvalSuiteCreate,
+    EvalSuiteSummary,
+    JudgePolicyCreate,
+    JudgePolicySummary,
+    TemplateSpecCreate,
+    TemplateSpecSummary,
+)
+from nta_backend.services.evaluation_catalog_v2_service import EvaluationCatalogV2Service
+
+router = APIRouter(prefix="/api/v2/evaluation-catalog")
+service = EvaluationCatalogV2Service()
+
+
+@router.get("", response_model=EvaluationCatalogResponse)
+async def list_evaluation_catalog() -> EvaluationCatalogResponse:
+    return await service.list_catalog()
+
+
+@router.get("/specs/{name}", response_model=EvalSpecSummary)
+async def get_eval_spec(name: str) -> EvalSpecSummary:
+    try:
+        return await service.get_spec(name)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval spec not found") from exc
+
+
+@router.post("/specs", response_model=EvalSpecSummary, status_code=status.HTTP_201_CREATED)
+async def create_eval_spec(payload: EvalSpecCreate) -> EvalSpecSummary:
+    try:
+        return await service.create_spec(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/suites/{name}", response_model=EvalSuiteSummary)
+async def get_eval_suite(name: str) -> EvalSuiteSummary:
+    try:
+        return await service.get_suite(name)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval suite not found") from exc
+
+
+@router.post("/suites", response_model=EvalSuiteSummary, status_code=status.HTTP_201_CREATED)
+async def create_eval_suite(payload: EvalSuiteCreate) -> EvalSuiteSummary:
+    try:
+        return await service.create_suite(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/templates", response_model=list[TemplateSpecSummary])
+async def list_template_specs() -> list[TemplateSpecSummary]:
+    return await service.list_templates()
+
+
+@router.post("/templates", response_model=TemplateSpecSummary, status_code=status.HTTP_201_CREATED)
+async def create_template_spec(payload: TemplateSpecCreate) -> TemplateSpecSummary:
+    try:
+        return await service.create_template(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/judge-policies", response_model=list[JudgePolicySummary])
+async def list_judge_policies() -> list[JudgePolicySummary]:
+    return await service.list_judge_policies()
+
+
+@router.post(
+    "/judge-policies",
+    response_model=JudgePolicySummary,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_judge_policy(payload: JudgePolicyCreate) -> JudgePolicySummary:
+    try:
+        return await service.create_judge_policy(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

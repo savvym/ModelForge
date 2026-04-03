@@ -21,6 +21,7 @@ from nta_backend.core.db import SessionLocal
 from nta_backend.core.object_store import delete_object_prefix, get_object_bytes, put_object_bytes
 from nta_backend.core.project_context import DEFAULT_PROJECT_ID, resolve_active_project_id
 from nta_backend.core.storage_layout import build_project_prefix
+from nta_backend.evaluation.executors.sample_mapping import count_local_dataset_samples
 from nta_backend.evaluation.runtime.api.registry import get_benchmark
 from nta_backend.evaluation.runtime.config import EvalTaskConfig
 from nta_backend.models.benchmark_catalog import (
@@ -832,16 +833,9 @@ def _inspect_dataset_source(
     )
     try:
         if benchmark_definition is not None and benchmark_definition.source_type == "custom":
-            benchmark = get_benchmark(
-                "_generic",
-                task_config=EvalTaskConfig(
-                    benchmark="_generic",
-                    model="openai_compatible",
-                    dataset_path=str(local_path),
-                ),
-                dataset_path=str(local_path),
+            sample_count = count_local_dataset_samples(
+                str(local_path),
                 field_mapping=benchmark_definition.field_mapping_json or {},
-                eval_method=benchmark_definition.default_eval_method or "judge-template",
             )
         else:
             benchmark = get_benchmark(
@@ -852,8 +846,8 @@ def _inspect_dataset_source(
                     dataset_path=str(local_path),
                 ),
             )
-        dataset = benchmark.load_dataset()
-        sample_count = sum(len(samples) for samples in dataset.values())
+            dataset = benchmark.load_dataset()
+            sample_count = sum(len(samples) for samples in dataset.values())
         if sample_count <= 0:
             raise ValueError("Benchmark Version 数据集为空。")
         return _ResolvedVersionSource(

@@ -17,7 +17,7 @@
 
 - `/overview` -> `GET /api/v1/projects`
 - `/dataset` -> `GET /api/v1/datasets`
-- `/model/eval` -> `GET /api/v1/eval-jobs`
+- `/model/eval` -> `GET /api/v2/evaluation-runs` + `GET /api/v2/evaluation-catalog`
 
 ## 开发
 

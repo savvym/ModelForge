@@ -14,7 +14,7 @@ from nta_backend.core.project_context import (
 )
 from nta_backend.models.auth import Project, ProjectMember
 from nta_backend.models.dataset import Dataset
-from nta_backend.models.jobs import EvalJob
+from nta_backend.models.evaluation_v2 import EvaluationRun
 from nta_backend.models.lake import LakeAsset
 from nta_backend.models.modeling import Endpoint, Model, ModelProvider
 from nta_backend.schemas.project import ProjectCreate, ProjectDetail, ProjectSummary
@@ -40,7 +40,7 @@ def _normalize_optional_text(value: str | None) -> str | None:
 
 class _ProjectCounts(dict[str, dict[UUID, int]]):
     dataset: dict[UUID, int]
-    eval_job: dict[UUID, int]
+    evaluation_run: dict[UUID, int]
     lake_asset: dict[UUID, int]
     provider: dict[UUID, int]
     model: dict[UUID, int]
@@ -61,9 +61,9 @@ async def _load_project_counts(session) -> _ProjectCounts:
             .where(Dataset.status != "deleted")
             .group_by(Dataset.project_id),
         ),
-        eval_job=await _count_by_project(
+        evaluation_run=await _count_by_project(
             session,
-            select(EvalJob.project_id, func.count(EvalJob.id)).group_by(EvalJob.project_id),
+            select(EvaluationRun.project_id, func.count(EvaluationRun.id)).group_by(EvaluationRun.project_id),
         ),
         lake_asset=await _count_by_project(
             session,
@@ -104,7 +104,7 @@ async def _load_project_counts(session) -> _ProjectCounts:
 def _resource_count(project: Project, counts: _ProjectCounts) -> int:
     return (
         counts["dataset"].get(project.id, 0)
-        + counts["eval_job"].get(project.id, 0)
+        + counts["evaluation_run"].get(project.id, 0)
         + counts["lake_asset"].get(project.id, 0)
         + counts["provider"].get(project.id, 0)
         + counts["model"].get(project.id, 0)
@@ -130,7 +130,7 @@ def _to_project_summary(project: Project, counts: _ProjectCounts) -> ProjectSumm
         resource_count=_resource_count(project, counts),
         member_count=_member_count(project, counts),
         dataset_count=counts["dataset"].get(project.id, 0),
-        eval_job_count=counts["eval_job"].get(project.id, 0),
+        evaluation_run_count=counts["evaluation_run"].get(project.id, 0),
         created_at=project.created_at,
         updated_at=project.updated_at,
     )

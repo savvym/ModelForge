@@ -8,7 +8,7 @@ export interface ProjectSummary {
   resource_count: number;
   member_count: number;
   dataset_count: number;
-  eval_job_count: number;
+  evaluation_run_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -518,6 +518,321 @@ export interface EvalTemplateUpdateInput {
   provider?: string | null;
   model_params?: Record<string, unknown> | null;
   description?: string | null;
+}
+
+// -- Evaluation V2 --
+
+export interface EvalSpecVersionSummaryV2 {
+  id: string;
+  version: string;
+  display_name: string;
+  description?: string | null;
+  engine: string;
+  execution_mode: string;
+  engine_benchmark_name?: string | null;
+  enabled: boolean;
+  is_recommended: boolean;
+  sample_count?: number | null;
+}
+
+export interface EvalSpecSummaryV2 {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string | null;
+  capability_group?: string | null;
+  capability_category?: string | null;
+  status: string;
+  tags_json: unknown[];
+  versions: EvalSpecVersionSummaryV2[];
+}
+
+export interface EvalSuiteItemSummaryV2 {
+  id: string;
+  item_key: string;
+  display_name: string;
+  spec_version_id: string;
+  position: number;
+  weight: number;
+  group_name?: string | null;
+  enabled: boolean;
+  overrides_json: Record<string, unknown>;
+}
+
+export interface EvalSuiteVersionSummaryV2 {
+  id: string;
+  version: string;
+  display_name: string;
+  description?: string | null;
+  enabled: boolean;
+  items: EvalSuiteItemSummaryV2[];
+}
+
+export interface EvalSuiteSummaryV2 {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string | null;
+  capability_group?: string | null;
+  status: string;
+  versions: EvalSuiteVersionSummaryV2[];
+}
+
+export interface TemplateSpecVersionSummaryV2 {
+  id: string;
+  version: number;
+  prompt: string;
+  vars_json: string[];
+  output_schema_json: Record<string, unknown>;
+  parser_config_json: Record<string, unknown>;
+  is_active: boolean;
+}
+
+export interface TemplateSpecSummaryV2 {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string | null;
+  template_type: string;
+  status: string;
+  versions: TemplateSpecVersionSummaryV2[];
+}
+
+export interface JudgePolicySummaryV2 {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string | null;
+  strategy: string;
+  status: string;
+  template_spec_version_id?: string | null;
+  model_selector_json: Record<string, unknown>;
+  execution_params_json: Record<string, unknown>;
+  parser_config_json: Record<string, unknown>;
+  retry_policy_json: Record<string, unknown>;
+}
+
+export interface EvaluationCatalogResponseV2 {
+  specs: EvalSpecSummaryV2[];
+  suites: EvalSuiteSummaryV2[];
+  templates: TemplateSpecSummaryV2[];
+  judge_policies: JudgePolicySummaryV2[];
+}
+
+export interface EvaluationTargetRefV2 {
+  kind: "spec" | "suite";
+  name: string;
+  version: string;
+  item_keys?: string[];
+}
+
+export interface EvaluationRunMetricV2 {
+  metric_name: string;
+  metric_value: number;
+  metric_scope: string;
+  metric_unit?: string | null;
+  dimension_json: Record<string, unknown>;
+  extra_json: Record<string, unknown>;
+}
+
+export interface EvaluationRunSampleV2 {
+  sample_id: string;
+  subset_name?: string | null;
+  input_preview?: string | null;
+  prediction_text?: string | null;
+  reference_answers_json: string[];
+  score?: number | null;
+  raw_score?: number | null;
+  passed: boolean;
+  reason?: string | null;
+  error?: string | null;
+  latency_ms?: number | null;
+  total_tokens?: number | null;
+  metadata_json: Record<string, unknown>;
+}
+
+export interface EvaluationRunItemV2 {
+  id: string;
+  item_key: string;
+  display_name: string;
+  group_name?: string | null;
+  weight: number;
+  status: string;
+  engine: string;
+  execution_mode: string;
+  report_uri?: string | null;
+  raw_output_prefix_uri?: string | null;
+  temporal_workflow_id?: string | null;
+  progress_total?: number | null;
+  progress_done?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  metrics: EvaluationRunMetricV2[];
+  samples: EvaluationRunSampleV2[];
+}
+
+export interface ModelBindingSnapshotV2 {
+  model_id?: string | null;
+  model_name: string;
+  display_name: string;
+  api_url: string;
+  api_format: string;
+  api_key?: string | null;
+  organization?: string | null;
+  headers: Record<string, string>;
+  model_params: Record<string, unknown>;
+}
+
+export interface CompiledRunItemPlanV2 {
+  item_key: string;
+  display_name: string;
+  group_name?: string | null;
+  weight: number;
+  engine: string;
+  execution_mode: string;
+  spec_id: string;
+  spec_version_id: string;
+  spec_name: string;
+  spec_version: string;
+  expected_sample_count?: number | null;
+  engine_config: Record<string, unknown>;
+  model_binding: ModelBindingSnapshotV2;
+  judge_policy_snapshot?: Record<string, unknown> | null;
+  template_snapshot?: Record<string, unknown> | null;
+}
+
+export interface CompiledRunPlanV2 {
+  kind: "spec" | "suite";
+  target_name: string;
+  target_version: string;
+  model_binding: ModelBindingSnapshotV2;
+  judge_policy_snapshot?: Record<string, unknown> | null;
+  items: CompiledRunItemPlanV2[];
+  overrides: Record<string, unknown>;
+}
+
+export interface EvaluationRunSummaryV2 {
+  id: string;
+  name: string;
+  description?: string | null;
+  kind: string;
+  status: string;
+  model_name?: string | null;
+  summary_report_uri?: string | null;
+  temporal_workflow_id?: string | null;
+  progress_total?: number | null;
+  progress_done?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface EvaluationRunDetailV2 extends EvaluationRunSummaryV2 {
+  source_spec_id?: string | null;
+  source_spec_version_id?: string | null;
+  source_suite_id?: string | null;
+  source_suite_version_id?: string | null;
+  judge_policy_id?: string | null;
+  execution_plan_json: CompiledRunPlanV2;
+  metrics: EvaluationRunMetricV2[];
+  items: EvaluationRunItemV2[];
+}
+
+export interface EvaluationRunCreateInputV2 {
+  name?: string | null;
+  description?: string | null;
+  target: EvaluationTargetRefV2;
+  model_id: string;
+  judge_policy_id?: string | null;
+  overrides?: Record<string, unknown>;
+}
+
+export interface EvaluationRunCancelResponseV2 {
+  run_id: string;
+  status: string;
+}
+
+export interface EvalSpecVersionCreateInputV2 {
+  version: string;
+  display_name: string;
+  description?: string | null;
+  engine: string;
+  execution_mode: string;
+  engine_benchmark_name?: string | null;
+  engine_config_json?: Record<string, unknown>;
+  scoring_config_json?: Record<string, unknown>;
+  dataset_source_uri?: string | null;
+  template_spec_version_id?: string | null;
+  default_judge_policy_id?: string | null;
+  sample_count?: number | null;
+  enabled?: boolean;
+  is_recommended?: boolean;
+}
+
+export interface EvalSpecCreateInputV2 {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  capability_group?: string | null;
+  capability_category?: string | null;
+  tags_json?: unknown[];
+  input_schema_json?: Record<string, unknown>;
+  output_schema_json?: Record<string, unknown>;
+  initial_version: EvalSpecVersionCreateInputV2;
+}
+
+export interface EvalSuiteItemCreateInputV2 {
+  item_key: string;
+  display_name: string;
+  spec_version_id: string;
+  position?: number;
+  weight?: number;
+  group_name?: string | null;
+  overrides_json?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface EvalSuiteVersionCreateInputV2 {
+  version: string;
+  display_name: string;
+  description?: string | null;
+  enabled?: boolean;
+  items: EvalSuiteItemCreateInputV2[];
+}
+
+export interface EvalSuiteCreateInputV2 {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  capability_group?: string | null;
+  initial_version: EvalSuiteVersionCreateInputV2;
+}
+
+export interface TemplateSpecCreateInputV2 {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  template_type: string;
+  prompt: string;
+  vars_json?: string[];
+  output_schema_json?: Record<string, unknown>;
+  parser_config_json?: Record<string, unknown>;
+}
+
+export interface JudgePolicyCreateInputV2 {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  strategy: string;
+  template_spec_version_id?: string | null;
+  model_selector_json?: Record<string, unknown>;
+  execution_params_json?: Record<string, unknown>;
+  parser_config_json?: Record<string, unknown>;
+  retry_policy_json?: Record<string, unknown>;
 }
 
 export interface WorkflowLaunchResponse {

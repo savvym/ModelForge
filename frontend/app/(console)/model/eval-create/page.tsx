@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function ModelEvalCreatePage() {
-  redirect("/model/eval?tab=jobs&create=1");
+  redirect("/model/eval?tab=runs&create=1");
 }

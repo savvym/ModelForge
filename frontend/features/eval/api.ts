@@ -17,7 +17,20 @@ import type {
   EvalTemplateUpdateInput,
   BenchmarkVersionSummary,
   BenchmarkVersionUpdateInput,
-  ObjectStoreObjectPreviewResponse
+  ObjectStoreObjectPreviewResponse,
+  EvaluationCatalogResponseV2,
+  EvaluationRunCancelResponseV2,
+  EvaluationRunCreateInputV2,
+  EvaluationRunDetailV2,
+  EvaluationRunSummaryV2,
+  EvalSpecCreateInputV2,
+  EvalSpecSummaryV2,
+  EvalSuiteCreateInputV2,
+  EvalSuiteSummaryV2,
+  JudgePolicyCreateInputV2,
+  JudgePolicySummaryV2,
+  TemplateSpecCreateInputV2,
+  TemplateSpecSummaryV2
 } from "@/types/api";
 
 export async function getEvalJobs(projectId?: string | null): Promise<EvalJobSummary[]> {
@@ -254,6 +267,91 @@ export async function updateEvalTemplate(
 ): Promise<EvalTemplateSummary> {
   return apiFetch<EvalTemplateSummary>(`/eval-templates/${name}`, {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+// -- Evaluation V2 --
+
+export async function getEvaluationCatalog(
+  projectId?: string | null
+): Promise<EvaluationCatalogResponseV2> {
+  return apiFetch<EvaluationCatalogResponseV2>("/api/v2/evaluation-catalog", { projectId });
+}
+
+export async function getEvaluationRuns(
+  projectId?: string | null
+): Promise<EvaluationRunSummaryV2[]> {
+  return apiFetch<EvaluationRunSummaryV2[]>("/api/v2/evaluation-runs", { projectId });
+}
+
+export async function getEvaluationRun(
+  runId: string,
+  projectId?: string | null
+): Promise<EvaluationRunDetailV2> {
+  return apiFetch<EvaluationRunDetailV2>(`/api/v2/evaluation-runs/${runId}`, { projectId });
+}
+
+export async function createEvaluationRun(
+  payload: EvaluationRunCreateInputV2
+): Promise<EvaluationRunSummaryV2> {
+  return apiFetch<EvaluationRunSummaryV2>("/api/v2/evaluation-runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function cancelEvaluationRun(
+  runId: string
+): Promise<EvaluationRunCancelResponseV2> {
+  return apiFetch<EvaluationRunCancelResponseV2>(`/api/v2/evaluation-runs/${runId}/cancel`, {
+    method: "POST"
+  });
+}
+
+export async function deleteEvaluationRun(runId: string): Promise<void> {
+  return apiFetch<void>(`/api/v2/evaluation-runs/${runId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function createTemplateSpec(
+  payload: TemplateSpecCreateInputV2
+): Promise<TemplateSpecSummaryV2> {
+  return apiFetch<TemplateSpecSummaryV2>("/api/v2/evaluation-catalog/templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createEvalSpec(
+  payload: EvalSpecCreateInputV2
+): Promise<EvalSpecSummaryV2> {
+  return apiFetch<EvalSpecSummaryV2>("/api/v2/evaluation-catalog/specs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createEvalSuite(
+  payload: EvalSuiteCreateInputV2
+): Promise<EvalSuiteSummaryV2> {
+  return apiFetch<EvalSuiteSummaryV2>("/api/v2/evaluation-catalog/suites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createJudgePolicy(
+  payload: JudgePolicyCreateInputV2
+): Promise<JudgePolicySummaryV2> {
+  return apiFetch<JudgePolicySummaryV2>("/api/v2/evaluation-catalog/judge-policies", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });

@@ -8,6 +8,7 @@ type EvalStatusMeta = {
 
 const STATUS_META: Record<string, EvalStatusMeta> = {
   queued: { label: "排队中", variant: "secondary" },
+  running: { label: "执行中", variant: "default" },
   preparing: { label: "准备中", variant: "secondary" },
   inferencing: { label: "推理中", variant: "default" },
   cancelling: { label: "停止中", variant: "secondary" },
@@ -35,6 +36,8 @@ const STATUS_META: Record<string, EvalStatusMeta> = {
 
 const DELETE_BLOCKED_STATUSES = new Set(["preparing", "inferencing", "scoring", "cancelling"]);
 const STOPPABLE_STATUSES = new Set(["queued", "preparing", "inferencing", "scoring"]);
+const RUN_DELETE_BLOCKED_STATUSES = new Set(["queued", "running", "cancelling"]);
+const RUN_CANCELLABLE_STATUSES = new Set(["queued", "running"]);
 
 export function getEvalStatusMeta(status: string): EvalStatusMeta {
   return STATUS_META[status] ?? { label: status, variant: "outline" };
@@ -58,6 +61,28 @@ export function getEvalDeleteBlockedReason(status: string): string | null {
 export function getEvalStopBlockedReason(status: string): string | null {
   if (!canStopEvalJob(status)) {
     return "当前任务状态不支持停止。";
+  }
+  return null;
+}
+
+export function canDeleteEvaluationRun(status: string): boolean {
+  return !RUN_DELETE_BLOCKED_STATUSES.has(status);
+}
+
+export function canCancelEvaluationRun(status: string): boolean {
+  return RUN_CANCELLABLE_STATUSES.has(status);
+}
+
+export function getEvaluationRunDeleteBlockedReason(status: string): string | null {
+  if (!canDeleteEvaluationRun(status)) {
+    return "运行中的评测任务暂不支持删除，请等待任务结束后再删除。";
+  }
+  return null;
+}
+
+export function getEvaluationRunCancelBlockedReason(status: string): string | null {
+  if (!canCancelEvaluationRun(status)) {
+    return "当前任务状态不支持取消。";
   }
   return null;
 }
@@ -176,6 +201,16 @@ export function formatEvalDatasetSource(sourceType: string): string {
   }
 
   return sourceType;
+}
+
+export function formatEvaluationRunKind(kind: string): string {
+  if (kind === "suite") {
+    return "基线评测";
+  }
+  if (kind === "spec") {
+    return "单项评测";
+  }
+  return kind;
 }
 
 export function formatLeaderboardMetricName(metricName?: string | null): string {

@@ -10,6 +10,8 @@ from nta_backend.api.routers import (
     benchmark_leaderboards,
     benchmarks,
     datasets,
+    evaluation_catalog_v2,
+    evaluation_runs_v2,
     eval_jobs,
     eval_templates,
     health,
@@ -68,6 +70,8 @@ def create_app() -> FastAPI:
     api_router.include_router(streams.router, tags=["streams"])
 
     app.include_router(api_router)
+    app.include_router(evaluation_catalog_v2.router)
+    app.include_router(evaluation_runs_v2.router)
     app.include_router(ws.router)
     logger.info("API application initialized with %s routers", len(api_router.routes))
     return app
