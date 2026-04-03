@@ -14,55 +14,74 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createEvalSuite } from "@/features/eval/api";
-import type { EvaluationCatalogResponseV2 } from "@/types/api";
+import { createEvalSuite, updateEvalSuite } from "@/features/eval/api";
+import type {
+  EvaluationCatalogResponseV2,
+  EvalSuiteItemSummaryV2,
+  EvalSuiteSummaryV2,
+  EvalSuiteVersionSummaryV2
+} from "@/types/api";
 
 type SuiteItemState = {
   id: string;
   itemKey: string;
   displayName: string;
+  specName: string;
   specVersionId: string;
   groupName: string;
   weight: string;
 };
 
-export function EvalSuiteCreateForm({ catalog }: { catalog: EvaluationCatalogResponseV2 }) {
+type EvalSuiteFormProps = {
+  catalog: EvaluationCatalogResponseV2;
+  initialValue?: EvalSuiteSummaryV2;
+  mode?: "create" | "edit";
+};
+
+export function EvalSuiteCreateForm({
+  catalog,
+  initialValue,
+  mode = "create"
+}: EvalSuiteFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const specVersionOptions = React.useMemo(
+  const specOptions = React.useMemo(
     () =>
-      catalog.specs.flatMap((spec) =>
-        spec.versions
-          .filter((version) => version.enabled)
-          .map((version) => ({
-            id: version.id,
-            itemKey: spec.name,
-            displayName: spec.display_name,
-            label: `${spec.display_name} · ${version.display_name}`,
-            versionName: version.version,
-            groupName: spec.capability_category ?? ""
-          }))
-      ),
+      catalog.specs
+        .map((spec) => ({
+          name: spec.name,
+          displayName: spec.display_name,
+          defaultGroupName: spec.capability_category ?? "",
+          versions: spec.versions.filter((version) => version.enabled)
+        }))
+        .filter((spec) => spec.versions.length > 0),
     [catalog.specs]
   );
 
-  const [name, setName] = React.useState("");
-  const [displayName, setDisplayName] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [capabilityGroup, setCapabilityGroup] = React.useState("基线评测");
-  const [version, setVersion] = React.useState("v1");
-  const [versionDisplayName, setVersionDisplayName] = React.useState("默认套件版本");
+  const managedVersion = React.useMemo(
+    () => getManagedSuiteVersion(initialValue),
+    [initialValue]
+  );
+
+  const [name, setName] = React.useState(initialValue?.name ?? "");
+  const [displayName, setDisplayName] = React.useState(initialValue?.display_name ?? "");
+  const [description, setDescription] = React.useState(initialValue?.description ?? "");
+  const [capabilityGroup, setCapabilityGroup] = React.useState(initialValue?.capability_group ?? "基线评测");
+  const [version, setVersion] = React.useState(managedVersion?.version ?? "v1");
+  const [versionDisplayName, setVersionDisplayName] = React.useState(
+    managedVersion?.display_name ?? "默认套件版本"
+  );
   const [items, setItems] = React.useState<SuiteItemState[]>(() =>
-    specVersionOptions.length ? [createItemFromOption(specVersionOptions[0])] : []
+    getInitialSuiteItems({ catalog, initialValue, specOptions })
   );
 
   React.useEffect(() => {
-    if (!items.length && specVersionOptions.length) {
-      setItems([createItemFromOption(specVersionOptions[0])]);
+    if (!items.length && specOptions.length) {
+      setItems([createItemFromSpec(specOptions[0])]);
     }
-  }, [items.length, specVersionOptions]);
+  }, [items.length, specOptions]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -79,59 +98,83 @@ export function EvalSuiteCreateForm({ catalog }: { catalog: EvaluationCatalogRes
 
     try {
       setSubmitting(true);
-      await createEvalSuite({
-        name: normalizeName(name),
-        display_name: displayName.trim(),
+      const versionPayload = {
+        version: version.trim(),
+        display_name: versionDisplayName.trim(),
         description: normalizeOptional(description),
-        capability_group: normalizeOptional(capabilityGroup),
-        initial_version: {
-          version: version.trim(),
-          display_name: versionDisplayName.trim(),
-          description: normalizeOptional(description),
-          enabled: true,
-          items: items.map((item, index) => ({
-            item_key: normalizeName(item.itemKey || item.displayName),
-            display_name: item.displayName.trim(),
-            spec_version_id: item.specVersionId,
-            position: index,
-            weight: parseWeight(item.weight),
-            group_name: normalizeOptional(item.groupName),
-            overrides_json: {},
-            enabled: true
-          }))
+        enabled: true,
+        items: items.map((item, index) => ({
+          item_key: normalizeName(item.itemKey || item.displayName),
+          display_name: item.displayName.trim(),
+          spec_version_id: item.specVersionId,
+          position: index,
+          weight: parseWeight(item.weight),
+          group_name: normalizeOptional(item.groupName),
+          overrides_json: {},
+          enabled: true
+        }))
+      };
+      if (mode === "edit") {
+        if (!initialValue || !managedVersion) {
+          throw new Error("缺少可编辑的评测套件版本。");
         }
-      });
+        await updateEvalSuite(initialValue.name, {
+          display_name: displayName.trim(),
+          description: normalizeOptional(description),
+          capability_group: normalizeOptional(capabilityGroup),
+          version: {
+            version_id: managedVersion.id,
+            ...versionPayload
+          }
+        });
+      } else {
+        await createEvalSuite({
+          name: normalizeName(name),
+          display_name: displayName.trim(),
+          description: normalizeOptional(description),
+          capability_group: normalizeOptional(capabilityGroup),
+          initial_version: versionPayload
+        });
+      }
       router.push("/model/eval?tab=catalog");
       router.refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "创建评测套件失败");
+      setError(submitError instanceof Error ? submitError.message : `${mode === "edit" ? "更新" : "创建"}评测套件失败`);
     } finally {
       setSubmitting(false);
     }
   }
 
   function handleAddItem() {
-    const fallback = specVersionOptions[0];
+    const fallback = specOptions[0];
     if (!fallback) {
       return;
     }
-    setItems((current) => [...current, createItemFromOption(fallback)]);
+    setItems((current) => [...current, createItemFromSpec(fallback)]);
   }
 
-  function handleItemSpecChange(itemId: string, specVersionId: string) {
-    const option = specVersionOptions.find((entry) => entry.id === specVersionId);
+  function handleItemSpecChange(itemId: string, specName: string) {
+    const spec = specOptions.find((entry) => entry.name === specName);
+    const defaultVersionId = spec?.versions.find((entry) => entry.is_recommended)?.id ?? spec?.versions[0]?.id ?? "";
     setItems((current) =>
       current.map((item) =>
         item.id === itemId
           ? {
               ...item,
-              specVersionId,
-              itemKey: option?.itemKey ?? item.itemKey,
-              displayName: item.displayName || option?.displayName || item.displayName,
-              groupName: option?.groupName ?? item.groupName
+              itemKey: spec?.name ?? item.itemKey,
+              specName,
+              specVersionId: defaultVersionId,
+              displayName: item.displayName.trim() ? item.displayName : spec?.displayName ?? item.displayName,
+              groupName: spec?.defaultGroupName ?? item.groupName
             }
           : item
       )
+    );
+  }
+
+  function handleItemVersionChange(itemId: string, specVersionId: string) {
+    setItems((current) =>
+      current.map((item) => (item.id === itemId ? { ...item, specVersionId } : item))
     );
   }
 
@@ -147,7 +190,12 @@ export function EvalSuiteCreateForm({ catalog }: { catalog: EvaluationCatalogRes
     <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="grid gap-6 md:grid-cols-2">
         <Field label="评测套件名称">
-          <Input onChange={(event) => setName(event.target.value)} placeholder="baseline_general" value={name} />
+          <Input
+            disabled={mode === "edit"}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="baseline_general"
+            value={name}
+          />
         </Field>
         <Field label="显示名称">
           <Input onChange={(event) => setDisplayName(event.target.value)} placeholder="通用基线评测" value={displayName} />
@@ -180,72 +228,90 @@ export function EvalSuiteCreateForm({ catalog }: { catalog: EvaluationCatalogRes
           <div>
             <div className="text-sm font-medium text-slate-100">评测项</div>
             <div className="mt-1 text-sm text-slate-400">
-              选择要纳入套件的评测类型版本，并按分组组织。
+              先选择评测类型，再选择对应版本，并按分组组织套件结构。
             </div>
           </div>
-          <Button disabled={!specVersionOptions.length} onClick={handleAddItem} type="button" variant="outline">
+          <Button disabled={!specOptions.length} onClick={handleAddItem} type="button" variant="outline">
             <Plus className="mr-2 h-4 w-4" />
             添加评测项
           </Button>
         </div>
 
-        {!specVersionOptions.length ? (
+        {!specOptions.length ? (
           <div className="rounded-xl border border-dashed border-slate-800/80 px-4 py-6 text-sm text-slate-500">
             当前没有可选的评测类型版本，请先创建 Eval Spec。
           </div>
         ) : null}
 
         <div className="space-y-4">
-          {items.map((item, index) => (
-            <div
-              className="grid gap-4 rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] p-4 md:grid-cols-[1.2fr_1fr_1fr_120px_auto]"
-              key={item.id}
-            >
-              <Field label={`评测类型版本 #${index + 1}`}>
-                <Select onValueChange={(value) => handleItemSpecChange(item.id, value)} value={item.specVersionId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择版本" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {specVersionOptions.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="显示名称">
-                <Input
-                  onChange={(event) => updateItem(item.id, { displayName: event.target.value })}
-                  value={item.displayName}
-                />
-              </Field>
-              <Field label="分组">
-                <Input
-                  onChange={(event) => updateItem(item.id, { groupName: event.target.value })}
-                  placeholder="如：学科 / 数学 / 推理"
-                  value={item.groupName}
-                />
-              </Field>
-              <Field label="权重">
-                <Input
-                  onChange={(event) => updateItem(item.id, { weight: event.target.value })}
-                  value={item.weight}
-                />
-              </Field>
-              <div className="flex items-end">
-                <Button
-                  disabled={items.length === 1}
-                  onClick={() => removeItem(item.id)}
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+          {items.map((item, index) => {
+            const selectedSpec = specOptions.find((option) => option.name === item.specName) ?? specOptions[0] ?? null;
+            const selectedVersions = selectedSpec?.versions ?? [];
+            return (
+              <div
+                className="grid gap-4 rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] p-4 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]"
+                key={item.id}
+              >
+                <Field label={`评测类型 #${index + 1}`}>
+                  <Select onValueChange={(value) => handleItemSpecChange(item.id, value)} value={item.specName}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择评测类型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {specOptions.map((option) => (
+                        <SelectItem key={option.name} value={option.name}>
+                          {option.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="版本">
+                  <Select onValueChange={(value) => handleItemVersionChange(item.id, value)} value={item.specVersionId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择版本" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedVersions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.display_name} · {option.version}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="显示名称">
+                  <Input
+                    onChange={(event) => updateItem(item.id, { displayName: event.target.value })}
+                    value={item.displayName}
+                  />
+                </Field>
+                <Field label="分组">
+                  <Input
+                    onChange={(event) => updateItem(item.id, { groupName: event.target.value })}
+                    placeholder="如：学科 / 数学 / 推理"
+                    value={item.groupName}
+                  />
+                </Field>
+                <Field label="权重">
+                  <Input
+                    onChange={(event) => updateItem(item.id, { weight: event.target.value })}
+                    value={item.weight}
+                  />
+                </Field>
+                <div className="flex items-end">
+                  <Button
+                    disabled={items.length === 1}
+                    onClick={() => removeItem(item.id)}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -256,8 +322,8 @@ export function EvalSuiteCreateForm({ catalog }: { catalog: EvaluationCatalogRes
       ) : null}
 
       <div className="flex justify-end">
-        <Button disabled={submitting || !specVersionOptions.length} type="submit">
-          {submitting ? "创建中..." : "创建评测套件"}
+        <Button disabled={submitting || !specOptions.length} type="submit">
+          {submitting ? `${mode === "edit" ? "保存" : "创建"}中...` : mode === "edit" ? "保存评测套件" : "创建评测套件"}
         </Button>
       </div>
     </form>
@@ -290,18 +356,65 @@ function parseWeight(value: string) {
   return parsed;
 }
 
-function createItemFromOption(option: {
-  id: string;
-  itemKey: string;
+function getManagedSuiteVersion(suite?: EvalSuiteSummaryV2): EvalSuiteVersionSummaryV2 | undefined {
+  return suite?.versions.find((version) => version.enabled) ?? suite?.versions[0];
+}
+
+function createItemFromSpec(spec: {
+  name: string;
   displayName: string;
-  groupName: string;
+  defaultGroupName: string;
+  versions: Array<{ id: string; is_recommended: boolean }>;
 }) {
   return {
     id: crypto.randomUUID(),
-    itemKey: option.itemKey,
-    displayName: option.displayName,
-    specVersionId: option.id,
-    groupName: option.groupName,
+    itemKey: spec.name,
+    displayName: spec.displayName,
+    specName: spec.name,
+    specVersionId: spec.versions.find((entry) => entry.is_recommended)?.id ?? spec.versions[0]?.id ?? "",
+    groupName: spec.defaultGroupName,
     weight: "1"
   } satisfies SuiteItemState;
+}
+
+function getInitialSuiteItems({
+  catalog,
+  initialValue,
+  specOptions
+}: {
+  catalog: EvaluationCatalogResponseV2;
+  initialValue?: EvalSuiteSummaryV2;
+  specOptions: Array<{
+    name: string;
+    displayName: string;
+    defaultGroupName: string;
+    versions: Array<{ id: string; is_recommended: boolean }>;
+  }>;
+}) {
+  const managedVersion = getManagedSuiteVersion(initialValue);
+  if (managedVersion?.items.length) {
+    return managedVersion.items.map((item) => hydrateItemFromSummary(item, catalog));
+  }
+  if (specOptions.length) {
+    return [createItemFromSpec(specOptions[0])];
+  }
+  return [];
+}
+
+function hydrateItemFromSummary(
+  item: EvalSuiteItemSummaryV2,
+  catalog: EvaluationCatalogResponseV2
+): SuiteItemState {
+  const spec = catalog.specs.find((entry) =>
+    entry.versions.some((version) => version.id === item.spec_version_id)
+  );
+  return {
+    id: crypto.randomUUID(),
+    itemKey: item.item_key,
+    displayName: item.display_name,
+    specName: spec?.name ?? "",
+    specVersionId: item.spec_version_id,
+    groupName: item.group_name ?? "",
+    weight: String(item.weight)
+  };
 }

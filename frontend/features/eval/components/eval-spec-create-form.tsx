@@ -13,12 +13,22 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createEvalSpec } from "@/features/eval/api";
-import type { EvaluationCatalogResponseV2 } from "@/types/api";
+import { createEvalSpec, updateEvalSpec } from "@/features/eval/api";
+import type { EvaluationCatalogResponseV2, EvalSpecSummaryV2, EvalSpecVersionSummaryV2 } from "@/types/api";
 
 const NONE_VALUE = "__none__";
 
-export function EvalSpecCreateForm({ catalog }: { catalog: EvaluationCatalogResponseV2 }) {
+type EvalSpecFormProps = {
+  catalog: EvaluationCatalogResponseV2;
+  initialValue?: EvalSpecSummaryV2;
+  mode?: "create" | "edit";
+};
+
+export function EvalSpecCreateForm({
+  catalog,
+  initialValue,
+  mode = "create"
+}: EvalSpecFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -34,24 +44,51 @@ export function EvalSpecCreateForm({ catalog }: { catalog: EvaluationCatalogResp
     [catalog.templates]
   );
 
-  const [name, setName] = React.useState("");
-  const [displayName, setDisplayName] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [capabilityGroup, setCapabilityGroup] = React.useState("综合");
-  const [capabilityCategory, setCapabilityCategory] = React.useState("通用");
-  const [tagsText, setTagsText] = React.useState("evalscope,builtin");
-  const [version, setVersion] = React.useState("builtin-v1");
-  const [versionDisplayName, setVersionDisplayName] = React.useState("内置版本");
-  const [engine, setEngine] = React.useState("evalscope");
-  const [executionMode, setExecutionMode] = React.useState("builtin");
-  const [engineBenchmarkName, setEngineBenchmarkName] = React.useState("");
-  const [sampleCount, setSampleCount] = React.useState("");
-  const [templateVersionId, setTemplateVersionId] = React.useState(NONE_VALUE);
-  const [judgePolicyId, setJudgePolicyId] = React.useState(NONE_VALUE);
-  const [engineConfigText, setEngineConfigText] = React.useState("{}");
-  const [scoringConfigText, setScoringConfigText] = React.useState("{}");
-  const [inputSchemaText, setInputSchemaText] = React.useState("{}");
-  const [outputSchemaText, setOutputSchemaText] = React.useState("{}");
+  const managedVersion = React.useMemo(
+    () => getManagedSpecVersion(initialValue),
+    [initialValue]
+  );
+
+  const [name, setName] = React.useState(initialValue?.name ?? "");
+  const [displayName, setDisplayName] = React.useState(initialValue?.display_name ?? "");
+  const [description, setDescription] = React.useState(initialValue?.description ?? "");
+  const [capabilityGroup, setCapabilityGroup] = React.useState(initialValue?.capability_group ?? "综合");
+  const [capabilityCategory, setCapabilityCategory] = React.useState(initialValue?.capability_category ?? "通用");
+  const [tagsText, setTagsText] = React.useState(
+    Array.isArray(initialValue?.tags_json) && initialValue?.tags_json.length
+      ? initialValue.tags_json.map((item) => String(item)).join(",")
+      : "evalscope,builtin"
+  );
+  const [version, setVersion] = React.useState(managedVersion?.version ?? "builtin-v1");
+  const [versionDisplayName, setVersionDisplayName] = React.useState(
+    managedVersion?.display_name ?? "内置版本"
+  );
+  const [engine, setEngine] = React.useState(managedVersion?.engine ?? "evalscope");
+  const [executionMode, setExecutionMode] = React.useState(managedVersion?.execution_mode ?? "builtin");
+  const [engineBenchmarkName, setEngineBenchmarkName] = React.useState(
+    managedVersion?.engine_benchmark_name ?? ""
+  );
+  const [sampleCount, setSampleCount] = React.useState(
+    managedVersion?.sample_count != null ? String(managedVersion.sample_count) : ""
+  );
+  const [templateVersionId, setTemplateVersionId] = React.useState(
+    managedVersion?.template_spec_version_id ?? NONE_VALUE
+  );
+  const [judgePolicyId, setJudgePolicyId] = React.useState(
+    managedVersion?.default_judge_policy_id ?? NONE_VALUE
+  );
+  const [engineConfigText, setEngineConfigText] = React.useState(
+    JSON.stringify(managedVersion?.engine_config_json ?? {}, null, 2)
+  );
+  const [scoringConfigText, setScoringConfigText] = React.useState(
+    JSON.stringify(managedVersion?.scoring_config_json ?? {}, null, 2)
+  );
+  const [inputSchemaText, setInputSchemaText] = React.useState(
+    JSON.stringify(initialValue?.input_schema_json ?? {}, null, 2)
+  );
+  const [outputSchemaText, setOutputSchemaText] = React.useState(
+    JSON.stringify(initialValue?.output_schema_json ?? {}, null, 2)
+  );
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -64,35 +101,63 @@ export function EvalSpecCreateForm({ catalog }: { catalog: EvaluationCatalogResp
 
     try {
       setSubmitting(true);
-      await createEvalSpec({
-        name: normalizeName(name),
+      const commonPayload = {
         display_name: displayName.trim(),
         description: normalizeOptional(description),
         capability_group: normalizeOptional(capabilityGroup),
         capability_category: normalizeOptional(capabilityCategory),
         tags_json: splitCsv(tagsText),
         input_schema_json: parseJsonObject(inputSchemaText, "输入 Schema"),
-        output_schema_json: parseJsonObject(outputSchemaText, "输出 Schema"),
-        initial_version: {
-          version: version.trim(),
-          display_name: versionDisplayName.trim(),
-          description: normalizeOptional(description),
-          engine: engine.trim(),
-          execution_mode: executionMode.trim(),
-          engine_benchmark_name: normalizeOptional(engineBenchmarkName),
-          engine_config_json: parseJsonObject(engineConfigText, "Engine 配置"),
-          scoring_config_json: parseJsonObject(scoringConfigText, "Scoring 配置"),
-          template_spec_version_id: templateVersionId === NONE_VALUE ? undefined : templateVersionId,
-          default_judge_policy_id: judgePolicyId === NONE_VALUE ? undefined : judgePolicyId,
-          sample_count: parseOptionalInteger(sampleCount, "样本量"),
-          enabled: true,
-          is_recommended: true
+        output_schema_json: parseJsonObject(outputSchemaText, "输出 Schema")
+      };
+      if (mode === "edit") {
+        if (!initialValue || !managedVersion) {
+          throw new Error("缺少可编辑的评测类型版本。");
         }
-      });
+        await updateEvalSpec(initialValue.name, {
+          ...commonPayload,
+          version: {
+            version_id: managedVersion.id,
+            version: version.trim(),
+            display_name: versionDisplayName.trim(),
+            description: normalizeOptional(description),
+            engine: engine.trim(),
+            execution_mode: executionMode.trim(),
+            engine_benchmark_name: normalizeOptional(engineBenchmarkName),
+            engine_config_json: parseJsonObject(engineConfigText, "Engine 配置"),
+            scoring_config_json: parseJsonObject(scoringConfigText, "Scoring 配置"),
+            template_spec_version_id: templateVersionId === NONE_VALUE ? undefined : templateVersionId,
+            default_judge_policy_id: judgePolicyId === NONE_VALUE ? undefined : judgePolicyId,
+            sample_count: parseOptionalInteger(sampleCount, "样本量"),
+            enabled: true,
+            is_recommended: true
+          }
+        });
+      } else {
+        await createEvalSpec({
+          name: normalizeName(name),
+          ...commonPayload,
+          initial_version: {
+            version: version.trim(),
+            display_name: versionDisplayName.trim(),
+            description: normalizeOptional(description),
+            engine: engine.trim(),
+            execution_mode: executionMode.trim(),
+            engine_benchmark_name: normalizeOptional(engineBenchmarkName),
+            engine_config_json: parseJsonObject(engineConfigText, "Engine 配置"),
+            scoring_config_json: parseJsonObject(scoringConfigText, "Scoring 配置"),
+            template_spec_version_id: templateVersionId === NONE_VALUE ? undefined : templateVersionId,
+            default_judge_policy_id: judgePolicyId === NONE_VALUE ? undefined : judgePolicyId,
+            sample_count: parseOptionalInteger(sampleCount, "样本量"),
+            enabled: true,
+            is_recommended: true
+          }
+        });
+      }
       router.push("/model/eval?tab=catalog");
       router.refresh();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "创建评测类型失败");
+      setError(submitError instanceof Error ? submitError.message : `${mode === "edit" ? "更新" : "创建"}评测类型失败`);
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +167,12 @@ export function EvalSpecCreateForm({ catalog }: { catalog: EvaluationCatalogResp
     <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="grid gap-6 md:grid-cols-2">
         <Field label="评测类型名称">
-          <Input onChange={(event) => setName(event.target.value)} placeholder="mmlu_cn" value={name} />
+          <Input
+            disabled={mode === "edit"}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="mmlu_cn"
+            value={name}
+          />
         </Field>
         <Field label="显示名称">
           <Input onChange={(event) => setDisplayName(event.target.value)} placeholder="MMLU 中文版" value={displayName} />
@@ -157,6 +227,7 @@ export function EvalSpecCreateForm({ catalog }: { catalog: EvaluationCatalogResp
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="builtin">builtin</SelectItem>
+              <SelectItem value="dataset">dataset</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -247,7 +318,7 @@ export function EvalSpecCreateForm({ catalog }: { catalog: EvaluationCatalogResp
 
       <div className="flex justify-end">
         <Button disabled={submitting} type="submit">
-          {submitting ? "创建中..." : "创建评测类型"}
+          {submitting ? `${mode === "edit" ? "保存" : "创建"}中...` : mode === "edit" ? "保存评测类型" : "创建评测类型"}
         </Button>
       </div>
     </form>
@@ -303,4 +374,12 @@ function parseOptionalInteger(value: string, label: string) {
     throw new Error(`${label} 必须是大于等于 0 的整数。`);
   }
   return parsed;
+}
+
+function getManagedSpecVersion(spec?: EvalSpecSummaryV2): EvalSpecVersionSummaryV2 | undefined {
+  return (
+    spec?.versions.find((version) => version.is_recommended && version.enabled) ??
+    spec?.versions.find((version) => version.enabled) ??
+    spec?.versions[0]
+  );
 }

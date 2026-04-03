@@ -1,5 +1,22 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -8,6 +25,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
+import { deleteEvalSpec, deleteEvalSuite } from "@/features/eval/api";
 import type { EvaluationCatalogResponseV2 } from "@/types/api";
 
 export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatalogResponseV2 }) {
@@ -26,13 +44,24 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
             return (
               <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none" key={suite.id}>
                 <CardHeader className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-base text-slate-50">{suite.display_name}</CardTitle>
-                    <Badge variant="outline">{suite.name}</Badge>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle className="text-base text-slate-50">{suite.display_name}</CardTitle>
+                        <Badge variant="outline">{suite.name}</Badge>
+                      </div>
+                      <p className="text-sm leading-6 text-slate-400">
+                        {suite.description || "当前套件没有额外描述。"}
+                      </p>
+                    </div>
+                    <CatalogActions
+                      deleteAction={() => deleteEvalSuite(suite.name)}
+                      deleteDescription={`删除后将移除 ${suite.display_name} 及其版本编排。若它仍被运行任务或排行榜引用，系统会拒绝删除。`}
+                      deleteLabel="删除套件"
+                      editHref={`/model/eval-suites/${encodeURIComponent(suite.name)}/edit`}
+                      title={suite.display_name}
+                    />
                   </div>
-                  <p className="text-sm leading-6 text-slate-400">
-                    {suite.description || "当前套件没有额外描述。"}
-                  </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">
@@ -84,6 +113,7 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                 <TableHead>推荐版本</TableHead>
                 <TableHead>执行引擎</TableHead>
                 <TableHead>样本量</TableHead>
+                <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -122,6 +152,15 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                         : "--"}
                     </TableCell>
                     <TableCell>{recommendedVersion?.sample_count ?? "--"}</TableCell>
+                    <TableCell className="text-right">
+                      <CatalogActions
+                        deleteAction={() => deleteEvalSpec(spec.name)}
+                        deleteDescription={`删除后将移除 ${spec.display_name} 及其版本。若它仍被套件、运行任务或排行榜引用，系统会拒绝删除。`}
+                        deleteLabel="删除类型"
+                        editHref={`/model/eval-specs/${encodeURIComponent(spec.name)}/edit`}
+                        title={spec.display_name}
+                      />
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -129,6 +168,86 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
           </Table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function CatalogActions({
+  editHref,
+  deleteAction,
+  deleteLabel,
+  deleteDescription,
+  title
+}: {
+  editHref: string;
+  deleteAction: () => Promise<void>;
+  deleteLabel: string;
+  deleteDescription: string;
+  title: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleDelete() {
+    try {
+      setPending(true);
+      setError(null);
+      await deleteAction();
+      setOpen(false);
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : `${deleteLabel}失败`);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Link className={buttonVariants({ size: "sm", variant: "outline" })} href={editHref}>
+        编辑
+      </Link>
+      <AlertDialog
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) {
+            setError(null);
+          }
+        }}
+        open={open}
+      >
+        <AlertDialogTrigger asChild>
+          <Button size="sm" variant="ghost">
+            删除
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除 {title}</AlertDialogTitle>
+            <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
+            {error ? (
+              <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+                {error}
+              </div>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-500 text-white hover:bg-rose-400"
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+            >
+              {pending ? "删除中..." : deleteLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

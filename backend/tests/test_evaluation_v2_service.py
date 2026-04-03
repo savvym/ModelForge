@@ -13,13 +13,21 @@ from nta_backend.models.modeling import Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
     EvalSpecCreate,
     EvalSpecVersionCreate,
+    EvalSpecUpdate,
+    EvalSpecVersionUpdate,
     EvalSuiteCreate,
     EvalSuiteItemCreate,
+    EvalSuiteItemUpdate,
     EvalSuiteVersionCreate,
+    EvalSuiteUpdate,
+    EvalSuiteVersionUpdate,
     EvaluationRunCreate,
     EvaluationTargetRef,
 )
-from nta_backend.services.evaluation_catalog_v2_service import EvaluationCatalogV2Service
+from nta_backend.services.evaluation_catalog_v2_service import (
+    CatalogConflictError,
+    EvaluationCatalogV2Service,
+)
 from nta_backend.services.evaluation_run_v2_service import (
     EvaluationRunV2Service,
     activity_execute_evaluation_run_item,
@@ -212,6 +220,223 @@ async def test_create_eval_spec_and_suite() -> None:
                 await session.execute(
                     delete(EvalSpec).where(EvalSpec.id == created_spec_id)
                 )
+            await session.commit()
+
+
+async def test_update_eval_spec_and_suite() -> None:
+    catalog_service = EvaluationCatalogV2Service()
+    created_spec_name = f"pytest_spec_{uuid4().hex[:8]}"
+    created_suite_name = f"pytest_suite_{uuid4().hex[:8]}"
+    created_spec_id = None
+    created_suite_id = None
+
+    try:
+        spec = await catalog_service.create_spec(
+            EvalSpecCreate(
+                name=created_spec_name,
+                display_name="Pytest Spec",
+                description="spec for pytest",
+                capability_group="综合",
+                capability_category="推理",
+                tags_json=["pytest", "evalscope"],
+                initial_version=EvalSpecVersionCreate(
+                    version="builtin-v1",
+                    display_name="Builtin V1",
+                    engine="evalscope",
+                    execution_mode="builtin",
+                    engine_benchmark_name="bbh",
+                    sample_count=42,
+                ),
+            )
+        )
+        created_spec_id = spec.id
+
+        updated_spec = await catalog_service.update_spec(
+            created_spec_name,
+            EvalSpecUpdate(
+                display_name="Pytest Spec Updated",
+                description="updated spec",
+                capability_group="基线",
+                capability_category="知识",
+                tags_json=["updated"],
+                input_schema_json={"question": "string"},
+                output_schema_json={"answer": "string"},
+                version=EvalSpecVersionUpdate(
+                    version_id=spec.versions[0].id,
+                    version="builtin-v2",
+                    display_name="Builtin V2",
+                    description="updated version",
+                    engine="evalscope",
+                    execution_mode="builtin",
+                    engine_benchmark_name="mmlu",
+                    engine_config_json={"subset_list": ["stem"]},
+                    scoring_config_json={"metric": "acc"},
+                    sample_count=64,
+                    enabled=True,
+                    is_recommended=True,
+                ),
+            ),
+        )
+        assert updated_spec.display_name == "Pytest Spec Updated"
+        assert updated_spec.capability_group == "基线"
+        assert updated_spec.input_schema_json == {"question": "string"}
+        assert updated_spec.versions[0].version == "builtin-v2"
+        assert updated_spec.versions[0].engine_benchmark_name == "mmlu"
+        assert updated_spec.versions[0].engine_config_json == {"subset_list": ["stem"]}
+
+        suite = await catalog_service.create_suite(
+            EvalSuiteCreate(
+                name=created_suite_name,
+                display_name="Pytest Suite",
+                description="suite for pytest",
+                capability_group="基线评测",
+                initial_version=EvalSuiteVersionCreate(
+                    version="v1",
+                    display_name="Version 1",
+                    items=[
+                        EvalSuiteItemCreate(
+                            item_key="pytest-item",
+                            display_name="Pytest Item",
+                            spec_version_id=updated_spec.versions[0].id,
+                            position=0,
+                            weight=1.5,
+                            group_name="推理",
+                        )
+                    ],
+                ),
+            )
+        )
+        created_suite_id = suite.id
+
+        updated_suite = await catalog_service.update_suite(
+            created_suite_name,
+            EvalSuiteUpdate(
+                display_name="Pytest Suite Updated",
+                description="updated suite",
+                capability_group="组合评测",
+                version=EvalSuiteVersionUpdate(
+                    version_id=suite.versions[0].id,
+                    version="v2",
+                    display_name="Version 2",
+                    description="updated suite version",
+                    enabled=True,
+                    items=[
+                        EvalSuiteItemUpdate(
+                            item_key="pytest-item-v2",
+                            display_name="Pytest Item V2",
+                            spec_version_id=updated_spec.versions[0].id,
+                            position=0,
+                            weight=2.0,
+                            group_name="知识",
+                        )
+                    ],
+                ),
+            ),
+        )
+        assert updated_suite.display_name == "Pytest Suite Updated"
+        assert updated_suite.capability_group == "组合评测"
+        assert updated_suite.versions[0].version == "v2"
+        assert updated_suite.versions[0].items[0].item_key == "pytest-item-v2"
+        assert updated_suite.versions[0].items[0].weight == 2.0
+    finally:
+        async with SessionLocal() as session:
+            if created_suite_id is not None:
+                await session.execute(delete(EvalSuite).where(EvalSuite.id == created_suite_id))
+            if created_spec_id is not None:
+                await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
+            await session.commit()
+
+
+async def test_delete_eval_spec_and_suite_with_reference_guards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog_service = EvaluationCatalogV2Service()
+    run_service = EvaluationRunV2Service()
+    created_spec_name = f"pytest_spec_{uuid4().hex[:8]}"
+    created_suite_name = f"pytest_suite_{uuid4().hex[:8]}"
+    created_spec_id = None
+    created_suite_id = None
+    provider_id = None
+    model_id = None
+    run_id = None
+
+    async def _fake_start_workflow(payload, workflow_id=None):
+        return workflow_id or f"evaluation-run-{payload.run_id}"
+
+    monkeypatch.setattr(
+        "nta_backend.core.temporal.start_evaluation_run_workflow",
+        _fake_start_workflow,
+    )
+
+    try:
+        spec = await catalog_service.create_spec(
+            EvalSpecCreate(
+                name=created_spec_name,
+                display_name="Delete Guard Spec",
+                initial_version=EvalSpecVersionCreate(
+                    version="builtin-v1",
+                    display_name="Builtin V1",
+                    engine="evalscope",
+                    execution_mode="builtin",
+                    engine_benchmark_name="bbh",
+                ),
+            )
+        )
+        created_spec_id = spec.id
+
+        suite = await catalog_service.create_suite(
+            EvalSuiteCreate(
+                name=created_suite_name,
+                display_name="Delete Guard Suite",
+                initial_version=EvalSuiteVersionCreate(
+                    version="v1",
+                    display_name="Version 1",
+                    items=[
+                        EvalSuiteItemCreate(
+                            item_key="delete-guard",
+                            display_name="Delete Guard Item",
+                            spec_version_id=spec.versions[0].id,
+                        )
+                    ],
+                ),
+            )
+        )
+        created_suite_id = suite.id
+
+        with pytest.raises(CatalogConflictError):
+            await catalog_service.delete_spec(created_spec_name)
+
+        provider_id, model_id = await _create_model_and_provider()
+        summary = await run_service.create_run(
+            EvaluationRunCreate(
+                target=EvaluationTargetRef(kind="suite", name=created_suite_name, version="v1"),
+                model_id=model_id,
+            )
+        )
+        run_id = summary.id
+
+        with pytest.raises(CatalogConflictError):
+            await catalog_service.delete_suite(created_suite_name)
+
+        async with SessionLocal() as session:
+            run = await session.get(EvaluationRun, run_id)
+            if run is not None:
+                await session.delete(run)
+            await session.commit()
+        run_id = None
+
+        await catalog_service.delete_suite(created_suite_name)
+        created_suite_id = None
+
+        await catalog_service.delete_spec(created_spec_name)
+        created_spec_id = None
+    finally:
+        await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)
+        async with SessionLocal() as session:
+            if created_suite_id is not None:
+                await session.execute(delete(EvalSuite).where(EvalSuite.id == created_suite_id))
+            if created_spec_id is not None:
+                await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
             await session.commit()
 
 

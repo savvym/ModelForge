@@ -25,8 +25,10 @@ import type {
   EvaluationRunDetailV2,
   EvaluationRunSummaryV2,
   EvalSpecCreateInputV2,
+  EvalSpecUpdateInputV2,
   EvalSpecSummaryV2,
   EvalSuiteCreateInputV2,
+  EvalSuiteUpdateInputV2,
   EvalSuiteSummaryV2,
   JudgePolicyCreateInputV2,
   JudgePolicySummaryV2,
@@ -200,6 +202,24 @@ export async function getEvaluationCatalog(
   return apiFetch<EvaluationCatalogResponseV2>("/api/v2/evaluation-catalog", { projectId });
 }
 
+export async function getEvaluationSpec(
+  name: string,
+  projectId?: string | null
+): Promise<EvalSpecSummaryV2> {
+  return apiFetch<EvalSpecSummaryV2>(`/api/v2/evaluation-catalog/specs/${encodeURIComponent(name)}`, {
+    projectId
+  });
+}
+
+export async function getEvaluationSuite(
+  name: string,
+  projectId?: string | null
+): Promise<EvalSuiteSummaryV2> {
+  return apiFetch<EvalSuiteSummaryV2>(`/api/v2/evaluation-catalog/suites/${encodeURIComponent(name)}`, {
+    projectId
+  });
+}
+
 export async function getEvaluationRuns(
   projectId?: string | null
 ): Promise<EvaluationRunSummaryV2[]> {
@@ -341,6 +361,23 @@ export async function createEvalSpec(
   });
 }
 
+export async function updateEvalSpec(
+  name: string,
+  payload: EvalSpecUpdateInputV2
+): Promise<EvalSpecSummaryV2> {
+  return apiFetch<EvalSpecSummaryV2>(`/api/v2/evaluation-catalog/specs/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteEvalSpec(name: string): Promise<void> {
+  return apiFetch<void>(`/api/v2/evaluation-catalog/specs/${encodeURIComponent(name)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function createEvalSuite(
   payload: EvalSuiteCreateInputV2
 ): Promise<EvalSuiteSummaryV2> {
@@ -348,6 +385,23 @@ export async function createEvalSuite(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateEvalSuite(
+  name: string,
+  payload: EvalSuiteUpdateInputV2
+): Promise<EvalSuiteSummaryV2> {
+  return apiFetch<EvalSuiteSummaryV2>(`/api/v2/evaluation-catalog/suites/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteEvalSuite(name: string): Promise<void> {
+  return apiFetch<void>(`/api/v2/evaluation-catalog/suites/${encodeURIComponent(name)}`, {
+    method: "DELETE"
   });
 }
 

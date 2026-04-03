@@ -17,6 +17,11 @@ class EvalSpecVersionSummary(BaseModel):
     engine: str
     execution_mode: str
     engine_benchmark_name: str | None = None
+    engine_config_json: dict[str, Any] = Field(default_factory=dict)
+    scoring_config_json: dict[str, Any] = Field(default_factory=dict)
+    dataset_source_uri: str | None = None
+    template_spec_version_id: UUID | None = None
+    default_judge_policy_id: UUID | None = None
     enabled: bool
     is_recommended: bool
     sample_count: int | None = None
@@ -33,6 +38,8 @@ class EvalSpecSummary(BaseModel):
     capability_category: str | None = None
     status: str
     tags_json: list[Any] = Field(default_factory=list)
+    input_schema_json: dict[str, Any] = Field(default_factory=dict)
+    output_schema_json: dict[str, Any] = Field(default_factory=dict)
     versions: list[EvalSpecVersionSummary] = Field(default_factory=list)
 
 
@@ -102,6 +109,35 @@ class EvalSpecCreate(BaseModel):
     initial_version: EvalSpecVersionCreate
 
 
+class EvalSpecVersionUpdate(BaseModel):
+    version_id: UUID
+    version: str
+    display_name: str
+    description: str | None = None
+    engine: str
+    execution_mode: str
+    engine_benchmark_name: str | None = None
+    engine_config_json: dict[str, Any] = Field(default_factory=dict)
+    scoring_config_json: dict[str, Any] = Field(default_factory=dict)
+    dataset_source_uri: str | None = None
+    template_spec_version_id: UUID | None = None
+    default_judge_policy_id: UUID | None = None
+    sample_count: int | None = None
+    enabled: bool = True
+    is_recommended: bool = True
+
+
+class EvalSpecUpdate(BaseModel):
+    display_name: str
+    description: str | None = None
+    capability_group: str | None = None
+    capability_category: str | None = None
+    tags_json: list[Any] = Field(default_factory=list)
+    input_schema_json: dict[str, Any] = Field(default_factory=dict)
+    output_schema_json: dict[str, Any] = Field(default_factory=dict)
+    version: EvalSpecVersionUpdate
+
+
 class EvalSuiteItemCreate(BaseModel):
     item_key: str
     display_name: str
@@ -133,6 +169,39 @@ class EvalSuiteCreate(BaseModel):
     description: str | None = None
     capability_group: str | None = None
     initial_version: EvalSuiteVersionCreate
+
+
+class EvalSuiteItemUpdate(BaseModel):
+    item_key: str
+    display_name: str
+    spec_version_id: UUID
+    position: int = 0
+    weight: float = 1.0
+    group_name: str | None = None
+    overrides_json: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class EvalSuiteVersionUpdate(BaseModel):
+    version_id: UUID
+    version: str
+    display_name: str
+    description: str | None = None
+    enabled: bool = True
+    items: list[EvalSuiteItemUpdate] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_items(self) -> "EvalSuiteVersionUpdate":
+        if not self.items:
+            raise ValueError("Suite version must include at least one item.")
+        return self
+
+
+class EvalSuiteUpdate(BaseModel):
+    display_name: str
+    description: str | None = None
+    capability_group: str | None = None
+    version: EvalSuiteVersionUpdate
 
 
 class TemplateSpecVersionSummary(BaseModel):

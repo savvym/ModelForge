@@ -12,6 +12,9 @@ from nta_backend.models.evaluation_v2 import (
     EvalSuite,
     EvalSuiteItem,
     EvalSuiteVersion,
+    EvaluationLeaderboard,
+    EvaluationRun,
+    EvaluationRunItem,
     JudgePolicy,
     TemplateSpec,
     TemplateSpecVersion,
@@ -20,13 +23,19 @@ from nta_backend.schemas.evaluation_v2 import (
     EvaluationCatalogResponse,
     EvalSpecCreate,
     EvalSpecSummary,
+    EvalSpecUpdate,
     EvalSuiteCreate,
     EvalSuiteSummary,
+    EvalSuiteUpdate,
     JudgePolicyCreate,
     JudgePolicySummary,
     TemplateSpecCreate,
     TemplateSpecSummary,
 )
+
+
+class CatalogConflictError(Exception):
+    pass
 
 
 def _serialize_spec(record: EvalSpec) -> EvalSpecSummary:
@@ -195,6 +204,141 @@ class EvaluationCatalogV2Service:
                 raise ValueError("创建评测类型后无法重新加载记录。")
             return _serialize_spec(created)
 
+    async def update_spec(self, name: str, payload: EvalSpecUpdate) -> EvalSpecSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            spec = await _get_spec_record(session, project_id=project_id, name=name)
+            if spec is None:
+                raise KeyError(name)
+
+            version = next(
+                (item for item in spec.versions if item.id == payload.version.version_id),
+                None,
+            )
+            if version is None:
+                raise ValueError("指定的评测版本不存在。")
+            if payload.version.template_spec_version_id is not None:
+                await _ensure_template_version_available(
+                    session,
+                    project_id=project_id,
+                    template_spec_version_id=payload.version.template_spec_version_id,
+                )
+            if payload.version.default_judge_policy_id is not None:
+                await _ensure_judge_policy_available(
+                    session,
+                    project_id=project_id,
+                    judge_policy_id=payload.version.default_judge_policy_id,
+                )
+
+            version_name = payload.version.version.strip()
+            version_display_name = payload.version.display_name.strip()
+            if not payload.display_name.strip() or not version_name or not version_display_name:
+                raise ValueError("评测类型显示名称、版本号和版本显示名称不能为空。")
+            duplicate_version = await session.execute(
+                select(EvalSpecVersion.id).where(
+                    EvalSpecVersion.spec_id == spec.id,
+                    EvalSpecVersion.version == version_name,
+                    EvalSpecVersion.id != version.id,
+                )
+            )
+            if duplicate_version.scalar_one_or_none() is not None:
+                raise ValueError("同一评测类型下已存在相同版本号。")
+
+            spec.display_name = payload.display_name.strip()
+            spec.description = payload.description
+            spec.capability_group = payload.capability_group
+            spec.capability_category = payload.capability_category
+            spec.tags_json = list(payload.tags_json)
+            spec.input_schema_json = dict(payload.input_schema_json)
+            spec.output_schema_json = dict(payload.output_schema_json)
+
+            version.version = version_name
+            version.display_name = version_display_name
+            version.description = payload.version.description
+            version.engine = payload.version.engine.strip()
+            version.execution_mode = payload.version.execution_mode.strip()
+            version.engine_benchmark_name = payload.version.engine_benchmark_name
+            version.engine_config_json = dict(payload.version.engine_config_json)
+            version.scoring_config_json = dict(payload.version.scoring_config_json)
+            version.dataset_source_uri = payload.version.dataset_source_uri
+            version.template_spec_version_id = payload.version.template_spec_version_id
+            version.default_judge_policy_id = payload.version.default_judge_policy_id
+            version.sample_count = payload.version.sample_count
+            version.enabled = payload.version.enabled
+            version.is_recommended = payload.version.is_recommended
+
+            if version.is_recommended:
+                for item in spec.versions:
+                    if item.id != version.id:
+                        item.is_recommended = False
+
+            await session.commit()
+
+            rows = await _load_specs(session, project_id=project_id, name=spec.name)
+            updated = next((item for item in rows if item.id == spec.id), None)
+            if updated is None:
+                raise ValueError("更新评测类型后无法重新加载记录。")
+            return _serialize_spec(updated)
+
+    async def delete_spec(self, name: str) -> None:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            spec = await _get_spec_record(session, project_id=project_id, name=name)
+            if spec is None:
+                raise KeyError(name)
+
+            version_ids = [version.id for version in spec.versions]
+            if version_ids:
+                suite_item_ref = await session.execute(
+                    select(EvalSuiteItem.id)
+                    .where(EvalSuiteItem.spec_version_id.in_(version_ids))
+                    .limit(1)
+                )
+                if suite_item_ref.scalar_one_or_none() is not None:
+                    raise CatalogConflictError("当前评测类型仍被评测套件引用，无法删除。")
+
+            run_ref = await session.execute(
+                select(EvaluationRun.id)
+                .where(
+                    or_(
+                        EvaluationRun.source_spec_id == spec.id,
+                        EvaluationRun.source_spec_version_id.in_(version_ids),
+                    )
+                )
+                .limit(1)
+            )
+            if run_ref.scalar_one_or_none() is not None:
+                raise CatalogConflictError("当前评测类型已有评测任务记录，无法删除。")
+
+            run_item_ref = await session.execute(
+                select(EvaluationRunItem.id)
+                .where(
+                    or_(
+                        EvaluationRunItem.spec_id == spec.id,
+                        EvaluationRunItem.spec_version_id.in_(version_ids),
+                    )
+                )
+                .limit(1)
+            )
+            if run_item_ref.scalar_one_or_none() is not None:
+                raise CatalogConflictError("当前评测类型已有评测任务明细记录，无法删除。")
+
+            leaderboard_ref = await session.execute(
+                select(EvaluationLeaderboard.id)
+                .where(
+                    or_(
+                        EvaluationLeaderboard.source_spec_id == spec.id,
+                        EvaluationLeaderboard.source_spec_version_id.in_(version_ids),
+                    )
+                )
+                .limit(1)
+            )
+            if leaderboard_ref.scalar_one_or_none() is not None:
+                raise CatalogConflictError("当前评测类型仍被排行榜引用，无法删除。")
+
+            await session.delete(spec)
+            await session.commit()
+
     async def create_judge_policy(self, payload: JudgePolicyCreate) -> JudgePolicySummary:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
@@ -291,6 +435,120 @@ class EvaluationCatalogV2Service:
                 raise ValueError("创建评测套件后无法重新加载记录。")
             return _serialize_suite(created)
 
+    async def update_suite(self, name: str, payload: EvalSuiteUpdate) -> EvalSuiteSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            suite = await _get_suite_record(session, project_id=project_id, name=name)
+            if suite is None:
+                raise KeyError(name)
+
+            version = next(
+                (item for item in suite.versions if item.id == payload.version.version_id),
+                None,
+            )
+            if version is None:
+                raise ValueError("指定的套件版本不存在。")
+
+            version_name = payload.version.version.strip()
+            version_display_name = payload.version.display_name.strip()
+            if not payload.display_name.strip() or not version_name or not version_display_name:
+                raise ValueError("评测套件显示名称、版本号和版本显示名称不能为空。")
+            duplicate_version = await session.execute(
+                select(EvalSuiteVersion.id).where(
+                    EvalSuiteVersion.suite_id == suite.id,
+                    EvalSuiteVersion.version == version_name,
+                    EvalSuiteVersion.id != version.id,
+                )
+            )
+            if duplicate_version.scalar_one_or_none() is not None:
+                raise ValueError("同一评测套件下已存在相同版本号。")
+
+            suite.display_name = payload.display_name.strip()
+            suite.description = payload.description
+            suite.capability_group = payload.capability_group
+
+            version.version = version_name
+            version.display_name = version_display_name
+            version.description = payload.version.description
+            version.enabled = payload.version.enabled
+
+            version.items.clear()
+            await session.flush()
+
+            seen_item_keys: set[str] = set()
+            for index, item in enumerate(payload.version.items):
+                item_key = item.item_key.strip()
+                item_display_name = item.display_name.strip()
+                if not item_key or not item_display_name:
+                    raise ValueError("评测套件中的 item_key 和 display_name 不能为空。")
+                if item_key in seen_item_keys:
+                    raise ValueError(f"Suite item key 重复：{item_key}")
+                seen_item_keys.add(item_key)
+                if item.weight <= 0:
+                    raise ValueError("评测套件中的权重必须大于 0。")
+                await _ensure_spec_version_available(
+                    session,
+                    project_id=project_id,
+                    spec_version_id=item.spec_version_id,
+                )
+                version.items.append(
+                    EvalSuiteItem(
+                        item_key=item_key,
+                        display_name=item_display_name,
+                        spec_version_id=item.spec_version_id,
+                        position=item.position if item.position >= 0 else index,
+                        weight=item.weight,
+                        group_name=item.group_name,
+                        overrides_json=dict(item.overrides_json),
+                        enabled=item.enabled,
+                    )
+                )
+
+            await session.commit()
+
+            rows = await _load_suites(session, project_id=project_id, name=suite.name)
+            updated = next((item for item in rows if item.id == suite.id), None)
+            if updated is None:
+                raise ValueError("更新评测套件后无法重新加载记录。")
+            return _serialize_suite(updated)
+
+    async def delete_suite(self, name: str) -> None:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            suite = await _get_suite_record(session, project_id=project_id, name=name)
+            if suite is None:
+                raise KeyError(name)
+
+            version_ids = [version.id for version in suite.versions]
+            run_ref = await session.execute(
+                select(EvaluationRun.id)
+                .where(
+                    or_(
+                        EvaluationRun.source_suite_id == suite.id,
+                        EvaluationRun.source_suite_version_id.in_(version_ids),
+                    )
+                )
+                .limit(1)
+            )
+            if run_ref.scalar_one_or_none() is not None:
+                raise CatalogConflictError("当前评测套件已有评测任务记录，无法删除。")
+
+            leaderboard_ref = await session.execute(
+                select(EvaluationLeaderboard.id)
+                .where(
+                    or_(
+                        EvaluationLeaderboard.source_suite_id == suite.id,
+                        EvaluationLeaderboard.source_suite_version_id.in_(version_ids),
+                    )
+                )
+                .limit(1)
+            )
+            if leaderboard_ref.scalar_one_or_none() is not None:
+                raise CatalogConflictError("当前评测套件仍被排行榜引用，无法删除。")
+
+            await session.delete(suite)
+            await session.commit()
+
 
 async def _load_specs(
     session: AsyncSession,
@@ -307,6 +565,16 @@ async def _load_specs(
     if name:
         query = query.where(EvalSpec.name == name.strip())
     return (await session.execute(query)).scalars().all()
+
+
+async def _get_spec_record(
+    session: AsyncSession,
+    *,
+    project_id,
+    name: str,
+) -> EvalSpec | None:
+    rows = await _load_specs(session, project_id=project_id, name=name)
+    return rows[0] if rows else None
 
 
 async def _load_suites(
@@ -326,6 +594,16 @@ async def _load_suites(
     if name:
         query = query.where(EvalSuite.name == name.strip())
     return (await session.execute(query)).scalars().all()
+
+
+async def _get_suite_record(
+    session: AsyncSession,
+    *,
+    project_id,
+    name: str,
+) -> EvalSuite | None:
+    rows = await _load_suites(session, project_id=project_id, name=name)
+    return rows[0] if rows else None
 
 
 async def _load_templates(

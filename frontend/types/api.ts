@@ -485,6 +485,11 @@ export interface EvalSpecVersionSummaryV2 {
   engine: string;
   execution_mode: string;
   engine_benchmark_name?: string | null;
+  engine_config_json: Record<string, unknown>;
+  scoring_config_json: Record<string, unknown>;
+  dataset_source_uri?: string | null;
+  template_spec_version_id?: string | null;
+  default_judge_policy_id?: string | null;
   enabled: boolean;
   is_recommended: boolean;
   sample_count?: number | null;
@@ -499,6 +504,8 @@ export interface EvalSpecSummaryV2 {
   capability_category?: string | null;
   status: string;
   tags_json: unknown[];
+  input_schema_json: Record<string, unknown>;
+  output_schema_json: Record<string, unknown>;
   versions: EvalSpecVersionSummaryV2[];
 }
 
@@ -786,6 +793,35 @@ export interface EvalSpecCreateInputV2 {
   initial_version: EvalSpecVersionCreateInputV2;
 }
 
+export interface EvalSpecVersionUpdateInputV2 {
+  version_id: string;
+  version: string;
+  display_name: string;
+  description?: string | null;
+  engine: string;
+  execution_mode: string;
+  engine_benchmark_name?: string | null;
+  engine_config_json?: Record<string, unknown>;
+  scoring_config_json?: Record<string, unknown>;
+  dataset_source_uri?: string | null;
+  template_spec_version_id?: string | null;
+  default_judge_policy_id?: string | null;
+  sample_count?: number | null;
+  enabled?: boolean;
+  is_recommended?: boolean;
+}
+
+export interface EvalSpecUpdateInputV2 {
+  display_name: string;
+  description?: string | null;
+  capability_group?: string | null;
+  capability_category?: string | null;
+  tags_json?: unknown[];
+  input_schema_json?: Record<string, unknown>;
+  output_schema_json?: Record<string, unknown>;
+  version: EvalSpecVersionUpdateInputV2;
+}
+
 export interface EvalSuiteItemCreateInputV2 {
   item_key: string;
   display_name: string;
@@ -811,6 +847,33 @@ export interface EvalSuiteCreateInputV2 {
   description?: string | null;
   capability_group?: string | null;
   initial_version: EvalSuiteVersionCreateInputV2;
+}
+
+export interface EvalSuiteItemUpdateInputV2 {
+  item_key: string;
+  display_name: string;
+  spec_version_id: string;
+  position?: number;
+  weight?: number;
+  group_name?: string | null;
+  overrides_json?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface EvalSuiteVersionUpdateInputV2 {
+  version_id: string;
+  version: string;
+  display_name: string;
+  description?: string | null;
+  enabled?: boolean;
+  items: EvalSuiteItemUpdateInputV2[];
+}
+
+export interface EvalSuiteUpdateInputV2 {
+  display_name: string;
+  description?: string | null;
+  capability_group?: string | null;
+  version: EvalSuiteVersionUpdateInputV2;
 }
 
 export interface TemplateSpecCreateInputV2 {
