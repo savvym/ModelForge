@@ -366,12 +366,7 @@ class NTAV2OpenAICompatibleModelAPI(ModelAPI):
             timeout_s=config.timeout or self.timeout_s,
         )
         if error:
-            return ModelOutput(
-                model=self.model_name,
-                error=error,
-                time=latency_ms / 1000,
-                usage=usage,
-            )
+            raise RuntimeError(error)
         return ModelOutput.from_content(model=self.model_name, content=completion, error=None).model_copy(
             update={
                 "usage": usage,

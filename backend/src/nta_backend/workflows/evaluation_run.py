@@ -23,14 +23,14 @@ class EvaluationRunWorkflowInput:
 class EvaluationRunWorkflow:
     @workflow.run
     async def run(self, payload: EvaluationRunWorkflowInput) -> dict:
-        items = await workflow.execute_activity(
+        item_ids = await workflow.execute_activity(
             list_evaluation_run_items,
             {"run_id": payload.run_id},
             start_to_close_timeout=timedelta(minutes=5),
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
         child_handles = []
-        for item_id in items.get("item_ids", []):
+        for item_id in item_ids:
             child_handles.append(
                 await workflow.start_child_workflow(
                     EvaluationRunItemWorkflow.run,
@@ -39,8 +39,8 @@ class EvaluationRunWorkflow:
                     cancellation_type=workflow.ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED,
                 )
             )
-        results = await asyncio.gather(*(handle.result() for handle in child_handles), return_exceptions=True)
-        for item_id, result in zip(items.get("item_ids", []), results, strict=False):
+        results = await asyncio.gather(*child_handles, return_exceptions=True)
+        for item_id, result in zip(item_ids, results, strict=False):
             if isinstance(result, Exception):
                 workflow.logger.error(
                     "Evaluation run item workflow failed",

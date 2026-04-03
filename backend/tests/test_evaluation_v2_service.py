@@ -364,3 +364,47 @@ async def test_cancelled_run_short_circuits_item_execution(
         assert detail.items[0].status == "cancelled"
     finally:
         await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)
+
+
+async def test_cancel_run_finalizes_when_temporal_workflow_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = EvaluationRunV2Service()
+
+    async def _fake_start_workflow(payload, workflow_id=None):
+        return workflow_id or f"evaluation-run-{payload.run_id}"
+
+    async def _fake_cancel_workflow_execution(workflow_id: str) -> None:
+        raise RuntimeError(f"workflow not found for ID: {workflow_id}")
+
+    monkeypatch.setattr(
+        "nta_backend.core.temporal.start_evaluation_run_workflow",
+        _fake_start_workflow,
+    )
+    monkeypatch.setattr(
+        "nta_backend.core.temporal.cancel_workflow_execution",
+        _fake_cancel_workflow_execution,
+    )
+
+    provider_id = None
+    model_id = None
+    run_id = None
+    try:
+        provider_id, model_id = await _create_model_and_provider()
+        summary = await service.create_run(
+            EvaluationRunCreate(
+                target=EvaluationTargetRef(kind="spec", name="arc", version="builtin-v1"),
+                model_id=model_id,
+            )
+        )
+        run_id = summary.id
+
+        response = await service.cancel_run(str(run_id))
+        assert response.status == "cancelled"
+
+        detail = await service.get_run(str(run_id))
+        assert detail.status == "cancelled"
+        assert len(detail.items) == 1
+        assert detail.items[0].status == "cancelled"
+    finally:
+        await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)

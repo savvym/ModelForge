@@ -91,6 +91,10 @@ def _progress_percent(done: int | None, total: int | None) -> tuple[int | None, 
     return normalized_done, total
 
 
+def _is_workflow_not_found_error(exc: Exception) -> bool:
+    return "workflow not found" in str(exc).lower()
+
+
 def _serialize_metric(metric: EvaluationRunMetric) -> EvaluationRunMetricResponse:
     return EvaluationRunMetricResponse(
         metric_name=metric.metric_name,
@@ -210,6 +214,116 @@ async def _persist_run_progress(run_id: UUID) -> None:
             1 for status in statuses if status in {"completed", "failed", "cancelled"}
         )
         await session.commit()
+
+
+async def _force_finalize_run_terminal(
+    run_id: UUID,
+    *,
+    item_status: str,
+    run_error_message: str | None = None,
+    item_error_message: str | None = None,
+) -> None:
+    terminal_item_statuses = {"completed", "failed", "cancelled"}
+    if item_status not in terminal_item_statuses:
+        raise ValueError(f"Unsupported terminal item status: {item_status}")
+
+    async with SessionLocal() as session:
+        run = await session.get(EvaluationRun, run_id)
+        if run is None:
+            return
+        now = _utc_now()
+        item_rows = (
+            await session.execute(
+                select(EvaluationRunItem)
+                .where(EvaluationRunItem.run_id == run_id)
+                .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+            )
+        ).scalars().all()
+        for item in item_rows:
+            if item.status in terminal_item_statuses:
+                continue
+            item.status = item_status
+            item.finished_at = item.finished_at or now
+            if item_status == "failed":
+                item.error_message = (item_error_message or run_error_message or "Temporal workflow not found.")[
+                    :500
+                ]
+        if item_status == "failed":
+            run.error_message = (run_error_message or "Temporal workflow not found.")[:500]
+        await session.commit()
+
+    await _persist_run_progress(run_id)
+    await aggregate_run_summary(run_id=str(run_id))
+
+
+async def _reconcile_non_terminal_run(run_id: UUID) -> None:
+    async with SessionLocal() as session:
+        run = await session.get(EvaluationRun, run_id)
+        if run is None or run.status in {"completed", "failed", "cancelled"}:
+            return
+        workflow_id = run.temporal_workflow_id
+        cancel_requested = bool(run.cancel_requested or run.status == "cancelling")
+
+    async def _has_non_terminal_items() -> bool:
+        async with SessionLocal() as session:
+            rows = await session.execute(
+                select(EvaluationRunItem.status).where(EvaluationRunItem.run_id == run_id)
+            )
+            return any(status not in {"completed", "failed", "cancelled"} for status in rows.scalars().all())
+
+    if not workflow_id:
+        await _force_finalize_run_terminal(
+            run_id,
+            item_status="cancelled" if cancel_requested else "failed",
+            run_error_message=None if cancel_requested else "Temporal workflow id is missing.",
+            item_error_message=None if cancel_requested else "Temporal workflow id is missing.",
+        )
+        return
+
+    from nta_backend.core.temporal import get_workflow_execution_state
+
+    try:
+        state = await get_workflow_execution_state(workflow_id)
+    except Exception as exc:  # noqa: BLE001
+        if not _is_workflow_not_found_error(exc):
+            return
+        await _force_finalize_run_terminal(
+            run_id,
+            item_status="cancelled" if cancel_requested else "failed",
+            run_error_message=None if cancel_requested else "Temporal workflow not found.",
+            item_error_message=None if cancel_requested else "Temporal workflow not found.",
+        )
+        return
+
+    if not state.is_terminal:
+        return
+
+    if state.status in {"cancelled", "terminated"}:
+        await _force_finalize_run_terminal(run_id, item_status="cancelled")
+        return
+    if state.status in {"failed", "timed_out"}:
+        message = state.failure_message or f"Temporal workflow {state.status}."
+        await _force_finalize_run_terminal(
+            run_id,
+            item_status="failed",
+            run_error_message=message,
+            item_error_message=message,
+        )
+        return
+    if state.status == "completed":
+        if await _has_non_terminal_items():
+            await _force_finalize_run_terminal(
+                run_id,
+                item_status="cancelled" if cancel_requested else "failed",
+                run_error_message=(
+                    "Temporal workflow completed before all evaluation items reached a terminal state."
+                ),
+                item_error_message=(
+                    "Temporal workflow completed before this evaluation item reached a terminal state."
+                ),
+            )
+            return
+        await aggregate_run_summary(run_id=str(run_id))
 
 
 async def _persist_item_progress(item_id: UUID, *, progress_done: int, progress_total: int) -> None:
@@ -596,12 +710,25 @@ class EvaluationRunV2Service:
                 .where(EvaluationRun.project_id == project_id)
                 .order_by(EvaluationRun.created_at.desc(), EvaluationRun.id.desc())
             )
+            runs = rows.scalars().all()
+            for run in runs:
+                if run.status not in {"completed", "failed", "cancelled"}:
+                    await _reconcile_non_terminal_run(run.id)
+            session.expire_all()
+            rows = await session.execute(
+                select(EvaluationRun)
+                .where(EvaluationRun.project_id == project_id)
+                .order_by(EvaluationRun.created_at.desc(), EvaluationRun.id.desc())
+            )
             return [_serialize_run_summary(run) for run in rows.scalars().all()]
 
     async def get_run(self, run_id: str) -> EvaluationRunDetail:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
             run = await _get_run_or_raise(session, project_id=project_id, run_id=UUID(run_id))
+            if run.status not in {"completed", "failed", "cancelled"}:
+                await _reconcile_non_terminal_run(run.id)
+                await session.refresh(run)
             metric_rows = (
                 await session.execute(
                     select(EvaluationRunMetric)
@@ -735,11 +862,13 @@ class EvaluationRunV2Service:
         return _serialize_run_summary(run)
 
     async def cancel_run(self, run_id: str) -> EvaluationRunCancelResponse:
+        run_uuid = UUID(run_id)
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            run = await _get_run_or_raise(session, project_id=project_id, run_id=UUID(run_id))
+            run = await _get_run_or_raise(session, project_id=project_id, run_id=run_uuid)
             if run.status in {"completed", "failed", "cancelled"}:
                 raise ValueError("当前任务已结束，无法取消。")
+            workflow_id = run.temporal_workflow_id
             run.cancel_requested = True
             run.status = "cancelling"
             session.add(
@@ -754,7 +883,28 @@ class EvaluationRunV2Service:
                 )
             )
             await session.commit()
-        return EvaluationRunCancelResponse(run_id=UUID(run_id), status="cancelling")
+
+        status = "cancelling"
+        if workflow_id:
+            from nta_backend.core.temporal import cancel_workflow_execution
+
+            try:
+                await cancel_workflow_execution(workflow_id)
+            except Exception as exc:  # noqa: BLE001
+                if _is_workflow_not_found_error(exc):
+                    await _force_finalize_run_terminal(run_uuid, item_status="cancelled")
+                    status = "cancelled"
+        else:
+            await _force_finalize_run_terminal(run_uuid, item_status="cancelled")
+            status = "cancelled"
+
+        if status == "cancelling":
+            await _reconcile_non_terminal_run(run_uuid)
+            async with SessionLocal() as session:
+                latest = await session.get(EvaluationRun, run_uuid)
+                if latest is not None and latest.status in {"completed", "failed", "cancelled"}:
+                    status = latest.status
+        return EvaluationRunCancelResponse(run_id=run_uuid, status=status)
 
     async def delete_run(self, run_id: str) -> None:
         async with SessionLocal() as session:

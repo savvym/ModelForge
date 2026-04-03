@@ -46,6 +46,5 @@ async def aggregate_evaluation_run(payload: dict[str, str]) -> dict[str, str]:
 
 
 @activity.defn(name="list_evaluation_run_items")
-async def list_evaluation_run_items(payload: dict[str, str]) -> dict[str, object]:
-    item_ids = await list_evaluation_run_item_ids(run_id=str(payload["run_id"]))
-    return {"run_id": str(payload["run_id"]), "item_ids": item_ids}
+async def list_evaluation_run_items(payload: dict[str, str]) -> list[str]:
+    return await list_evaluation_run_item_ids(run_id=str(payload["run_id"]))
