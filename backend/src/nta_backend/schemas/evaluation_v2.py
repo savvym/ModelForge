@@ -25,6 +25,7 @@ class EvalSpecVersionSummary(BaseModel):
     enabled: bool
     is_recommended: bool
     sample_count: int | None = None
+    dataset_files: list["EvalSpecDatasetFileSummary"] = Field(default_factory=list)
 
 
 class EvalSpecSummary(BaseModel):
@@ -95,6 +96,7 @@ class EvalSpecVersionCreate(BaseModel):
     sample_count: int | None = None
     enabled: bool = True
     is_recommended: bool = True
+    dataset_files: list[EvalSpecDatasetFileCreate] = Field(default_factory=list)
 
 
 class EvalSpecCreate(BaseModel):
@@ -107,6 +109,37 @@ class EvalSpecCreate(BaseModel):
     input_schema_json: dict[str, Any] = Field(default_factory=dict)
     output_schema_json: dict[str, Any] = Field(default_factory=dict)
     initial_version: EvalSpecVersionCreate
+
+
+class EvalSpecDatasetFileSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    file_key: str
+    display_name: str
+    role: str
+    position: int
+    file_name: str | None = None
+    format: str | None = None
+    source_uri: str | None = None
+    object_key: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    is_required: bool
+    status: str
+    error_message: str | None = None
+    last_synced_at: datetime | None = None
+
+
+class EvalSpecDatasetFileCreate(BaseModel):
+    file_key: str
+    display_name: str
+    role: str = "dataset"
+    position: int = 0
+    file_name: str | None = None
+    format: str | None = None
+    source_uri: str | None = None
+    is_required: bool = True
 
 
 class EvalSpecVersionUpdate(BaseModel):
@@ -125,6 +158,7 @@ class EvalSpecVersionUpdate(BaseModel):
     sample_count: int | None = None
     enabled: bool = True
     is_recommended: bool = True
+    dataset_files: list[EvalSpecDatasetFileCreate] = Field(default_factory=list)
 
 
 class EvalSpecUpdate(BaseModel):

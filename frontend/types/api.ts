@@ -493,6 +493,7 @@ export interface EvalSpecVersionSummaryV2 {
   enabled: boolean;
   is_recommended: boolean;
   sample_count?: number | null;
+  dataset_files: EvalSpecDatasetFileSummaryV2[];
 }
 
 export interface EvalSpecSummaryV2 {
@@ -507,6 +508,24 @@ export interface EvalSpecSummaryV2 {
   input_schema_json: Record<string, unknown>;
   output_schema_json: Record<string, unknown>;
   versions: EvalSpecVersionSummaryV2[];
+}
+
+export interface EvalSpecDatasetFileSummaryV2 {
+  id: string;
+  file_key: string;
+  display_name: string;
+  role: string;
+  position: number;
+  file_name?: string | null;
+  format?: string | null;
+  source_uri?: string | null;
+  object_key?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  is_required: boolean;
+  status: string;
+  error_message?: string | null;
+  last_synced_at?: string | null;
 }
 
 export interface EvalSuiteItemSummaryV2 {
@@ -779,6 +798,7 @@ export interface EvalSpecVersionCreateInputV2 {
   sample_count?: number | null;
   enabled?: boolean;
   is_recommended?: boolean;
+  dataset_files?: EvalSpecDatasetFileCreateInputV2[];
 }
 
 export interface EvalSpecCreateInputV2 {
@@ -809,6 +829,18 @@ export interface EvalSpecVersionUpdateInputV2 {
   sample_count?: number | null;
   enabled?: boolean;
   is_recommended?: boolean;
+  dataset_files?: EvalSpecDatasetFileCreateInputV2[];
+}
+
+export interface EvalSpecDatasetFileCreateInputV2 {
+  file_key: string;
+  display_name: string;
+  role?: string;
+  position?: number;
+  file_name?: string | null;
+  format?: string | null;
+  source_uri?: string | null;
+  is_required?: boolean;
 }
 
 export interface EvalSpecUpdateInputV2 {

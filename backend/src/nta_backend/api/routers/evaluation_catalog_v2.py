@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
+from uuid import UUID
 
 from nta_backend.schemas.evaluation_v2 import (
     EvaluationCatalogResponse,
@@ -61,6 +62,16 @@ async def delete_eval_spec(name: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval spec not found") from exc
     except CatalogConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/specs/{name}/versions/{version_id}/sync-datasets", response_model=EvalSpecSummary)
+async def sync_eval_spec_version_datasets(name: str, version_id: UUID) -> EvalSpecSummary:
+    try:
+        return await service.sync_spec_version_datasets(name, version_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval spec not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/suites/{name}", response_model=EvalSuiteSummary)

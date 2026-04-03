@@ -147,6 +147,40 @@ class EvalSpecVersion(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     is_recommended: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     spec = relationship("EvalSpec", back_populates="versions")
+    dataset_files = relationship(
+        "EvalSpecDatasetFile",
+        back_populates="spec_version",
+        cascade="all, delete-orphan",
+        order_by="EvalSpecDatasetFile.position.asc()",
+    )
+
+
+class EvalSpecDatasetFile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "eval_spec_dataset_files"
+    __table_args__ = (UniqueConstraint("spec_version_id", "file_key"),)
+
+    spec_version_id: Mapped[PythonUUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("eval_spec_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    file_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(64), nullable=False, default="dataset")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    format: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="missing", index=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_synced_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    spec_version = relationship("EvalSpecVersion", back_populates="dataset_files")
 
 
 class EvalSuite(Base, UUIDPrimaryKeyMixin, TimestampMixin, StatusMixin):

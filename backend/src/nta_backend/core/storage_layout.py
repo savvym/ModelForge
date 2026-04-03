@@ -193,6 +193,21 @@ def build_eval_job_artifact_key(
     return f"{build_eval_job_prefix(project_id, job_id, job_created_at)}{path.as_posix()}"
 
 
+def build_eval_spec_version_dataset_key(
+    project_id: UUID,
+    spec_name: str,
+    spec_version: str,
+    file_name: str,
+) -> str:
+    safe_spec_name = normalize_relative_object_path(spec_name, fallback_name="spec")
+    safe_version = normalize_relative_object_path(spec_version, fallback_name="version")
+    safe_name = PurePosixPath(file_name).name or "dataset.bin"
+    return (
+        f"{build_project_domain_prefix(project_id, 'evaluation-catalog')}"
+        f"specs/{safe_spec_name}/versions/{safe_version}/datasets/{safe_name}"
+    )
+
+
 def build_lake_prefix(project_id: UUID, stage: str) -> str:
     normalized_stage = stage.strip().strip("/")
     if not normalized_stage:

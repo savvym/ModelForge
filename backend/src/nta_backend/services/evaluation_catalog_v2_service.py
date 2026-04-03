@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from mimetypes import guess_type
+from pathlib import Path, PurePosixPath
+
+import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
+from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
+from nta_backend.core.object_store import get_object_bytes, put_object_bytes
 from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.core.storage_layout import build_eval_spec_version_dataset_key
 from nta_backend.models.evaluation_v2 import (
     EvalSpec,
+    EvalSpecDatasetFile,
     EvalSpecVersion,
     EvalSuite,
     EvalSuiteItem,
@@ -22,6 +32,7 @@ from nta_backend.models.evaluation_v2 import (
 from nta_backend.schemas.evaluation_v2 import (
     EvaluationCatalogResponse,
     EvalSpecCreate,
+    EvalSpecDatasetFileCreate,
     EvalSpecSummary,
     EvalSpecUpdate,
     EvalSuiteCreate,
@@ -196,6 +207,16 @@ class EvaluationCatalogV2Service:
                 is_recommended=payload.initial_version.is_recommended,
             )
             session.add(version)
+            await session.flush()
+            _replace_spec_version_dataset_files(
+                version=version,
+                dataset_files=_materialize_dataset_files(
+                    payload.initial_version.dataset_files,
+                    engine_benchmark_name=payload.initial_version.engine_benchmark_name,
+                ),
+                preserve_existing=False,
+            )
+            _refresh_spec_version_dataset_source_uri(version)
             await session.commit()
 
             rows = await _load_specs(session, project_id=project_id, name=spec.name)
@@ -266,6 +287,14 @@ class EvaluationCatalogV2Service:
             version.sample_count = payload.version.sample_count
             version.enabled = payload.version.enabled
             version.is_recommended = payload.version.is_recommended
+            _replace_spec_version_dataset_files(
+                version=version,
+                dataset_files=_materialize_dataset_files(
+                    payload.version.dataset_files,
+                    engine_benchmark_name=payload.version.engine_benchmark_name,
+                ),
+            )
+            _refresh_spec_version_dataset_source_uri(version)
 
             if version.is_recommended:
                 for item in spec.versions:
@@ -278,6 +307,28 @@ class EvaluationCatalogV2Service:
             updated = next((item for item in rows if item.id == spec.id), None)
             if updated is None:
                 raise ValueError("更新评测类型后无法重新加载记录。")
+            return _serialize_spec(updated)
+
+    async def sync_spec_version_datasets(self, name: str, version_id) -> EvalSpecSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            spec = await _get_spec_record(session, project_id=project_id, name=name)
+            if spec is None:
+                raise KeyError(name)
+            version = next((item for item in spec.versions if item.id == version_id), None)
+            if version is None:
+                raise ValueError("指定的评测版本不存在。")
+            await _sync_spec_version_dataset_files(
+                session,
+                project_id=project_id,
+                spec=spec,
+                version=version,
+            )
+            await session.commit()
+            rows = await _load_specs(session, project_id=project_id, name=spec.name)
+            updated = next((item for item in rows if item.id == spec.id), None)
+            if updated is None:
+                raise ValueError("同步评测版本数据集后无法重新加载记录。")
             return _serialize_spec(updated)
 
     async def delete_spec(self, name: str) -> None:
@@ -550,6 +601,207 @@ class EvaluationCatalogV2Service:
             await session.commit()
 
 
+def _materialize_dataset_files(
+    dataset_files: list[EvalSpecDatasetFileCreate],
+    *,
+    engine_benchmark_name: str | None,
+) -> list[EvalSpecDatasetFileCreate]:
+    normalized: list[EvalSpecDatasetFileCreate] = []
+    seen_keys: set[str] = set()
+    source_items = dataset_files
+    if not source_items:
+        benchmark_name = (engine_benchmark_name or "").strip()
+        if benchmark_name:
+            source_items = [
+                EvalSpecDatasetFileCreate(
+                    file_key="builtin-dataset",
+                    display_name="内置数据集",
+                    role="dataset",
+                    position=0,
+                    file_name=f"{benchmark_name}.builtin",
+                    format="evalscope-builtin",
+                    source_uri=f"evalscope://builtin/{benchmark_name}",
+                    is_required=True,
+                )
+            ]
+    for index, item in enumerate(source_items):
+        file_key = item.file_key.strip()
+        display_name = item.display_name.strip()
+        if not file_key or not display_name:
+            raise ValueError("数据集文件的 file_key 和 display_name 不能为空。")
+        if file_key in seen_keys:
+            raise ValueError(f"数据集文件 file_key 重复：{file_key}")
+        seen_keys.add(file_key)
+        source_uri = (item.source_uri or "").strip() or None
+        file_name = (item.file_name or "").strip() or None
+        if file_name is None and source_uri:
+            file_name = PurePosixPath(source_uri.replace("\\", "/")).name or None
+        normalized.append(
+            EvalSpecDatasetFileCreate(
+                file_key=file_key,
+                display_name=display_name,
+                role=(item.role or "dataset").strip() or "dataset",
+                position=item.position if item.position >= 0 else index,
+                file_name=file_name,
+                format=(item.format or "").strip() or None,
+                source_uri=source_uri,
+                is_required=item.is_required,
+            )
+        )
+    return normalized
+
+
+def _replace_spec_version_dataset_files(
+    *,
+    version: EvalSpecVersion,
+    dataset_files: list[EvalSpecDatasetFileCreate],
+    preserve_existing: bool = True,
+) -> None:
+    if "dataset_files" not in version.__dict__:
+        set_committed_value(version, "dataset_files", [])
+    existing_items = list(version.dataset_files) if preserve_existing else []
+    existing_by_key = {item.file_key: item for item in existing_items}
+    desired_keys = {item.file_key for item in dataset_files}
+    if preserve_existing:
+        for existing in list(version.dataset_files):
+            if existing.file_key not in desired_keys:
+                version.dataset_files.remove(existing)
+    for index, item in enumerate(dataset_files):
+        preserved = existing_by_key.get(item.file_key)
+        should_preserve_payload = (
+            preserved is not None
+            and (preserved.source_uri or None) == item.source_uri
+            and (preserved.file_name or None) == item.file_name
+        )
+        status = _infer_dataset_file_status(item.source_uri)
+        if should_preserve_payload and preserved is not None and preserved.status in {"available", "external"}:
+            status = preserved.status
+        if preserved is None:
+            preserved = EvalSpecDatasetFile(file_key=item.file_key)
+            version.dataset_files.append(preserved)
+        preserved.display_name = item.display_name
+        preserved.role = item.role
+        preserved.position = item.position if item.position >= 0 else index
+        preserved.file_name = item.file_name
+        preserved.format = item.format
+        preserved.source_uri = item.source_uri
+        preserved.object_key = preserved.object_key if should_preserve_payload else None
+        preserved.content_type = preserved.content_type if should_preserve_payload else None
+        preserved.size_bytes = preserved.size_bytes if should_preserve_payload else None
+        preserved.is_required = item.is_required
+        preserved.status = status
+        preserved.error_message = None
+        preserved.last_synced_at = preserved.last_synced_at if should_preserve_payload else None
+
+
+def _infer_dataset_file_status(source_uri: str | None) -> str:
+    normalized = (source_uri or "").strip()
+    if normalized.startswith("evalscope://"):
+        return "external"
+    if normalized:
+        return "missing"
+    return "missing"
+
+
+def _refresh_spec_version_dataset_source_uri(version: EvalSpecVersion) -> None:
+    preferred = next(
+        (
+            item
+            for item in version.dataset_files
+            if item.is_required and item.status in {"external", "available"}
+        ),
+        None,
+    ) or next((item for item in version.dataset_files if item.status in {"external", "available"}), None)
+    if preferred is None:
+        version.dataset_source_uri = None
+        return
+    if preferred.status == "available" and preferred.object_key:
+        bucket = get_settings().s3_bucket_dataset_raw
+        version.dataset_source_uri = f"s3://{bucket}/{preferred.object_key}"
+        return
+    version.dataset_source_uri = preferred.source_uri
+
+
+async def _sync_spec_version_dataset_files(
+    session: AsyncSession,
+    *,
+    project_id,
+    spec: EvalSpec,
+    version: EvalSpecVersion,
+) -> None:
+    bucket = get_settings().s3_bucket_dataset_raw
+    for dataset_file in version.dataset_files:
+        if dataset_file.status == "external":
+            dataset_file.error_message = None
+            continue
+        source_uri = (dataset_file.source_uri or "").strip()
+        if not source_uri:
+            dataset_file.status = "missing"
+            dataset_file.error_message = "缺少 source_uri，无法拉取。"
+            continue
+        dataset_file.status = "syncing"
+        dataset_file.error_message = None
+        await session.flush()
+        try:
+            body, content_type, file_name = _read_dataset_file_source(source_uri)
+            resolved_content_type = content_type or guess_type(file_name or dataset_file.file_name or "")[0]
+            object_key = build_eval_spec_version_dataset_key(
+                project_id,
+                spec.name,
+                version.version,
+                file_name or dataset_file.file_name or f"{dataset_file.file_key}.bin",
+            )
+            put_object_bytes(
+                bucket,
+                object_key,
+                body,
+                content_type=resolved_content_type,
+            )
+            dataset_file.file_name = file_name or dataset_file.file_name
+            dataset_file.object_key = object_key
+            dataset_file.content_type = resolved_content_type
+            dataset_file.size_bytes = len(body)
+            dataset_file.status = "available"
+            dataset_file.error_message = None
+            dataset_file.last_synced_at = datetime.now(UTC)
+        except Exception as exc:  # noqa: BLE001
+            dataset_file.status = "failed"
+            dataset_file.error_message = str(exc)
+    _refresh_spec_version_dataset_source_uri(version)
+
+
+def _read_dataset_file_source(source_uri: str) -> tuple[bytes, str | None, str | None]:
+    normalized = source_uri.strip()
+    if normalized.startswith("s3://"):
+        bucket, object_key = _parse_s3_uri(normalized)
+        payload = get_object_bytes(bucket, object_key)
+        return payload.body, payload.content_type, PurePosixPath(object_key).name
+    if normalized.startswith("file://"):
+        local_path = Path(normalized.removeprefix("file://"))
+        if not local_path.exists():
+            raise FileNotFoundError(str(local_path))
+        return local_path.read_bytes(), guess_type(local_path.name)[0], local_path.name
+    if normalized.startswith("/"):
+        local_path = Path(normalized)
+        if not local_path.exists():
+            raise FileNotFoundError(str(local_path))
+        return local_path.read_bytes(), guess_type(local_path.name)[0], local_path.name
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        response = httpx.get(normalized, timeout=60.0, follow_redirects=True)
+        response.raise_for_status()
+        file_name = PurePosixPath(response.url.path).name or None
+        return response.content, response.headers.get("content-type"), file_name
+    raise ValueError("数据集文件 source_uri 目前仅支持 s3://、file://、绝对路径和 http(s)://。")
+
+
+def _parse_s3_uri(value: str) -> tuple[str, str]:
+    stripped = value.removeprefix("s3://")
+    bucket, _, object_key = stripped.partition("/")
+    if not bucket or not object_key:
+        raise ValueError("s3:// URI 不合法。")
+    return bucket, object_key
+
+
 async def _load_specs(
     session: AsyncSession,
     *,
@@ -558,7 +810,7 @@ async def _load_specs(
 ) -> list[EvalSpec]:
     query = (
         select(EvalSpec)
-        .options(selectinload(EvalSpec.versions))
+        .options(selectinload(EvalSpec.versions).selectinload(EvalSpecVersion.dataset_files))
         .where(or_(EvalSpec.project_id == project_id, EvalSpec.project_id.is_(None)))
         .order_by(EvalSpec.display_name.asc(), EvalSpec.name.asc())
     )

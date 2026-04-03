@@ -279,7 +279,14 @@ function filterCatalog(catalog: EvaluationCatalogResponseV2, query: string): Eva
           version.description ?? "",
           version.engine,
           version.execution_mode,
-          version.engine_benchmark_name ?? ""
+          version.engine_benchmark_name ?? "",
+          ...version.dataset_files.flatMap((file) => [
+            file.file_key,
+            file.display_name,
+            file.file_name ?? "",
+            file.source_uri ?? "",
+            file.status
+          ])
         ])
       ]
         .join(" ")

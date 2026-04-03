@@ -12,6 +12,7 @@ from nta_backend.models.evaluation_v2 import EvalSpec, EvalSuite, EvaluationRun,
 from nta_backend.models.modeling import Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
     EvalSpecCreate,
+    EvalSpecDatasetFileCreate,
     EvalSpecVersionCreate,
     EvalSpecUpdate,
     EvalSpecVersionUpdate,
@@ -435,6 +436,111 @@ async def test_delete_eval_spec_and_suite_with_reference_guards(
         async with SessionLocal() as session:
             if created_suite_id is not None:
                 await session.execute(delete(EvalSuite).where(EvalSuite.id == created_suite_id))
+            if created_spec_id is not None:
+                await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
+            await session.commit()
+
+
+async def test_sync_spec_version_dataset_files_marks_file_available(tmp_path) -> None:
+    catalog_service = EvaluationCatalogV2Service()
+    created_spec_id = None
+    created_spec_name = f"pytest_spec_{uuid4().hex[:8]}"
+    local_file = tmp_path / "dataset.jsonl"
+    local_file.write_text('{"input":"hello","target":"world"}\n', encoding="utf-8")
+
+    try:
+        spec = await catalog_service.create_spec(
+            EvalSpecCreate(
+                name=created_spec_name,
+                display_name="Dataset Sync Spec",
+                initial_version=EvalSpecVersionCreate(
+                    version="dataset-v1",
+                    display_name="Dataset V1",
+                    engine="evalscope",
+                    execution_mode="dataset",
+                    dataset_files=[
+                        EvalSpecDatasetFileCreate(
+                            file_key="primary",
+                            display_name="主数据集",
+                            file_name="dataset.jsonl",
+                            format="jsonl",
+                            source_uri=str(local_file),
+                        )
+                    ],
+                ),
+            )
+        )
+        created_spec_id = spec.id
+
+        synced = await catalog_service.sync_spec_version_datasets(
+            created_spec_name,
+            spec.versions[0].id,
+        )
+        dataset_file = synced.versions[0].dataset_files[0]
+        assert dataset_file.status == "available"
+        assert dataset_file.object_key is not None
+        assert dataset_file.size_bytes == local_file.stat().st_size
+    finally:
+        async with SessionLocal() as session:
+            if created_spec_id is not None:
+                await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
+            await session.commit()
+
+
+async def test_create_run_rejects_spec_with_missing_required_dataset_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog_service = EvaluationCatalogV2Service()
+    run_service = EvaluationRunV2Service()
+    provider_id = None
+    model_id = None
+    created_spec_id = None
+    created_spec_name = f"pytest_spec_{uuid4().hex[:8]}"
+
+    async def _fake_start_workflow(payload, workflow_id=None):
+        return workflow_id or f"evaluation-run-{payload.run_id}"
+
+    monkeypatch.setattr(
+        "nta_backend.core.temporal.start_evaluation_run_workflow",
+        _fake_start_workflow,
+    )
+
+    try:
+        spec = await catalog_service.create_spec(
+            EvalSpecCreate(
+                name=created_spec_name,
+                display_name="Missing Dataset Spec",
+                initial_version=EvalSpecVersionCreate(
+                    version="dataset-v1",
+                    display_name="Dataset V1",
+                    engine="evalscope",
+                    execution_mode="dataset",
+                    dataset_files=[
+                        EvalSpecDatasetFileCreate(
+                            file_key="primary",
+                            display_name="主数据集",
+                            file_name="dataset.jsonl",
+                            format="jsonl",
+                            source_uri="file:///tmp/does-not-exist.jsonl",
+                            is_required=True,
+                        )
+                    ],
+                ),
+            )
+        )
+        created_spec_id = spec.id
+        provider_id, model_id = await _create_model_and_provider()
+
+        with pytest.raises(ValueError, match="请先在评测管理中拉取数据集"):
+            await run_service.create_run(
+                EvaluationRunCreate(
+                    target=EvaluationTargetRef(kind="spec", name=created_spec_name, version="dataset-v1"),
+                    model_id=model_id,
+                )
+            )
+    finally:
+        await _cleanup_run_provider_model(run_id=None, model_id=model_id, provider_id=provider_id)
+        async with SessionLocal() as session:
             if created_spec_id is not None:
                 await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
             await session.commit()

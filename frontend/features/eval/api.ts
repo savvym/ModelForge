@@ -378,6 +378,18 @@ export async function deleteEvalSpec(name: string): Promise<void> {
   });
 }
 
+export async function syncEvalSpecVersionDatasets(
+  name: string,
+  versionId: string
+): Promise<EvalSpecSummaryV2> {
+  return apiFetch<EvalSpecSummaryV2>(
+    `/api/v2/evaluation-catalog/specs/${encodeURIComponent(name)}/versions/${encodeURIComponent(versionId)}/sync-datasets`,
+    {
+      method: "POST"
+    }
+  );
+}
+
 export async function createEvalSuite(
   payload: EvalSuiteCreateInputV2
 ): Promise<EvalSuiteSummaryV2> {

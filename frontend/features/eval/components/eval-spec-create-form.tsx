@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createEvalSpec, updateEvalSpec } from "@/features/eval/api";
-import type { EvaluationCatalogResponseV2, EvalSpecSummaryV2, EvalSpecVersionSummaryV2 } from "@/types/api";
+import type {
+  EvaluationCatalogResponseV2,
+  EvalSpecDatasetFileSummaryV2,
+  EvalSpecSummaryV2,
+  EvalSpecVersionSummaryV2
+} from "@/types/api";
 
 const NONE_VALUE = "__none__";
 
@@ -22,6 +28,17 @@ type EvalSpecFormProps = {
   catalog: EvaluationCatalogResponseV2;
   initialValue?: EvalSpecSummaryV2;
   mode?: "create" | "edit";
+};
+
+type DatasetFileState = {
+  id: string;
+  fileKey: string;
+  displayName: string;
+  role: string;
+  fileName: string;
+  format: string;
+  sourceUri: string;
+  isRequired: boolean;
 };
 
 export function EvalSpecCreateForm({
@@ -89,6 +106,9 @@ export function EvalSpecCreateForm({
   const [outputSchemaText, setOutputSchemaText] = React.useState(
     JSON.stringify(initialValue?.output_schema_json ?? {}, null, 2)
   );
+  const [datasetFiles, setDatasetFiles] = React.useState<DatasetFileState[]>(() =>
+    getInitialDatasetFiles(managedVersion)
+  );
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -110,6 +130,9 @@ export function EvalSpecCreateForm({
         input_schema_json: parseJsonObject(inputSchemaText, "输入 Schema"),
         output_schema_json: parseJsonObject(outputSchemaText, "输出 Schema")
       };
+      const datasetFilePayload = datasetFiles
+        .map((item, index) => serializeDatasetFile(item, index))
+        .filter((item): item is NonNullable<typeof item> => item != null);
       if (mode === "edit") {
         if (!initialValue || !managedVersion) {
           throw new Error("缺少可编辑的评测类型版本。");
@@ -130,7 +153,8 @@ export function EvalSpecCreateForm({
             default_judge_policy_id: judgePolicyId === NONE_VALUE ? undefined : judgePolicyId,
             sample_count: parseOptionalInteger(sampleCount, "样本量"),
             enabled: true,
-            is_recommended: true
+            is_recommended: true,
+            dataset_files: datasetFilePayload
           }
         });
       } else {
@@ -150,7 +174,8 @@ export function EvalSpecCreateForm({
             default_judge_policy_id: judgePolicyId === NONE_VALUE ? undefined : judgePolicyId,
             sample_count: parseOptionalInteger(sampleCount, "样本量"),
             enabled: true,
-            is_recommended: true
+            is_recommended: true,
+            dataset_files: datasetFilePayload
           }
         });
       }
@@ -161,6 +186,20 @@ export function EvalSpecCreateForm({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleAddDatasetFile() {
+    setDatasetFiles((current) => [...current, createEmptyDatasetFile()]);
+  }
+
+  function updateDatasetFile(fileId: string, patch: Partial<DatasetFileState>) {
+    setDatasetFiles((current) =>
+      current.map((item) => (item.id === fileId ? { ...item, ...patch } : item))
+    );
+  }
+
+  function removeDatasetFile(fileId: string) {
+    setDatasetFiles((current) => current.filter((item) => item.id !== fileId));
   }
 
   return (
@@ -310,6 +349,103 @@ export function EvalSpecCreateForm({
         </Field>
       </div>
 
+      <div className="space-y-4 rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-slate-100">版本数据集文件</div>
+            <div className="mt-1 text-sm text-slate-400">
+              每个评测版本由一个或多个数据集文件组成。内置 EvalScope benchmark 可留空，系统会自动生成内置数据集引用。
+            </div>
+          </div>
+          <Button onClick={handleAddDatasetFile} type="button" variant="outline">
+            <Plus className="mr-2 h-4 w-4" />
+            添加文件
+          </Button>
+        </div>
+
+        {!datasetFiles.length ? (
+          <div className="rounded-xl border border-dashed border-slate-800/80 px-4 py-6 text-sm text-slate-500">
+            当前版本还没有显式的数据集文件。若是平台内置 benchmark，可以直接保存；若依赖自定义数据，请添加文件来源。
+          </div>
+        ) : null}
+
+        <div className="space-y-4">
+          {datasetFiles.map((datasetFile, index) => (
+            <div
+              className="rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] p-4"
+              key={datasetFile.id}
+            >
+              <div className="grid gap-4 md:grid-cols-[1fr_1fr_140px_auto]">
+                <Field label={`文件 Key #${index + 1}`}>
+                  <Input
+                    onChange={(event) => updateDatasetFile(datasetFile.id, { fileKey: event.target.value })}
+                    placeholder="questions"
+                    value={datasetFile.fileKey}
+                  />
+                </Field>
+                <Field label="显示名称">
+                  <Input
+                    onChange={(event) => updateDatasetFile(datasetFile.id, { displayName: event.target.value })}
+                    placeholder="题目集"
+                    value={datasetFile.displayName}
+                  />
+                </Field>
+                <Field label="角色">
+                  <Input
+                    onChange={(event) => updateDatasetFile(datasetFile.id, { role: event.target.value })}
+                    placeholder="dataset"
+                    value={datasetFile.role}
+                  />
+                </Field>
+                <div className="flex items-end">
+                  <Button onClick={() => removeDatasetFile(datasetFile.id)} type="button" variant="ghost">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <Field label="文件名">
+                  <Input
+                    onChange={(event) => updateDatasetFile(datasetFile.id, { fileName: event.target.value })}
+                    placeholder="mmlu.jsonl"
+                    value={datasetFile.fileName}
+                  />
+                </Field>
+                <Field label="格式">
+                  <Input
+                    onChange={(event) => updateDatasetFile(datasetFile.id, { format: event.target.value })}
+                    placeholder="jsonl / parquet / csv"
+                    value={datasetFile.format}
+                  />
+                </Field>
+                <Field label="是否必需">
+                  <label className="flex h-10 items-center gap-2 rounded-md border border-slate-800/80 px-3 text-sm text-slate-300">
+                    <input
+                      checked={datasetFile.isRequired}
+                      className="h-4 w-4"
+                      onChange={(event) => updateDatasetFile(datasetFile.id, { isRequired: event.target.checked })}
+                      type="checkbox"
+                    />
+                    运行前强校验
+                  </label>
+                </Field>
+              </div>
+
+              <div className="mt-4">
+                <Field label="来源 URI">
+                  <Input
+                    onChange={(event) => updateDatasetFile(datasetFile.id, { sourceUri: event.target.value })}
+                    placeholder="支持 s3://、file://、绝对路径、http(s):// 或 evalscope://"
+                    value={datasetFile.sourceUri}
+                  />
+                </Field>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {error ? (
         <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
           {error}
@@ -382,4 +518,56 @@ function getManagedSpecVersion(spec?: EvalSpecSummaryV2): EvalSpecVersionSummary
     spec?.versions.find((version) => version.enabled) ??
     spec?.versions[0]
   );
+}
+
+function getInitialDatasetFiles(version?: EvalSpecVersionSummaryV2): DatasetFileState[] {
+  return (version?.dataset_files ?? []).map((item) => datasetFileSummaryToState(item));
+}
+
+function datasetFileSummaryToState(item: EvalSpecDatasetFileSummaryV2): DatasetFileState {
+  return {
+    id: crypto.randomUUID(),
+    fileKey: item.file_key,
+    displayName: item.display_name,
+    role: item.role,
+    fileName: item.file_name ?? "",
+    format: item.format ?? "",
+    sourceUri: item.source_uri ?? "",
+    isRequired: item.is_required
+  };
+}
+
+function createEmptyDatasetFile(): DatasetFileState {
+  return {
+    id: crypto.randomUUID(),
+    fileKey: "",
+    displayName: "",
+    role: "dataset",
+    fileName: "",
+    format: "",
+    sourceUri: "",
+    isRequired: true
+  };
+}
+
+function serializeDatasetFile(item: DatasetFileState, index: number) {
+  const fileKey = item.fileKey.trim();
+  const displayName = item.displayName.trim();
+  const sourceUri = item.sourceUri.trim();
+  if (!fileKey && !displayName && !sourceUri) {
+    return null;
+  }
+  if (!fileKey || !displayName) {
+    throw new Error("数据集文件至少需要 file_key 和显示名称。");
+  }
+  return {
+    file_key: fileKey,
+    display_name: displayName,
+    role: item.role.trim() || "dataset",
+    position: index,
+    file_name: normalizeOptional(item.fileName),
+    format: normalizeOptional(item.format),
+    source_uri: normalizeOptional(sourceUri),
+    is_required: item.isRequired
+  };
 }

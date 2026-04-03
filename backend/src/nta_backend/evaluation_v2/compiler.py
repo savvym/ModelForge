@@ -94,7 +94,12 @@ async def compile_run_request(
             continue
         if requested_keys and suite_item.item_key not in requested_keys:
             continue
-        spec_version = await session.get(EvalSpecVersion, suite_item.spec_version_id)
+        spec_version_row = await session.execute(
+            select(EvalSpecVersion)
+            .options(selectinload(EvalSpecVersion.dataset_files))
+            .where(EvalSpecVersion.id == suite_item.spec_version_id)
+        )
+        spec_version = spec_version_row.scalar_one_or_none()
         if spec_version is None or not spec_version.enabled:
             raise ValueError(f"Suite item {suite_item.item_key} references an unavailable spec version.")
         spec = await session.get(EvalSpec, spec_version.spec_id)
@@ -145,6 +150,7 @@ async def _build_item_plan(
     weight: float = 1.0,
     overrides: dict[str, Any] | None = None,
 ) -> CompiledRunItemPlan:
+    _ensure_required_dataset_files_ready(spec_version)
     template_snapshot = await _load_template_snapshot(
         session,
         template_version_id=spec_version.template_spec_version_id,
@@ -153,6 +159,21 @@ async def _build_item_plan(
         **dict(spec_version.engine_config_json or {}),
         "engine_benchmark_name": spec_version.engine_benchmark_name,
         "dataset_source_uri": spec_version.dataset_source_uri,
+        "dataset_files": [
+            {
+                "file_key": dataset_file.file_key,
+                "display_name": dataset_file.display_name,
+                "role": dataset_file.role,
+                "file_name": dataset_file.file_name,
+                "format": dataset_file.format,
+                "source_uri": dataset_file.source_uri,
+                "object_key": dataset_file.object_key,
+                "content_type": dataset_file.content_type,
+                "status": dataset_file.status,
+                "is_required": dataset_file.is_required,
+            }
+            for dataset_file in spec_version.dataset_files
+        ],
         "scoring_config": dict(spec_version.scoring_config_json or {}),
         "overrides": dict(overrides or {}),
     }
@@ -239,7 +260,7 @@ async def _load_spec_version(
 ) -> tuple[EvalSpec, EvalSpecVersion]:
     row = await session.execute(
         select(EvalSpec)
-        .options(selectinload(EvalSpec.versions))
+        .options(selectinload(EvalSpec.versions).selectinload(EvalSpecVersion.dataset_files))
         .where(
             EvalSpec.name == spec_name.strip(),
             or_(EvalSpec.project_id == project_id, EvalSpec.project_id.is_(None)),
@@ -276,6 +297,20 @@ async def _load_suite_version(
     if suite_version is None or not suite_version.enabled:
         raise ValueError("指定评测套件版本不可用。")
     return suite, suite_version
+
+
+def _ensure_required_dataset_files_ready(spec_version: EvalSpecVersion) -> None:
+    blocking_files = [
+        item.display_name
+        for item in spec_version.dataset_files
+        if item.is_required and item.status not in {"available", "external"}
+    ]
+    if not blocking_files:
+        return
+    joined = "、".join(blocking_files)
+    raise ValueError(
+        f"评测版本 {spec_version.display_name} 缺少已就绪的数据集文件：{joined}。请先在评测管理中拉取数据集。"
+    )
 
 
 def _serialize_judge_policy(policy: JudgePolicy | None) -> dict[str, Any] | None:
