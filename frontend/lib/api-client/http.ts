@@ -13,6 +13,14 @@ export function getApiBaseUrl() {
   return getBrowserApiBaseUrl();
 }
 
+export function getApiRootUrl() {
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  if (baseUrl.endsWith("/api/v1")) {
+    return baseUrl.slice(0, -"/api/v1".length);
+  }
+  return baseUrl;
+}
+
 function getBrowserProjectId() {
   if (typeof document === "undefined") {
     return null;
@@ -58,8 +66,9 @@ function resolveApiRequest(path: string, init?: ApiFetchOptions) {
   const { projectId: explicitProjectId, ...requestInit } = init ?? {};
   const projectId =
     explicitProjectId ?? (typeof window !== "undefined" ? getBrowserProjectId() : null);
+  const baseUrl = normalizedPath.startsWith("/api/") ? getApiRootUrl() : getApiBaseUrl();
   return {
-    url: `${getApiBaseUrl()}${normalizedPath}`,
+    url: `${baseUrl}${normalizedPath}`,
     init: {
       cache: "no-store",
       ...requestInit,

@@ -5,7 +5,7 @@ import json
 import shutil
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from mimetypes import guess_type
 from pathlib import Path
@@ -31,8 +31,13 @@ from nta_backend.core.storage_layout import (
     build_eval_job_code,
     build_eval_job_prefix,
 )
-from nta_backend.evaluation.runtime.api.evaluator import EvalCancelledError
-from nta_backend.evaluation.runtime.run import run_task
+from nta_backend.evaluation.executors import (
+    EvalExecutionCancelledError,
+    EvalExecutionRequest,
+    EvalScopeExecutor,
+    ExecutorModelConfig,
+    ExecutorTemplateConfig,
+)
 from nta_backend.models.jobs import EvalJob, EvalJobMetric
 from nta_backend.models.modeling import Model, ModelProvider
 from nta_backend.schemas.eval_job import (
@@ -52,6 +57,7 @@ LOCAL_EVALRUNS_ROOT = REPO_ROOT / "backend" / ".evalruns"
 EVAL_ARTIFACT_BUCKET = get_settings().s3_bucket_eval_artifacts
 _MODEL_TIMEOUT_S = 180.0
 _MODEL_MAX_TOKENS = 4096
+_EVAL_EXECUTOR = EvalScopeExecutor()
 
 _STATUS_PROGRESS = {
     "queued": 0,
@@ -87,6 +93,8 @@ class _ResolvedModelConfig:
     api_url: str
     api_key: str | None
     api_format: str
+    organization: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -94,7 +102,13 @@ class _ResolvedDatasetInput:
     benchmark_name: str
     dataset_path: str
     source_uri: str | None
-    prompt_config: dict[str, object]
+    prompt_config: dict[str, Any]
+    field_mapping: dict[str, Any]
+    eval_method: str
+    template_config: ExecutorTemplateConfig | None = None
+    template_id: UUID | None = None
+    template_version: int | None = None
+    template_model_name: str | None = None
 
 
 def _utc_now() -> datetime:
@@ -172,6 +186,15 @@ def _parse_s3_uri(value: str | None) -> tuple[str, str] | None:
     if not bucket or not object_key:
         return None
     return bucket, object_key
+
+
+def _eval_method_requires_judge_model(eval_method: str | None) -> bool:
+    return (eval_method or "").strip() in {
+        "judge-rubric",
+        "judge-quality",
+        "judge-template",
+        "judge-model",
+    }
 
 
 def _artifact_local_path(value: str | None) -> Path | None:
@@ -425,6 +448,8 @@ async def _resolve_model_config(
         api_url=provider.base_url.strip(),
         api_key=provider.api_key,
         api_format=(model.api_format or provider.api_format or "chat-completions").strip(),
+        organization=provider.organization,
+        headers={str(key): str(value) for key, value in (provider.headers_json or {}).items()},
     )
 
 
@@ -453,15 +478,45 @@ async def _resolve_dataset_input(
         dataset_source_uri=version.dataset_source_uri,
         dataset_path=version.dataset_path,
     )
+    field_mapping = dict(benchmark_definition.field_mapping_json or {})
     prompt_config = dict(benchmark_definition.prompt_config_json or {})
     if payload.benchmark_config:
         prompt_config.update(payload.benchmark_config)
+    if payload.judge_prompt:
+        prompt_config["judge_prompt_template"] = payload.judge_prompt
+
+    eval_method = (benchmark_definition.default_eval_method or payload.eval_method or "accuracy").strip()
+    template_config: ExecutorTemplateConfig | None = None
+    template_id: UUID | None = None
+    template_version: int | None = None
+    template_model_name: str | None = None
+    if benchmark_definition.eval_template_id:
+        from nta_backend.models.eval_template import EvalTemplate
+
+        template = await session.get(EvalTemplate, benchmark_definition.eval_template_id)
+        if template is not None:
+            template_config = ExecutorTemplateConfig(
+                prompt=template.prompt,
+                vars=list(template.vars or []),
+                output_type=template.output_type,
+                output_config=dict(template.output_config or {}),
+            )
+            eval_method = "judge-template"
+            template_id = template.id
+            template_version = template.version
+            template_model_name = (template.model or "").strip() or None
 
     return _ResolvedDatasetInput(
         benchmark_name=benchmark_definition.name,
         dataset_path=str(dataset_path),
         source_uri=f"benchmark://{benchmark_definition.name}/versions/{version.version_id}",
         prompt_config=prompt_config,
+        field_mapping=field_mapping,
+        eval_method=eval_method,
+        template_config=template_config,
+        template_id=template_id,
+        template_version=template_version,
+        template_model_name=template_model_name,
     )
 
 
@@ -504,22 +559,36 @@ def _materialize_benchmark_version_dataset(
         return Path(handle.name)
 
 
-def _persist_eval_metrics(session, job_id: UUID, report: Any) -> None:
-    subset_reports = getattr(report, "subset_reports", [])
+def _persist_eval_metrics(session, job_id: UUID, report_payload: dict[str, Any]) -> None:
+    subset_reports = report_payload.get("subset_reports")
+    if not isinstance(subset_reports, list):
+        return
+
     for subset in subset_reports:
-        for metric in subset.metrics:
+        if not isinstance(subset, dict):
+            continue
+        subset_name = subset.get("subset")
+        metrics = subset.get("metrics")
+        if not isinstance(metrics, list):
+            continue
+        for metric in metrics:
+            if not isinstance(metric, dict):
+                continue
+            extra = metric.get("extra")
             session.add(
                 EvalJobMetric(
                     eval_job_id=job_id,
-                    metric_name=metric.metric,
-                    metric_value=metric.value,
+                    metric_name=str(metric.get("metric") or "-"),
+                    metric_value=float(metric.get("value") or 0.0),
                     metric_unit=None,
-                    extra_json={
-                        "subset": subset.subset,
-                        **metric.extra,
-                    }
-                    if metric.extra or getattr(subset, "subset", None)
-                    else None,
+                    extra_json=(
+                        {
+                            "subset": subset_name,
+                            **extra,
+                        }
+                        if isinstance(extra, dict)
+                        else ({"subset": subset_name} if subset_name else None)
+                    ),
                 )
             )
 
@@ -593,16 +662,40 @@ def _sample_analysis_from_report(job: EvalJob, payload: dict[str, Any]) -> list[
                 continue
             numeric_score = sample_score.get("score")
             score = float(numeric_score) if isinstance(numeric_score, (int, float)) else None
+            references = sample_score.get("reference_answers")
             analyses.append(
                 EvalSampleAnalysis(
                     sample_id=str(sample_score.get("sample_id") or "-"),
                     method=str(sample_score.get("metric") or job.eval_method or "-"),
+                    input_preview=str(sample_score.get("input_preview") or "") or None,
+                    prediction_text=str(sample_score.get("prediction_text") or "") or None,
+                    reference_answers=(
+                        [str(item) for item in references if str(item).strip()]
+                        if isinstance(references, list)
+                        else []
+                    ),
                     score=score,
-                    raw_score=score,
+                    raw_score=(
+                        float(sample_score.get("raw_score"))
+                        if isinstance(sample_score.get("raw_score"), (int, float))
+                        else score
+                    ),
                     passed=bool(sample_score.get("passed")),
                     reason=str(sample_score.get("reason") or "") or None,
                     error=str(sample_score.get("error") or "") or None,
-                    judge_model_name=job.judge_model_name,
+                    latency_ms=(
+                        int(sample_score.get("latency_ms"))
+                        if isinstance(sample_score.get("latency_ms"), (int, float))
+                        else None
+                    ),
+                    total_tokens=(
+                        int(sample_score.get("total_tokens"))
+                        if isinstance(sample_score.get("total_tokens"), (int, float))
+                        else None
+                    ),
+                    judge_model_name=(
+                        str(sample_score.get("judge_model_name") or "") or job.judge_model_name
+                    ),
                 )
             )
     return analyses
@@ -693,16 +786,25 @@ async def _run_eval_job(
                 model_id=payload.model_id,
                 fallback_name=payload.model_name,
             )
-            judge_model = await _resolve_model_config(
-                session,
-                model_id=payload.judge_model_id or payload.model_id,
-                fallback_name=payload.judge_model_name or payload.model_name,
-            )
             dataset_input = await _resolve_dataset_input(session, payload=payload)
+            judge_model: _ResolvedModelConfig | None = None
+            if _eval_method_requires_judge_model(dataset_input.eval_method):
+                judge_model = await _resolve_model_config(
+                    session,
+                    model_id=payload.judge_model_id or payload.model_id,
+                    fallback_name=(
+                        dataset_input.template_model_name
+                        or payload.judge_model_name
+                        or payload.model_name
+                    ),
+                )
 
             job.model_name = eval_model.display_name
-            job.judge_model_name = judge_model.display_name
+            job.judge_model_name = judge_model.display_name if judge_model is not None else None
+            job.eval_method = dataset_input.eval_method
             job.source_object_uri = dataset_input.source_uri
+            job.eval_template_id = dataset_input.template_id
+            job.eval_template_version = dataset_input.template_version
             await session.commit()
             _raise_if_cancel_requested(cancel_event)
 
@@ -722,67 +824,40 @@ async def _run_eval_job(
                 if progress_listener is not None:
                     loop.call_soon_threadsafe(progress_listener, progress_done, progress_total)
 
-            # All benchmarks route through the generic adapter with DB config.
-            benchmark_def = await get_benchmark_definition_record(
-                session, dataset_input.benchmark_name,
-            )
-            benchmark_key = "_generic"
-            benchmark_args: dict[str, object] = {
-                "prompt_config": dataset_input.prompt_config,
-                "judge_model_name": judge_model.model_name,
-                "judge_api_url": judge_model.api_url,
-                "judge_api_key": judge_model.api_key,
-                "judge_api_format": judge_model.api_format,
-                "judge_timeout_s": _MODEL_TIMEOUT_S,
-            }
-            if benchmark_def:
-                benchmark_args["field_mapping"] = benchmark_def.field_mapping_json or {}
-                benchmark_args["eval_method"] = benchmark_def.default_eval_method
-
-                # If benchmark has an eval template, load and inject it
-                if benchmark_def.eval_template_id:
-                    from nta_backend.models.eval_template import EvalTemplate
-                    from sqlalchemy import select
-
-                    tmpl_result = await session.execute(
-                        select(EvalTemplate).where(
-                            EvalTemplate.id == benchmark_def.eval_template_id
-                        )
+            execution_request = EvalExecutionRequest(
+                benchmark_name=dataset_input.benchmark_name,
+                dataset_path=dataset_input.dataset_path,
+                output_dir=output_dir,
+                eval_method=dataset_input.eval_method,
+                eval_model=ExecutorModelConfig(
+                    model_name=eval_model.model_name,
+                    display_name=eval_model.display_name,
+                    api_url=eval_model.api_url,
+                    api_key=eval_model.api_key,
+                    api_format=eval_model.api_format,
+                    organization=eval_model.organization,
+                    headers=dict(eval_model.headers),
+                ),
+                judge_model=(
+                    ExecutorModelConfig(
+                        model_name=judge_model.model_name,
+                        display_name=judge_model.display_name,
+                        api_url=judge_model.api_url,
+                        api_key=judge_model.api_key,
+                        api_format=judge_model.api_format,
+                        organization=judge_model.organization,
+                        headers=dict(judge_model.headers),
                     )
-                    tmpl = tmpl_result.scalar_one_or_none()
-                    if tmpl:
-                        benchmark_args["eval_method"] = "judge-template"
-                        benchmark_args["template_prompt"] = tmpl.prompt
-                        benchmark_args["template_vars"] = list(tmpl.vars) if tmpl.vars else []
-                        benchmark_args["template_output_type"] = tmpl.output_type
-                        benchmark_args["template_output_config"] = dict(tmpl.output_config) if tmpl.output_config else {}
-                        if tmpl.model:
-                            benchmark_args["judge_model_name"] = tmpl.model
-                        job.eval_template_id = tmpl.id
-                        job.eval_template_version = tmpl.version
-                        await session.commit()
-
-            task_config = {
-                "benchmark": benchmark_key,
-                "model": "openai_compatible",
-                "dataset_path": dataset_input.dataset_path,
-                "limit": None,
-                "output_dir": str(output_dir),
-                "model_args": {
-                    "model_name": eval_model.model_name,
-                    "api_url": eval_model.api_url,
-                    "api_key": eval_model.api_key,
-                    "api_format": eval_model.api_format,
-                    "timeout_s": _MODEL_TIMEOUT_S,
-                    "max_tokens": _MODEL_MAX_TOKENS,
-                },
-                "benchmark_args": benchmark_args,
-                "evaluator_args": {
-                    "progress_callback": _progress_callback,
-                    "cancellation_event": cancel_event,
-                },
-            }
-            report = await asyncio.to_thread(run_task, task_config)
+                    if judge_model is not None
+                    else None
+                ),
+                field_mapping=dataset_input.field_mapping,
+                prompt_config=dataset_input.prompt_config,
+                template_config=dataset_input.template_config,
+                progress_callback=_progress_callback,
+                cancellation_event=cancel_event,
+            )
+            execution_result = await asyncio.to_thread(_EVAL_EXECUTOR.execute, execution_request)
             _raise_if_cancel_requested(cancel_event)
 
             job.status = "scoring"
@@ -800,14 +875,14 @@ async def _run_eval_job(
             job.samples_prefix_uri = samples_prefix_uri
 
             await session.execute(delete(EvalJobMetric).where(EvalJobMetric.eval_job_id == job.id))
-            _persist_eval_metrics(session, job.id, report)
+            _persist_eval_metrics(session, job.id, execution_result.report_payload)
 
             job.status = "completed"
             job.cancel_requested = False
             job.finished_at = _utc_now()
             job.error_message = None
             await session.commit()
-        except EvalCancelledError:
+        except EvalExecutionCancelledError:
             await session.rollback()
             await _mark_eval_job_cancelled(job_id)
         except asyncio.CancelledError:
@@ -968,6 +1043,11 @@ class EvalJobService:
             dataset_version_id = None
             dataset_source_type = "benchmark-version"
             dataset_source_uri = f"benchmark://{benchmark_name}/versions/{version.version_id}"
+            resolved_eval_method = (
+                "judge-template"
+                if benchmark_definition.eval_template_id is not None
+                else (benchmark_definition.default_eval_method or payload.eval_method)
+            )
 
             job = EvalJob(
                 project_id=project_id,
@@ -986,7 +1066,7 @@ class EvalJobService:
                 inference_mode=payload.inference_mode,
                 task_type=payload.task_type,
                 eval_mode=payload.eval_mode,
-                eval_method=payload.eval_method,
+                eval_method=resolved_eval_method,
                 criteria_text=payload.rubric,
                 endpoint_name=payload.endpoint_name,
                 judge_model_name=payload.judge_model_name,

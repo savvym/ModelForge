@@ -7,7 +7,7 @@ export default async function ModelEvalBenchmarksRedirectPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const params = new URLSearchParams();
-  params.set("tab", "management");
+  params.set("tab", "catalog");
   if (resolvedSearchParams.q?.trim()) {
     params.set("q", resolvedSearchParams.q.trim());
   }

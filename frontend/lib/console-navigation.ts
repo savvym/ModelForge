@@ -75,11 +75,21 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   "model-eval": { title: "模型评测", description: "评测任务与评测管理入口。", group: "workspace" },
   "model-eval-leaderboards": {
     title: "排行榜",
-    description: "按 Benchmark Version 组织和管理模型排行榜。",
+    description: "按 Eval Spec / Suite Version 组织和管理模型排行榜。",
     group: "workspace"
   },
   "model-eval-create": { title: "创建评测任务", description: "按 Benchmark 与 Version 创建真实评测任务。", group: "workspace" },
   "model-eval-detail": { title: "评测任务详情", description: "查看评测任务指标、样本级结果和产物位置。", group: "workspace" },
+  "model-eval-specs-create": {
+    title: "创建评测类型",
+    description: "创建 Eval Spec 并定义初始版本。",
+    group: "workspace"
+  },
+  "model-eval-suites-create": {
+    title: "创建评测套件",
+    description: "创建 Eval Suite 并编排多个评测项。",
+    group: "workspace"
+  },
   "model-eval-benchmarks": {
     title: "评测管理",
     description: "兼容旧路由，实际归属到模型评测下的评测管理标签。",

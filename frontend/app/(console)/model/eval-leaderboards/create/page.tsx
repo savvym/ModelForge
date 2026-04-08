@@ -1,30 +1,26 @@
-import { BenchmarkLeaderboardCreateForm } from "@/features/eval/components/benchmark-leaderboard-create-form";
-import { getBenchmarkCatalog } from "@/features/eval/api";
+import { EvaluationLeaderboardCreateForm } from "@/features/eval/components/evaluation-leaderboard-create-form";
+import { getEvaluationCatalog } from "@/features/eval/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 
-export default async function CreateBenchmarkLeaderboardPage({
-  searchParams
-}: {
-  searchParams: Promise<{ benchmark?: string; version?: string }>;
-}) {
-  const resolvedSearchParams = await searchParams;
+export default async function CreateEvaluationLeaderboardPage() {
   const projectId = await getCurrentProjectIdFromCookie();
-  const benchmarks = await getBenchmarkCatalog(projectId).catch(() => []);
+  const catalog = await getEvaluationCatalog(projectId).catch(() => ({
+    specs: [],
+    suites: [],
+    templates: [],
+    judge_policies: []
+  }));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold">创建排行榜</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          先绑定一个 Benchmark Version，再把已完成且有得分的评测任务纳入排行榜，形成同一标准下的模型排序。
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-[28px] font-semibold tracking-tight text-slate-50">创建排行榜</h1>
+        <p className="text-sm text-slate-400">
+          从同一个 spec 或 suite version 的 completed runs 中挑选候选项，建立可持续维护的榜单。
         </p>
       </div>
 
-      <BenchmarkLeaderboardCreateForm
-        benchmarks={benchmarks}
-        initialBenchmarkName={resolvedSearchParams.benchmark ?? null}
-        initialVersionId={resolvedSearchParams.version ?? null}
-      />
+      <EvaluationLeaderboardCreateForm catalog={catalog} />
     </div>
   );
 }

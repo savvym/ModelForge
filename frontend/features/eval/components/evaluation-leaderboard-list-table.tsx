@@ -23,9 +23,8 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table";
-import { deleteBenchmarkLeaderboard } from "@/features/eval/api";
-import { formatLeaderboardMetricName } from "@/features/eval/status";
-import type { BenchmarkLeaderboardSummary } from "@/types/api";
+import { deleteEvaluationLeaderboard } from "@/features/eval/api";
+import type { EvaluationLeaderboardSummaryV2 } from "@/types/api";
 
 function formatDateTime(value?: string | null) {
   if (!value) {
@@ -41,14 +40,14 @@ function formatDateTime(value?: string | null) {
   });
 }
 
-export function BenchmarkLeaderboardListTable({
+export function EvaluationLeaderboardListTable({
   leaderboards
 }: {
-  leaderboards: BenchmarkLeaderboardSummary[];
+  leaderboards: EvaluationLeaderboardSummaryV2[];
 }) {
   const router = useRouter();
   const [items, setItems] = React.useState(leaderboards);
-  const [pendingDelete, setPendingDelete] = React.useState<BenchmarkLeaderboardSummary | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<EvaluationLeaderboardSummaryV2 | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -64,7 +63,7 @@ export function BenchmarkLeaderboardListTable({
     setDeleting(true);
     setError(null);
     try {
-      await deleteBenchmarkLeaderboard(pendingDelete.id);
+      await deleteEvaluationLeaderboard(pendingDelete.id);
       setItems((current) => current.filter((item) => item.id !== pendingDelete.id));
       setPendingDelete(null);
       router.refresh();
@@ -79,7 +78,7 @@ export function BenchmarkLeaderboardListTable({
     return (
       <ConsoleListTableSurface>
         <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-slate-500">
-          <p>当前还没有排行榜。先选一个 Benchmark Version，再把已完成的评测任务纳入排行榜。</p>
+          <p>当前还没有排行榜。先创建一组 completed runs 的榜单，再持续追加新的评测结果。</p>
           <Link href="/model/eval-leaderboards/create">
             <Button size="sm" variant="outline">
               创建第一个排行榜
@@ -103,13 +102,13 @@ export function BenchmarkLeaderboardListTable({
           <TableHeader>
             <TableRow>
               <TableHead>排行榜</TableHead>
-              <TableHead>Benchmark</TableHead>
-              <TableHead>Version</TableHead>
+              <TableHead>目标</TableHead>
+              <TableHead>版本</TableHead>
               <TableHead>评分指标</TableHead>
-              <TableHead>任务数</TableHead>
+              <TableHead>运行数</TableHead>
               <TableHead>最近评测</TableHead>
               <TableHead>创建时间</TableHead>
-              <TableHead className="w-[176px]">操作</TableHead>
+              <TableHead className="w-[160px]">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -121,34 +120,29 @@ export function BenchmarkLeaderboardListTable({
                       {leaderboard.name}
                     </div>
                   </Link>
+                  {leaderboard.description ? (
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-500">{leaderboard.description}</div>
+                  ) : null}
                 </TableCell>
                 <TableCell className="align-top">
-                  <div className="text-slate-200">{leaderboard.benchmark_display_name}</div>
+                  <div className="text-slate-200">{leaderboard.target_display_name}</div>
                   <div className="mt-1 font-mono text-xs text-slate-500">
-                    {leaderboard.benchmark_name}
+                    {leaderboard.target_kind} / {leaderboard.target_name}
                   </div>
                 </TableCell>
                 <TableCell className="align-top">
-                  <div className="text-slate-200">{leaderboard.benchmark_version_display_name}</div>
+                  <div className="text-slate-200">{leaderboard.target_version_display_name}</div>
                   <div className="mt-1 font-mono text-xs text-slate-500">
-                    {leaderboard.benchmark_version_id}
+                    {leaderboard.target_version}
                   </div>
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
-                  {formatLeaderboardMetricName(leaderboard.score_metric_name)}
-                </TableCell>
-                <TableCell className="align-top text-slate-300">
-                  {leaderboard.job_count.toLocaleString()}
-                </TableCell>
-                <TableCell className="align-top text-slate-400">
-                  {formatDateTime(leaderboard.latest_eval_at)}
-                </TableCell>
-                <TableCell className="align-top text-slate-400">
-                  {formatDateTime(leaderboard.created_at)}
-                </TableCell>
+                <TableCell className="align-top text-slate-300">{leaderboard.score_metric_name}</TableCell>
+                <TableCell className="align-top text-slate-300">{leaderboard.run_count.toLocaleString()}</TableCell>
+                <TableCell className="align-top text-slate-400">{formatDateTime(leaderboard.latest_run_at)}</TableCell>
+                <TableCell className="align-top text-slate-400">{formatDateTime(leaderboard.created_at)}</TableCell>
                 <TableCell className="align-top">
                   <div className="flex flex-wrap gap-2">
-                    <Link href="/model/eval?tab=jobs&create=1">
+                    <Link href="/model/eval?tab=runs&create=1">
                       <Button size="sm" variant="outline">
                         创建评测任务
                       </Button>
@@ -183,7 +177,7 @@ export function BenchmarkLeaderboardListTable({
           <AlertDialogHeader>
             <AlertDialogTitle>删除排行榜</AlertDialogTitle>
             <AlertDialogDescription>
-              删除后排行榜对象和已关联的任务关系会一起移除，但原始评测任务不会受影响。
+              删除后排行榜对象和已关联的运行关系会一起移除，但原始评测运行不会受影响。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

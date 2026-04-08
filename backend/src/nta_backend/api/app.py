@@ -7,9 +7,11 @@ from nta_backend import __version__
 from nta_backend.api.middleware import install_middleware
 from nta_backend.api.routers import (
     auth,
-    benchmark_leaderboards,
     benchmarks,
     datasets,
+    evaluation_catalog_v2,
+    evaluation_leaderboards_v2,
+    evaluation_runs_v2,
     eval_jobs,
     eval_templates,
     health,
@@ -56,7 +58,6 @@ def create_app() -> FastAPI:
     api_router.include_router(health.router, tags=["health"])
     api_router.include_router(auth.router, tags=["auth"])
     api_router.include_router(benchmarks.router, tags=["benchmarks"])
-    api_router.include_router(benchmark_leaderboards.router, tags=["benchmark-leaderboards"])
     api_router.include_router(projects.router, tags=["projects"])
     api_router.include_router(model_providers.router, tags=["model-providers"])
     api_router.include_router(models.router, tags=["models"])
@@ -68,6 +69,9 @@ def create_app() -> FastAPI:
     api_router.include_router(streams.router, tags=["streams"])
 
     app.include_router(api_router)
+    app.include_router(evaluation_catalog_v2.router)
+    app.include_router(evaluation_leaderboards_v2.router)
+    app.include_router(evaluation_runs_v2.router)
     app.include_router(ws.router)
     logger.info("API application initialized with %s routers", len(api_router.routes))
     return app

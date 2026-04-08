@@ -24,7 +24,7 @@ export default async function OverviewPage() {
     },
     {
       label: "评测任务",
-      value: String(currentProject?.eval_job_count ?? "--"),
+      value: String(currentProject?.evaluation_run_count ?? "--"),
       note: "当前项目任务总量"
     }
   ];

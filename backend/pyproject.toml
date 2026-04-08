@@ -27,6 +27,7 @@ dependencies = [
   "uvicorn[standard]>=0.32.0",
   "watchfiles>=1.1.1",
   "xlrd>=2.0.1",
+  "evalscope>=1.5.2.post1",
 ]
 
 [dependency-groups]
