@@ -22,6 +22,8 @@ def metric_names_for_eval_method(eval_method: str | None) -> list[str]:
     mapping = {
         "accuracy": ["acc"],
         "acc": ["acc"],
+        "auto": ["score"],
+        "exact-match": ["score"],
         "judge-rubric": ["judge_rubric"],
         "judge-quality": ["judge_quality"],
         "judge-template": ["judge_template"],

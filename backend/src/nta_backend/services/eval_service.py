@@ -5,7 +5,7 @@ import json
 import shutil
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from mimetypes import guess_type
 from pathlib import Path
@@ -93,6 +93,8 @@ class _ResolvedModelConfig:
     api_url: str
     api_key: str | None
     api_format: str
+    organization: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -446,6 +448,8 @@ async def _resolve_model_config(
         api_url=provider.base_url.strip(),
         api_key=provider.api_key,
         api_format=(model.api_format or provider.api_format or "chat-completions").strip(),
+        organization=provider.organization,
+        headers={str(key): str(value) for key, value in (provider.headers_json or {}).items()},
     )
 
 
@@ -831,6 +835,8 @@ async def _run_eval_job(
                     api_url=eval_model.api_url,
                     api_key=eval_model.api_key,
                     api_format=eval_model.api_format,
+                    organization=eval_model.organization,
+                    headers=dict(eval_model.headers),
                 ),
                 judge_model=(
                     ExecutorModelConfig(
@@ -839,6 +845,8 @@ async def _run_eval_job(
                         api_url=judge_model.api_url,
                         api_key=judge_model.api_key,
                         api_format=judge_model.api_format,
+                        organization=judge_model.organization,
+                        headers=dict(judge_model.headers),
                     )
                     if judge_model is not None
                     else None

@@ -3,10 +3,12 @@ import threading
 from uuid import uuid4
 
 import pytest
+from evalscope.api.model import ModelOutput, ModelUsage
 from sqlalchemy import delete, select
 
 from nta_backend.core.db import SessionLocal
 from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.evaluation.executors.evalscope_executor import NTAOpenAICompatibleAPI
 from nta_backend.evaluation_v2.execution import CanonicalExecutionResult
 from nta_backend.models.evaluation_v2 import EvalSpec, EvalSuite, EvaluationRun, EvaluationRunItem
 from nta_backend.models.modeling import Model, ModelProvider
@@ -633,6 +635,105 @@ async def test_spec_run_item_execution_persists_canonical_summary(
         assert detail.metrics[0].metric_value == pytest.approx(0.75)
     finally:
         await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)
+
+
+async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    catalog_service = EvaluationCatalogV2Service()
+    service = EvaluationRunV2Service()
+
+    async def _fake_start_workflow(payload, workflow_id=None):
+        return workflow_id or f"evaluation-run-{payload.run_id}"
+
+    def fake_generate(self, input, tools, tool_choice, config):
+        del tools, tool_choice, config
+        prompt = "\n".join(message.text for message in input)
+        assert "Question?" in prompt
+        return ModelOutput.from_content(model=self.model_name, content="A").model_copy(
+            update={"usage": ModelUsage(total_tokens=7)}
+        )
+
+    monkeypatch.setattr(
+        "nta_backend.core.temporal.start_evaluation_run_workflow",
+        _fake_start_workflow,
+    )
+    monkeypatch.setattr(NTAOpenAICompatibleAPI, "generate", fake_generate)
+
+    provider_id = None
+    model_id = None
+    run_id = None
+    created_spec_id = None
+    created_spec_name = f"pytest_dataset_{uuid4().hex[:8]}"
+    dataset_path = tmp_path / "dataset.jsonl"
+    dataset_path.write_text(
+        json.dumps({"id": "sample-1", "input": "Question?", "target": "A"}) + "\n",
+        encoding="utf-8",
+    )
+
+    try:
+        spec = await catalog_service.create_spec(
+            EvalSpecCreate(
+                name=created_spec_name,
+                display_name="Dataset Run Spec",
+                initial_version=EvalSpecVersionCreate(
+                    version="dataset-v1",
+                    display_name="Dataset V1",
+                    engine="evalscope",
+                    execution_mode="dataset",
+                    engine_config_json={"eval_method": "accuracy"},
+                    dataset_files=[
+                        EvalSpecDatasetFileCreate(
+                            file_key="primary",
+                            display_name="主数据集",
+                            file_name="dataset.jsonl",
+                            format="jsonl",
+                            source_uri=str(dataset_path),
+                        )
+                    ],
+                ),
+            )
+        )
+        created_spec_id = spec.id
+        await catalog_service.sync_spec_version_datasets(created_spec_name, spec.versions[0].id)
+        provider_id, model_id = await _create_model_and_provider()
+
+        summary = await service.create_run(
+            EvaluationRunCreate(
+                target=EvaluationTargetRef(kind="spec", name=created_spec_name, version="dataset-v1"),
+                model_id=model_id,
+            )
+        )
+        run_id = summary.id
+
+        async with SessionLocal() as session:
+            item = (
+                await session.execute(
+                    select(EvaluationRunItem).where(EvaluationRunItem.run_id == run_id)
+                )
+            ).scalar_one()
+
+        result = await activity_execute_evaluation_run_item(
+            run_id=str(run_id),
+            item_id=str(item.id),
+            cancel_event=threading.Event(),
+        )
+        assert result["status"] == "completed"
+
+        await aggregate_run_summary(run_id=str(run_id))
+        detail = await service.get_run(str(run_id))
+        assert detail.status == "completed"
+        assert detail.items[0].execution_mode == "dataset"
+        assert detail.metrics[0].metric_value == pytest.approx(1.0)
+        assert detail.items[0].samples[0].sample_id == "sample-1"
+        assert detail.items[0].samples[0].passed is True
+    finally:
+        await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)
+        async with SessionLocal() as session:
+            if created_spec_id is not None:
+                await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
+            await session.commit()
 
 
 async def test_cancelled_run_short_circuits_item_execution(

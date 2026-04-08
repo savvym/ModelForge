@@ -481,6 +481,7 @@ class CompiledRunItemPlan(BaseModel):
     expected_sample_count: int | None = None
     engine_config: dict[str, Any] = Field(default_factory=dict)
     model_binding: ModelBindingSnapshot
+    judge_model_binding: ModelBindingSnapshot | None = None
     judge_policy_snapshot: dict[str, Any] | None = None
     template_snapshot: dict[str, Any] | None = None
 

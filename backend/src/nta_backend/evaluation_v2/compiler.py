@@ -57,6 +57,7 @@ async def compile_run_request(
         )
         item = await _build_item_plan(
             session,
+            project_id=project_id,
             spec=spec,
             spec_version=spec_version,
             model_binding=model_binding,
@@ -70,7 +71,7 @@ async def compile_run_request(
             target_name=spec.name,
             target_version=spec_version.version,
             model_binding=model_binding,
-            judge_policy_snapshot=_serialize_judge_policy(judge_policy),
+            judge_policy_snapshot=item.judge_policy_snapshot,
             items=[item],
             overrides=payload.overrides,
         )
@@ -108,6 +109,7 @@ async def compile_run_request(
         item_plans.append(
             await _build_item_plan(
                 session,
+                project_id=project_id,
                 spec=spec,
                 spec_version=spec_version,
                 model_binding=model_binding,
@@ -140,6 +142,7 @@ async def compile_run_request(
 async def _build_item_plan(
     session: AsyncSession,
     *,
+    project_id: UUID,
     spec: EvalSpec,
     spec_version: EvalSpecVersion,
     model_binding: ModelBindingSnapshot,
@@ -151,9 +154,23 @@ async def _build_item_plan(
     overrides: dict[str, Any] | None = None,
 ) -> CompiledRunItemPlan:
     _ensure_required_dataset_files_ready(spec_version)
+    effective_judge_policy = await _resolve_effective_judge_policy(
+        session,
+        project_id=project_id,
+        explicit_policy=judge_policy,
+        spec_version=spec_version,
+    )
     template_snapshot = await _load_template_snapshot(
         session,
-        template_version_id=spec_version.template_spec_version_id,
+        template_version_id=(
+            spec_version.template_spec_version_id
+            or (effective_judge_policy.template_spec_version_id if effective_judge_policy else None)
+        ),
+    )
+    judge_model_binding = await _load_judge_model_binding(
+        session,
+        project_id=project_id,
+        policy=effective_judge_policy,
     )
     effective_engine_config = {
         **dict(spec_version.engine_config_json or {}),
@@ -191,7 +208,8 @@ async def _build_item_plan(
         expected_sample_count=spec_version.sample_count,
         engine_config=effective_engine_config,
         model_binding=model_binding,
-        judge_policy_snapshot=_serialize_judge_policy(judge_policy),
+        judge_model_binding=judge_model_binding,
+        judge_policy_snapshot=_serialize_judge_policy(effective_judge_policy),
         template_snapshot=template_snapshot,
     )
 
@@ -231,6 +249,41 @@ async def _resolve_model_binding(
     )
 
 
+async def _resolve_model_binding_by_selector(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    selector: dict[str, Any],
+) -> ModelBindingSnapshot | None:
+    model_id = selector.get("model_id")
+    if model_id:
+        return await _resolve_model_binding(
+            session,
+            project_id=project_id,
+            model_id=UUID(str(model_id)),
+        )
+
+    model_name = str(
+        selector.get("model_name")
+        or selector.get("name")
+        or selector.get("display_name")
+        or ""
+    ).strip()
+    if not model_name:
+        return None
+
+    row = await session.execute(
+        select(Model).where(
+            or_(Model.project_id == project_id, Model.project_id.is_(None)),
+            or_(Model.name == model_name, Model.model_code == model_name),
+        )
+    )
+    model = row.scalar_one_or_none()
+    if model is None:
+        raise ValueError(f"Judge Policy 指定的模型不存在：{model_name}")
+    return await _resolve_model_binding(session, project_id=project_id, model_id=model.id)
+
+
 async def _resolve_judge_policy(
     session: AsyncSession,
     *,
@@ -249,6 +302,42 @@ async def _resolve_judge_policy(
     if policy is None:
         raise ValueError("指定 Judge Policy 不存在。")
     return policy
+
+
+async def _resolve_effective_judge_policy(
+    session: AsyncSession,
+    *,
+    project_id: UUID | None,
+    explicit_policy: JudgePolicy | None,
+    spec_version: EvalSpecVersion,
+) -> JudgePolicy | None:
+    if explicit_policy is not None:
+        return explicit_policy
+    if spec_version.default_judge_policy_id is None or project_id is None:
+        return None
+    return await _resolve_judge_policy(
+        session,
+        project_id=project_id,
+        judge_policy_id=spec_version.default_judge_policy_id,
+    )
+
+
+async def _load_judge_model_binding(
+    session: AsyncSession,
+    *,
+    project_id: UUID | None,
+    policy: JudgePolicy | None,
+) -> ModelBindingSnapshot | None:
+    if policy is None or project_id is None:
+        return None
+    selector = dict(policy.model_selector_json or {})
+    if not selector:
+        return None
+    return await _resolve_model_binding_by_selector(
+        session,
+        project_id=project_id,
+        selector=selector,
+    )
 
 
 async def _load_spec_version(

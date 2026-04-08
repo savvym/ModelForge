@@ -19,6 +19,8 @@ class ExecutorModelConfig:
     api_url: str
     api_key: str | None
     api_format: str
+    organization: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -335,6 +335,8 @@ def _call_openai_compatible_chat(
     model_name: str,
     messages: list[ChatMessage] | list[dict[str, str]],
     api_format: str = "chat-completions",
+    organization: str | None = None,
+    headers: dict[str, str] | None = None,
     timeout_s: float = _DEFAULT_MODEL_TIMEOUT_S,
     temperature: float = 0.0,
     max_tokens: int | None = None,
@@ -350,12 +352,17 @@ def _call_openai_compatible_chat(
         temperature=temperature,
         max_tokens=max_tokens,
     )
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        **{str(key): str(value) for key, value in (headers or {}).items()},
+    }
     if api_key:
         if normalized_api_format == "google":
             headers["x-goog-api-key"] = api_key
         else:
             headers["Authorization"] = f"Bearer {api_key}"
+    if organization and normalized_api_format != "google":
+        headers["OpenAI-Organization"] = organization
 
     started_at = time.perf_counter()
     try:
@@ -391,6 +398,8 @@ class NTAOpenAICompatibleAPI(ModelAPI):
         config: GenerateConfig = GenerateConfig(),
         *,
         api_format: str = "chat-completions",
+        organization: str | None = None,
+        headers: dict[str, str] | None = None,
         timeout_s: float = _DEFAULT_MODEL_TIMEOUT_S,
         **_: Any,
     ) -> None:
@@ -401,6 +410,8 @@ class NTAOpenAICompatibleAPI(ModelAPI):
             config=config,
         )
         self.api_format = api_format
+        self.organization = organization
+        self.headers = {str(key): str(value) for key, value in (headers or {}).items()}
         self.timeout_s = timeout_s
 
     def generate(
@@ -417,6 +428,8 @@ class NTAOpenAICompatibleAPI(ModelAPI):
             model_name=self.model_name,
             messages=input,
             api_format=self.api_format,
+            organization=self.organization,
+            headers=self.headers,
             timeout_s=config.timeout or self.timeout_s,
             temperature=config.temperature or 0.0,
             max_tokens=config.max_tokens,
@@ -525,9 +538,14 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
         ]
 
     def _score_task_state(self, task_state, prediction_text: str) -> dict[str, Any]:
+        effective_method = _resolve_eval_method(
+            self.eval_method,
+            task_state._sample.target,
+            has_template=bool(str(self.template_config.get("prompt") or "").strip()),
+        )
         references = _normalize_reference_answers(task_state.metadata, task_state._sample.target)
         common = {
-            "method": self.eval_method,
+            "method": effective_method,
             "metric": self.metric_name,
             "prediction_text": prediction_text,
             "reference_answers": references,
@@ -557,10 +575,12 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
                 "error": None,
             }
 
-        if self.eval_method in {"accuracy", "acc"}:
-            expected = _normalize_target_choice(task_state._sample.target)
-            predicted = _extract_choice_letter(prediction_text)
-            passed = bool(expected and predicted and expected == predicted)
+        if effective_method in {"accuracy", "acc", "exact-match"}:
+            passed, expected, predicted = _score_accuracy_prediction(
+                prediction_text=prediction_text,
+                target=task_state._sample.target,
+                references=references,
+            )
             return {
                 **common,
                 "score": 1.0 if passed else 0.0,
@@ -573,28 +593,28 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
             }
 
         judge_model = self._require_judge_model()
-        if self.eval_method in {"judge-rubric", "judge-model"}:
+        if effective_method in {"judge-rubric", "judge-model"}:
             return self._score_with_rubric_judge(
                 judge_model=judge_model,
                 task_state=task_state,
                 prediction_text=prediction_text,
                 common=common,
             )
-        if self.eval_method == "judge-quality":
+        if effective_method == "judge-quality":
             return self._score_with_quality_judge(
                 judge_model=judge_model,
                 task_state=task_state,
                 prediction_text=prediction_text,
                 common=common,
             )
-        if self.eval_method == "judge-template":
+        if effective_method == "judge-template":
             return self._score_with_template_judge(
                 judge_model=judge_model,
                 task_state=task_state,
                 prediction_text=prediction_text,
                 common=common,
             )
-        raise ValueError(f"Unsupported eval_method: {self.eval_method}")
+        raise ValueError(f"Unsupported eval_method: {effective_method}")
 
     def _score_with_rubric_judge(
         self,
@@ -981,6 +1001,8 @@ def _build_task_config(request: EvalExecutionRequest):
                         "api_url": request.judge_model.api_url,
                         "api_key": request.judge_model.api_key,
                         "api_format": request.judge_model.api_format,
+                        "organization": request.judge_model.organization,
+                        "headers": dict(request.judge_model.headers),
                     }
                     if request.judge_model is not None
                     else None
@@ -992,6 +1014,8 @@ def _build_task_config(request: EvalExecutionRequest):
         api_key=request.eval_model.api_key or "EMPTY",
         model_args={
             "api_format": request.eval_model.api_format,
+            "organization": request.eval_model.organization,
+            "headers": dict(request.eval_model.headers),
             "timeout_s": _DEFAULT_MODEL_TIMEOUT_S,
         },
         generation_config=GenerateConfig(
@@ -1024,6 +1048,14 @@ def _coerce_model_config(value: Any) -> ExecutorModelConfig | None:
         api_url=api_url,
         api_key=str(value.get("api_key")) if value.get("api_key") is not None else None,
         api_format=api_format,
+        organization=(
+            str(value.get("organization")) if value.get("organization") is not None else None
+        ),
+        headers=(
+            {str(key): str(item) for key, item in value["headers"].items()}
+            if isinstance(value.get("headers"), dict)
+            else {}
+        ),
     )
 
 
@@ -1045,6 +1077,8 @@ def _build_evalscope_model(
         ),
         model_args={
             "api_format": config.api_format,
+            "organization": config.organization,
+            "headers": dict(config.headers),
             "timeout_s": timeout_s,
         },
         memoize=False,
@@ -1062,6 +1096,49 @@ def _normalize_reference_answers(metadata: dict[str, Any] | None, target: Any) -
     if isinstance(target, str) and target.strip():
         return [target.strip()]
     return []
+
+
+def _resolve_eval_method(
+    configured_method: str | None,
+    target: Any,
+    *,
+    has_template: bool = False,
+) -> str:
+    normalized = (configured_method or "auto").strip()
+    if normalized != "auto":
+        return normalized
+    if has_template:
+        return "judge-template"
+    if isinstance(target, list):
+        return "judge-rubric"
+    return "accuracy"
+
+
+def _normalize_text_match(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def _score_accuracy_prediction(
+    *,
+    prediction_text: str,
+    target: Any,
+    references: list[str],
+) -> tuple[bool, str | None, str | None]:
+    expected_choice = _normalize_target_choice(target)
+    predicted_choice = _extract_choice_letter(prediction_text)
+    if expected_choice and predicted_choice:
+        return expected_choice == predicted_choice, expected_choice, predicted_choice
+
+    normalized_prediction = _normalize_text_match(prediction_text)
+    if not normalized_prediction:
+        return False, references[0] if references else None, None
+
+    for reference in references:
+        normalized_reference = _normalize_text_match(reference)
+        if normalized_reference and normalized_reference == normalized_prediction:
+            return True, reference, prediction_text.strip() or None
+
+    return False, references[0] if references else None, prediction_text.strip() or None
 
 
 def _truncate_preview(value: str, *, limit: int = 500) -> str:

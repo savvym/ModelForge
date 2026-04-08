@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from nta_backend.evaluation_v2.execution import EvalScopeBuiltinExecutor, EvaluationEngineAdapter
+from nta_backend.evaluation_v2.execution import (
+    EvalScopeBuiltinExecutor,
+    EvalScopeDatasetExecutor,
+    EvaluationEngineAdapter,
+)
 
 _ENGINE_REGISTRY: dict[tuple[str, str], EvaluationEngineAdapter] = {
     ("evalscope", "builtin"): EvalScopeBuiltinExecutor(),
+    ("evalscope", "dataset"): EvalScopeDatasetExecutor(),
 }
 
 
