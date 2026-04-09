@@ -436,7 +436,7 @@ export function EvalSpecCreateForm({
                 <Field label="来源 URI">
                   <Input
                     onChange={(event) => updateDatasetFile(datasetFile.id, { sourceUri: event.target.value })}
-                    placeholder="支持 s3://、file://、绝对路径、http(s):// 或 evalscope://"
+                    placeholder="支持 s3:// 对象存储 URI"
                     value={datasetFile.sourceUri}
                   />
                 </Field>

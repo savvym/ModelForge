@@ -116,16 +116,8 @@ def _load_dataset_bytes(dataset_file: dict[str, Any]) -> bytes:
     if source_uri.startswith("s3://"):
         bucket, object_key = _parse_s3_uri(source_uri)
         return get_object_bytes(bucket, object_key).body
-    if source_uri.startswith("file://"):
-        return Path(source_uri.removeprefix("file://")).read_bytes()
-    if source_uri.startswith("/"):
-        return Path(source_uri).read_bytes()
     if source_uri.startswith("evalscope://"):
         raise ValueError("EvalScope dataset execution requires a concrete dataset file, not an external builtin dataset.")
-    if source_uri:
-        candidate = Path(source_uri)
-        if candidate.exists():
-            return candidate.read_bytes()
     raise ValueError(f"数据集文件 {dataset_file.get('display_name') or dataset_file.get('file_key')} 尚未就绪。")
 
 

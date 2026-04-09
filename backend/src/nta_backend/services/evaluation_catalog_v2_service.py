@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from mimetypes import guess_type
-from pathlib import Path, PurePosixPath
-
-import httpx
+from pathlib import PurePosixPath
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -776,22 +774,7 @@ def _read_dataset_file_source(source_uri: str) -> tuple[bytes, str | None, str |
         bucket, object_key = _parse_s3_uri(normalized)
         payload = get_object_bytes(bucket, object_key)
         return payload.body, payload.content_type, PurePosixPath(object_key).name
-    if normalized.startswith("file://"):
-        local_path = Path(normalized.removeprefix("file://"))
-        if not local_path.exists():
-            raise FileNotFoundError(str(local_path))
-        return local_path.read_bytes(), guess_type(local_path.name)[0], local_path.name
-    if normalized.startswith("/"):
-        local_path = Path(normalized)
-        if not local_path.exists():
-            raise FileNotFoundError(str(local_path))
-        return local_path.read_bytes(), guess_type(local_path.name)[0], local_path.name
-    if normalized.startswith("http://") or normalized.startswith("https://"):
-        response = httpx.get(normalized, timeout=60.0, follow_redirects=True)
-        response.raise_for_status()
-        file_name = PurePosixPath(response.url.path).name or None
-        return response.content, response.headers.get("content-type"), file_name
-    raise ValueError("数据集文件 source_uri 目前仅支持 s3://、file://、绝对路径和 http(s)://。")
+    raise ValueError("数据集文件 source_uri 目前仅支持 s3:// 对象存储 URI。")
 
 
 def _parse_s3_uri(value: str) -> tuple[str, str]:
