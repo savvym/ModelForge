@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +9,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from nta_backend.models.benchmark_catalog import (
+    BenchmarkDefinition as BenchmarkDefinitionRecord,
+)
 from nta_backend.models.evaluation_v2 import (
     EvalSpec,
     EvalSpecVersion,
@@ -16,8 +20,10 @@ from nta_backend.models.evaluation_v2 import (
     JudgePolicy,
     TemplateSpecVersion,
 )
+from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.modeling import Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
+    BenchmarkEvaluationRunCreate,
     CompiledRunItemPlan,
     CompiledRunPlan,
     EvaluationRunCreate,
@@ -137,6 +143,134 @@ async def compile_run_request(
         source_suite_version_id=suite_version.id,
         judge_policy_id=judge_policy.id if judge_policy is not None else None,
     )
+
+
+async def compile_benchmark_run_request(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    payload: BenchmarkEvaluationRunCreate,
+) -> CompiledRunContext:
+    model_binding = await _resolve_model_binding(session, project_id=project_id, model_id=payload.model_id)
+
+    builtin_spec_context = await _load_builtin_benchmark_spec(
+        session,
+        project_id=project_id,
+        benchmark_name=payload.benchmark_name,
+        version_id=payload.benchmark_version_id,
+    )
+    if builtin_spec_context is not None:
+        spec, spec_version = builtin_spec_context
+        item = await _build_item_plan(
+            session,
+            project_id=project_id,
+            spec=spec,
+            spec_version=spec_version,
+            model_binding=model_binding,
+            judge_policy=None,
+            item_key=spec.name,
+            display_name=spec.display_name,
+            group_name=spec.capability_category,
+        )
+        plan = CompiledRunPlan(
+            kind="benchmark",
+            target_name=spec.name,
+            target_version=spec_version.version,
+            model_binding=model_binding,
+            judge_policy_snapshot=None,
+            items=[item],
+            overrides={
+                "benchmark": {
+                    "name": spec.name,
+                    "display_name": spec.display_name,
+                    "version": spec_version.version,
+                    "version_display_name": spec_version.display_name,
+                    "source_type": "builtin",
+                }
+            },
+        )
+        return CompiledRunContext(
+            plan=plan,
+            source_spec_id=spec.id,
+            source_spec_version_id=spec_version.id,
+        )
+
+    definition, version = await _load_custom_benchmark_version(
+        session,
+        benchmark_name=payload.benchmark_name,
+        version_id=payload.benchmark_version_id,
+    )
+    template = await _load_benchmark_eval_template(session, definition=definition)
+    judge_model_binding = await _load_eval_template_model_binding(
+        session,
+        project_id=project_id,
+        template=template,
+    )
+    source_uri = (version.dataset_source_uri or version.dataset_path or "").strip()
+    if not source_uri:
+        raise ValueError("所选 Benchmark Version 还没有可执行的数据文件。")
+
+    item = CompiledRunItemPlan(
+        item_key=definition.name,
+        display_name=definition.display_name,
+        group_name=definition.category,
+        weight=1.0,
+        engine="evalscope",
+        execution_mode="dataset",
+        spec_id=None,
+        spec_version_id=None,
+        spec_name=definition.name,
+        spec_version=version.version_id,
+        expected_sample_count=version.sample_count,
+        engine_config={
+            "dataset_source_uri": source_uri,
+            "dataset_files": [
+                {
+                    "file_key": "primary",
+                    "display_name": version.display_name,
+                    "role": "dataset",
+                    "file_name": _guess_dataset_file_name(source_uri, definition.name, version.version_id),
+                    "format": _guess_dataset_format(source_uri),
+                    "source_uri": source_uri,
+                    "status": "external",
+                    "is_required": True,
+                }
+            ],
+            "field_mapping": dict(definition.field_mapping_json or {}),
+            "scoring_config": {"eval_method": definition.default_eval_method or "judge-template"},
+            "prompt_config": {},
+            "overrides": {},
+        },
+        model_binding=model_binding,
+        judge_model_binding=judge_model_binding,
+        judge_policy_snapshot={
+            "strategy": "judge-template",
+            "source": "benchmark-dimension",
+            "dimension_name": template.name,
+            "dimension_version": template.version,
+        },
+        template_snapshot=_serialize_eval_template_snapshot(template),
+    )
+    plan = CompiledRunPlan(
+        kind="benchmark",
+        target_name=definition.name,
+        target_version=version.version_id,
+        model_binding=model_binding,
+        judge_policy_snapshot=item.judge_policy_snapshot,
+        items=[item],
+        overrides={
+            "benchmark": {
+                "name": definition.name,
+                "display_name": definition.display_name,
+                "version": version.version_id,
+                "version_display_name": version.display_name,
+                "source_type": definition.source_type or "custom",
+                "dimension_name": template.name,
+                "dimension_version": template.version,
+            }
+        },
+    )
+    return CompiledRunContext(plan=plan)
 
 
 async def _build_item_plan(
@@ -272,16 +406,134 @@ async def _resolve_model_binding_by_selector(
     if not model_name:
         return None
 
-    row = await session.execute(
-        select(Model).where(
-            or_(Model.project_id == project_id, Model.project_id.is_(None)),
-            or_(Model.name == model_name, Model.model_code == model_name),
-        )
+    provider_name = str(
+        selector.get("provider_name")
+        or selector.get("provider")
+        or ""
+    ).strip()
+    stmt = select(Model).where(
+        or_(Model.project_id == project_id, Model.project_id.is_(None)),
+        or_(Model.name == model_name, Model.model_code == model_name),
     )
+    if provider_name:
+        stmt = stmt.join(
+            ModelProvider,
+            Model.provider_id == ModelProvider.id,
+        ).where(
+            ModelProvider.name == provider_name,
+            ModelProvider.project_id == project_id,
+        )
+    row = await session.execute(stmt)
     model = row.scalar_one_or_none()
     if model is None:
         raise ValueError(f"Judge Policy 指定的模型不存在：{model_name}")
     return await _resolve_model_binding(session, project_id=project_id, model_id=model.id)
+
+
+async def _load_builtin_benchmark_spec(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    benchmark_name: str,
+    version_id: str,
+) -> tuple[EvalSpec, EvalSpecVersion] | None:
+    spec, spec_version = await _load_spec_version_or_none(
+        session,
+        project_id=project_id,
+        spec_name=benchmark_name,
+        version=version_id,
+    )
+    if spec is None or spec_version is None:
+        return None
+    if spec_version.execution_mode != "builtin":
+        return None
+    return spec, spec_version
+
+
+async def _load_custom_benchmark_version(
+    session: AsyncSession,
+    *,
+    benchmark_name: str,
+    version_id: str,
+) -> tuple[BenchmarkDefinitionRecord, Any]:
+    row = await session.execute(
+        select(BenchmarkDefinitionRecord)
+        .options(selectinload(BenchmarkDefinitionRecord.versions))
+        .where(BenchmarkDefinitionRecord.name == benchmark_name.strip())
+    )
+    definition = row.scalar_one_or_none()
+    if definition is None or definition.source_type != "custom":
+        raise ValueError("指定 Benchmark 不存在，或当前仅支持通过已创建的 Benchmark 发起自定义评测。")
+    version = next(
+        (item for item in definition.versions if item.version_id == version_id.strip()),
+        None,
+    )
+    if version is None or not version.enabled:
+        raise ValueError("指定 Benchmark Version 不可用。")
+    return definition, version
+
+
+async def _load_benchmark_eval_template(
+    session: AsyncSession,
+    *,
+    definition: BenchmarkDefinitionRecord,
+) -> EvalTemplate:
+    if definition.eval_template_id is None:
+        raise ValueError("该 Benchmark 尚未绑定评测维度。")
+    template = await session.get(EvalTemplate, definition.eval_template_id)
+    if template is None:
+        raise ValueError("该 Benchmark 绑定的评测维度不存在。")
+    return template
+
+
+async def _load_eval_template_model_binding(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    template: EvalTemplate,
+) -> ModelBindingSnapshot | None:
+    model_name = (template.model or "").strip()
+    if not model_name:
+        return None
+    selector: dict[str, Any] = {"model_name": model_name}
+    provider_name = (template.provider or "").strip()
+    if provider_name:
+        selector["provider_name"] = provider_name
+    return await _resolve_model_binding_by_selector(
+        session,
+        project_id=project_id,
+        selector=selector,
+    )
+
+
+def _serialize_eval_template_snapshot(template: EvalTemplate) -> dict[str, Any]:
+    return {
+        "id": str(template.id),
+        "version": template.version,
+        "prompt": template.prompt,
+        "vars": list(template.vars or []),
+        "output_schema": {},
+        "parser_config": {
+            "output_type": template.output_type,
+            "output_config": dict(template.output_config or {}),
+        },
+    }
+
+
+def _guess_dataset_file_name(source_uri: str, benchmark_name: str, version_id: str) -> str:
+    name = PurePosixPath(source_uri).name
+    if name and "." in name:
+        return name
+    return f"{benchmark_name}-{version_id}.jsonl"
+
+
+def _guess_dataset_format(source_uri: str) -> str:
+    suffix = PurePosixPath(source_uri).suffix.lower()
+    if suffix == ".jsonl":
+        return "jsonl"
+    if suffix == ".json":
+        return "json"
+    return "jsonl"
 
 
 async def _resolve_judge_policy(
@@ -347,6 +599,26 @@ async def _load_spec_version(
     spec_name: str,
     version: str,
 ) -> tuple[EvalSpec, EvalSpecVersion]:
+    spec, spec_version = await _load_spec_version_or_none(
+        session,
+        project_id=project_id,
+        spec_name=spec_name,
+        version=version,
+    )
+    if spec is None:
+        raise ValueError("指定评测类型不存在。")
+    if spec_version is None or not spec_version.enabled:
+        raise ValueError("指定评测版本不可用。")
+    return spec, spec_version
+
+
+async def _load_spec_version_or_none(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    spec_name: str,
+    version: str,
+) -> tuple[EvalSpec | None, EvalSpecVersion | None]:
     row = await session.execute(
         select(EvalSpec)
         .options(selectinload(EvalSpec.versions).selectinload(EvalSpecVersion.dataset_files))
@@ -357,10 +629,8 @@ async def _load_spec_version(
     )
     spec = row.scalar_one_or_none()
     if spec is None:
-        raise ValueError("指定评测类型不存在。")
+        return None, None
     spec_version = next((item for item in spec.versions if item.version == version.strip()), None)
-    if spec_version is None or not spec_version.enabled:
-        raise ValueError("指定评测版本不可用。")
     return spec, spec_version
 
 

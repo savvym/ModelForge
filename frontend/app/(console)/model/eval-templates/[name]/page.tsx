@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function EvalTemplateDetailPage() {
-  redirect("/model/eval?tab=templates");
+  redirect("/model/eval?tab=dimensions");
 }

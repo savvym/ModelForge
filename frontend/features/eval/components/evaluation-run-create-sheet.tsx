@@ -4,17 +4,17 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { EvaluationRunCreateForm } from "@/features/eval/components/evaluation-run-create-form";
-import type { EvaluationCatalogResponseV2, RegistryModelSummary } from "@/types/api";
+import { BenchmarkEvaluationRunCreateForm } from "@/features/eval/components/benchmark-evaluation-run-create-form";
+import type { BenchmarkDefinitionSummary, RegistryModelSummary } from "@/types/api";
 
 type EvaluationRunCreateSheetProps = {
-  catalog: EvaluationCatalogResponseV2;
+  benchmarks: BenchmarkDefinitionSummary[];
   models: RegistryModelSummary[];
   initialOpen?: boolean;
 };
 
 export function EvaluationRunCreateSheet({
-  catalog,
+  benchmarks,
   models,
   initialOpen = false
 }: EvaluationRunCreateSheetProps) {
@@ -59,7 +59,7 @@ export function EvaluationRunCreateSheet({
           </SheetHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
-            <EvaluationRunCreateForm catalog={catalog} models={models} />
+            <BenchmarkEvaluationRunCreateForm benchmarks={benchmarks} models={models} />
           </div>
         </SheetContent>
       </Sheet>

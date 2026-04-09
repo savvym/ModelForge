@@ -30,6 +30,7 @@ from nta_backend.models.benchmark_catalog import (
 from nta_backend.models.benchmark_catalog import (
     BenchmarkVersion as BenchmarkVersionRecord,
 )
+from nta_backend.models.evaluation_v2 import EvalSpec, EvalSpecVersion
 from nta_backend.models.jobs import EvalJob
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
@@ -311,6 +312,92 @@ def _serialize_definition_detail(
     )
 
 
+def _serialize_builtin_spec(
+    *,
+    spec: EvalSpec,
+    benchmark_usage: _BenchmarkUsage,
+    version_usage: dict[tuple[str, str], _BenchmarkUsage],
+) -> BenchmarkDefinitionSummary:
+    builtin_versions = [
+        version
+        for version in spec.versions
+        if version.execution_mode == "builtin"
+    ]
+    serialized_versions = [
+        BenchmarkVersionSummary(
+            id=version.version,
+            display_name=version.display_name,
+            description=version.description or "",
+            dataset_path=None,
+            dataset_source_uri=None,
+            sample_count=version.sample_count or 0,
+            enabled=version.enabled,
+            eval_job_count=version_usage.get((spec.name, version.version), _BenchmarkUsage()).eval_job_count,
+            latest_eval_at=version_usage.get((spec.name, version.version), _BenchmarkUsage()).latest_eval_at,
+        )
+        for version in builtin_versions
+    ]
+    tags = [str(tag) for tag in (spec.tags_json or []) if isinstance(tag, str) and str(tag).strip()]
+    return BenchmarkDefinitionSummary(
+        name=spec.name,
+        display_name=spec.display_name,
+        family_name=spec.capability_group,
+        family_display_name=spec.capability_group,
+        description=spec.description or "",
+        default_eval_method="accuracy",
+        requires_judge_model=False,
+        supports_custom_dataset=False,
+        dataset_id=None,
+        category=spec.capability_category,
+        source_type="builtin",
+        paper_url=None,
+        tags=tags,
+        metric_names=["acc"],
+        subset_list=[],
+        eval_template_id=None,
+        eval_template_name=None,
+        eval_template_version=None,
+        eval_template_type=None,
+        eval_template_preset_id=None,
+        version_count=len(serialized_versions),
+        enabled_version_count=sum(1 for version in serialized_versions if version.enabled),
+        eval_job_count=benchmark_usage.eval_job_count,
+        latest_eval_at=benchmark_usage.latest_eval_at,
+        versions=serialized_versions,
+    )
+
+
+def _serialize_builtin_spec_detail(
+    *,
+    spec: EvalSpec,
+    benchmark_usage: _BenchmarkUsage,
+    version_usage: dict[tuple[str, str], _BenchmarkUsage],
+) -> BenchmarkDefinitionDetail:
+    summary = _serialize_builtin_spec(
+        spec=spec,
+        benchmark_usage=benchmark_usage,
+        version_usage=version_usage,
+    )
+    return BenchmarkDefinitionDetail(
+        **summary.model_dump(),
+        sample_schema_json={},
+        prompt_schema_json={},
+        prompt_config_json={},
+        field_mapping_json=None,
+        few_shot_num=None,
+        eval_split=None,
+        train_split=None,
+        prompt_template=None,
+        system_prompt=None,
+        few_shot_prompt_template=None,
+        sample_example_json=None,
+        statistics_json=None,
+        readme_json={"zh": spec.description} if spec.description else None,
+        meta_updated_at=None,
+        meta_translation_updated_at=None,
+    )
+
+
 # ------------------------------------------------------------------
 # Sample file generation
 # ------------------------------------------------------------------
@@ -390,6 +477,26 @@ async def _load_benchmark_records(
     return rows.scalars().all()
 
 
+async def _load_builtin_benchmark_specs(
+    session: AsyncSession,
+) -> list[EvalSpec]:
+    rows = await session.execute(
+        select(EvalSpec)
+        .options(selectinload(EvalSpec.versions))
+        .where(
+            EvalSpec.project_id.is_(None),
+            EvalSpec.capability_group == "基线评测",
+            EvalSpec.status == "active",
+        )
+        .order_by(EvalSpec.display_name.asc(), EvalSpec.name.asc())
+    )
+    return [
+        spec
+        for spec in rows.scalars().all()
+        if any(version.execution_mode == "builtin" for version in spec.versions)
+    ]
+
+
 async def _load_single_benchmark_record(
     session: AsyncSession,
     benchmark_name: str,
@@ -400,6 +507,27 @@ async def _load_single_benchmark_record(
         .where(BenchmarkDefinitionRecord.name == benchmark_name.strip())
     )
     return row.scalar_one_or_none()
+
+
+async def _load_builtin_benchmark_spec(
+    session: AsyncSession,
+    benchmark_name: str,
+) -> EvalSpec | None:
+    rows = await session.execute(
+        select(EvalSpec)
+        .options(selectinload(EvalSpec.versions))
+        .where(
+            EvalSpec.project_id.is_(None),
+            EvalSpec.name == benchmark_name.strip(),
+            EvalSpec.capability_group == "基线评测",
+        )
+    )
+    spec = rows.scalar_one_or_none()
+    if spec is None:
+        return None
+    if not any(version.execution_mode == "builtin" for version in spec.versions):
+        return None
+    return spec
 
 
 async def _load_eval_template_refs(
@@ -809,7 +937,17 @@ def _materialize_dataset_source(
             ) as handle:
                 handle.write(payload.body)
                 return Path(handle.name), None, dataset_source_uri, True
-        raise ValueError("Benchmark Version 数据源目前仅支持 s3:// 对象存储 URI。")
+        if dataset_source_uri.startswith("file://"):
+            local_path = Path(dataset_source_uri.removeprefix("file://"))
+            if local_path.exists():
+                return local_path, str(local_path), dataset_source_uri, False
+            raise FileNotFoundError(str(local_path))
+        if dataset_source_uri.startswith("/"):
+            local_path = Path(dataset_source_uri)
+            if local_path.exists():
+                return local_path, str(local_path), dataset_source_uri, False
+            raise FileNotFoundError(str(local_path))
+        raise ValueError("Benchmark Version 数据源目前仅支持 s3://、file:// 或本地绝对路径。")
 
     if dataset_path:
         local_path = Path(dataset_path)
@@ -896,6 +1034,7 @@ class BenchmarkCatalogService:
                 for record in await _load_benchmark_records(session)
                 if record.source_type == "custom"
             ]
+            builtin_specs = await _load_builtin_benchmark_specs(session)
             template_ids = [
                 template_id
                 for template_id in {record.eval_template_id for record in records}
@@ -906,7 +1045,7 @@ class BenchmarkCatalogService:
             benchmark_usage, version_usage = await _load_benchmark_usage(session, project_id)
             for record in records:
                 await _sync_legacy_local_versions(session, record.name, record.versions)
-            return [
+            custom_summaries = [
                 _serialize_definition(
                     record=record,
                     benchmark_usage=benchmark_usage.get(record.name, _BenchmarkUsage()),
@@ -915,19 +1054,39 @@ class BenchmarkCatalogService:
                 )
                 for record in records
             ]
+            builtin_summaries = [
+                _serialize_builtin_spec(
+                    spec=spec,
+                    benchmark_usage=benchmark_usage.get(spec.name, _BenchmarkUsage()),
+                    version_usage=version_usage,
+                )
+                for spec in builtin_specs
+            ]
+            return sorted(
+                [*builtin_summaries, *custom_summaries],
+                key=lambda item: (item.source_type != "builtin", item.display_name.lower(), item.name.lower()),
+            )
 
     async def get_benchmark(self, benchmark_name: str) -> BenchmarkDefinitionDetail:
         async with SessionLocal() as session:
             record = await _load_single_benchmark_record(session, benchmark_name)
+            project_id = await resolve_active_project_id(session)
+            benchmark_usage, version_usage = await _load_benchmark_usage(session, project_id)
             if record is None:
-                raise KeyError(benchmark_name)
+                builtin_spec = await _load_builtin_benchmark_spec(session, benchmark_name)
+                if builtin_spec is None:
+                    raise KeyError(benchmark_name)
+                return _serialize_builtin_spec_detail(
+                    spec=builtin_spec,
+                    benchmark_usage=benchmark_usage.get(builtin_spec.name, _BenchmarkUsage()),
+                    version_usage=version_usage,
+                )
+
             await _sync_legacy_local_versions(session, benchmark_name, record.versions)
             eval_template = await _resolve_eval_template_for_binding(
                 session,
                 str(record.eval_template_id) if record.eval_template_id else None,
             )
-            project_id = await resolve_active_project_id(session)
-            benchmark_usage, version_usage = await _load_benchmark_usage(session, project_id)
             return _serialize_definition_detail(
                 record=record,
                 benchmark_usage=benchmark_usage.get(record.name, _BenchmarkUsage()),
@@ -938,9 +1097,22 @@ class BenchmarkCatalogService:
     async def get_benchmark_sample_file(self, benchmark_name: str) -> _BenchmarkSampleFile:
         async with SessionLocal() as session:
             record = await _load_single_benchmark_record(session, benchmark_name)
-            if record is None:
+            if record is not None:
+                return _build_benchmark_sample_file(record)
+            builtin_spec = await _load_builtin_benchmark_spec(session, benchmark_name)
+            if builtin_spec is None:
                 raise KeyError(benchmark_name)
-            return _build_benchmark_sample_file(record)
+            payload = {
+                "id": "sample-1",
+                "input": "示例输入",
+                "target": "示例答案",
+                "metadata": {"benchmark": builtin_spec.name},
+            }
+            return _BenchmarkSampleFile(
+                file_name=f"{builtin_spec.name}-sample.jsonl",
+                content=(json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"),
+                media_type="application/x-ndjson",
+            )
 
     async def preview_benchmark_version_file(
         self,

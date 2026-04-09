@@ -208,7 +208,10 @@ export function formatEvaluationRunKind(kind: string): string {
     return "基线评测";
   }
   if (kind === "spec") {
-    return "单项评测";
+    return "自定义评测";
+  }
+  if (kind === "benchmark") {
+    return "Benchmark 评测";
   }
   return kind;
 }

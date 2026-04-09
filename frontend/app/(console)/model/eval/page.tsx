@@ -6,20 +6,22 @@ import {
 } from "@/components/console/list-surface";
 import { buttonVariants } from "@/components/ui/button";
 import {
-  getEvaluationCatalog,
+  getBenchmarkCatalog,
+  getEvalTemplates,
   getEvaluationLeaderboards,
   getEvaluationRuns
 } from "@/features/eval/api";
-import { EvaluationCatalogV2Panel } from "@/features/eval/components/evaluation-catalog-v2-panel";
+import { BenchmarkCatalogTable } from "@/features/eval/components/benchmark-catalog-table";
+import { EvalDimensionCatalogTable } from "@/features/eval/components/eval-dimension-catalog-table";
 import { EvaluationLeaderboardListTable } from "@/features/eval/components/evaluation-leaderboard-list-table";
 import { EvaluationRunCreateSheet } from "@/features/eval/components/evaluation-run-create-sheet";
 import { EvaluationRunListTable } from "@/features/eval/components/evaluation-run-list-table";
-import { EvaluationTemplateRegistryPanel } from "@/features/eval/components/evaluation-template-registry-panel";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
 import type {
-  EvaluationCatalogResponseV2,
+  BenchmarkDefinitionSummary,
+  EvalTemplateSummary,
   EvaluationLeaderboardSummaryV2,
   EvaluationRunSummaryV2,
   RegistryModelSummary
@@ -28,8 +30,8 @@ import type {
 const evalTabs = [
   { key: "runs", label: "评测任务" },
   { key: "leaderboards", label: "排行榜" },
-  { key: "catalog", label: "评测管理" },
-  { key: "templates", label: "模板与策略" }
+  { key: "benchmarks", label: "Benchmark" },
+  { key: "dimensions", label: "评测维度" }
 ] as const;
 
 export default async function ModelEvalPage({
@@ -45,20 +47,21 @@ export default async function ModelEvalPage({
   const createOpen = currentTab === "runs" && resolvedSearchParams.create === "1";
   const projectId = await getCurrentProjectIdFromCookie();
 
-  let catalog: EvaluationCatalogResponseV2 | null = null;
+  let benchmarks: BenchmarkDefinitionSummary[] = [];
   let models: RegistryModelSummary[] = [];
   let runs: EvaluationRunSummaryV2[] = [];
   let leaderboards: EvaluationLeaderboardSummaryV2[] = [];
+  let dimensions: EvalTemplateSummary[] = [];
 
   if (currentTab === "runs") {
-    const [catalogResult, modelsResult, runsResult] = await Promise.all([
-      getEvaluationCatalog(projectId).catch(() => emptyCatalog()),
+    const [benchmarkResult, modelResult, runResult] = await Promise.all([
+      getBenchmarkCatalog(projectId).catch(() => []),
       getRegistryModels(projectId).catch(() => []),
       getEvaluationRuns(projectId).catch(() => [])
     ]);
-    catalog = catalogResult;
-    models = modelsResult;
-    runs = filterRuns(runsResult, query);
+    benchmarks = benchmarkResult;
+    models = modelResult;
+    runs = filterRuns(runResult, query);
   }
 
   if (currentTab === "leaderboards") {
@@ -68,9 +71,19 @@ export default async function ModelEvalPage({
     );
   }
 
-  if (currentTab === "catalog" || currentTab === "templates") {
-    catalog = (await getEvaluationCatalog(projectId).catch(() => emptyCatalog()));
+  if (currentTab === "benchmarks") {
+    benchmarks = filterBenchmarks(
+      await getBenchmarkCatalog(projectId).catch(() => []),
+      query
+    );
   }
+
+  if (currentTab === "dimensions") {
+    dimensions = filterDimensions(await getEvalTemplates().catch(() => []), query);
+  }
+
+  const builtinBenchmarks = benchmarks.filter((benchmark) => benchmark.source_type === "builtin");
+  const customBenchmarks = benchmarks.filter((benchmark) => benchmark.source_type !== "builtin");
 
   return (
     <div className="space-y-2">
@@ -95,7 +108,7 @@ export default async function ModelEvalPage({
         </div>
       </div>
 
-      {currentTab === "runs" && catalog ? (
+      {currentTab === "runs" ? (
         <>
           <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
             <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
@@ -111,7 +124,7 @@ export default async function ModelEvalPage({
             </ConsoleListToolbarCluster>
 
             <EvaluationRunCreateSheet
-              catalog={catalog}
+              benchmarks={benchmarks}
               initialOpen={createOpen}
               models={models}
             />
@@ -145,7 +158,7 @@ export default async function ModelEvalPage({
         </>
       ) : null}
 
-      {currentTab === "catalog" && catalog ? (
+      {currentTab === "benchmarks" ? (
         <>
           <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
             <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
@@ -154,27 +167,53 @@ export default async function ModelEvalPage({
                 className="max-w-[560px] flex-none"
                 defaultValue={query}
                 inputClassName="min-w-[320px]"
-                placeholder="搜索评测套件、类型或版本"
+                placeholder="搜索 Benchmark、分类或评测维度"
               >
                 <input name="tab" type="hidden" value={currentTab} />
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
 
             <div className="flex items-center gap-2">
-              <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/model/eval-suites/create">
-                创建评测套件
+              <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/model/eval-templates/create">
+                创建评测维度
               </Link>
-              <Link className={buttonVariants({ size: "sm" })} href="/model/eval-specs/create">
-                创建评测类型
+              <Link className={buttonVariants({ size: "sm" })} href="/model/eval-benchmarks/create">
+                创建 Benchmark
               </Link>
             </div>
           </ConsoleListToolbar>
 
-          <EvaluationCatalogV2Panel catalog={filterCatalog(catalog, query)} />
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold text-slate-100">基线 Benchmark</h2>
+                <p className="text-sm text-slate-400">
+                  平台预置的标准能力评测集合，只展示与使用，不在这里做维护。
+                </p>
+              </div>
+              <BenchmarkCatalogTable
+                benchmarks={builtinBenchmarks}
+                emptyMessage="当前没有可展示的基线 Benchmark。"
+              />
+            </section>
+
+            <section className="space-y-3">
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold text-slate-100">我的 Benchmark</h2>
+                <p className="text-sm text-slate-400">
+                  自定义 Benchmark 会绑定一个评测维度，Benchmark Version 就是该 Benchmark 的数据集版本。
+                </p>
+              </div>
+              <BenchmarkCatalogTable
+                benchmarks={customBenchmarks}
+                emptyMessage="当前还没有自定义 Benchmark。请先创建 Benchmark，并上传至少一个 Version。"
+              />
+            </section>
+          </div>
         </>
       ) : null}
 
-      {currentTab === "templates" && catalog ? (
+      {currentTab === "dimensions" ? (
         <>
           <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
             <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
@@ -183,23 +222,18 @@ export default async function ModelEvalPage({
                 className="max-w-[560px] flex-none"
                 defaultValue={query}
                 inputClassName="min-w-[320px]"
-                placeholder="搜索模板、Policy 或策略类型"
+                placeholder="搜索评测维度名称、类型或评分器"
               >
                 <input name="tab" type="hidden" value={currentTab} />
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
 
-            <div className="flex items-center gap-2">
-              <Link className={buttonVariants({ size: "sm", variant: "outline" })} href="/model/eval-policies/create">
-                创建 Judge Policy
-              </Link>
-              <Link className={buttonVariants({ size: "sm" })} href="/model/eval-templates/create">
-                创建模板资产
-              </Link>
-            </div>
+            <Link className={buttonVariants({ size: "sm" })} href="/model/eval-templates/create">
+              创建评测维度
+            </Link>
           </ConsoleListToolbar>
 
-          <EvaluationTemplateRegistryPanel catalog={filterTemplates(catalog, query)} />
+          <EvalDimensionCatalogTable dimensions={dimensions} />
         </>
       ) : null}
     </div>
@@ -221,15 +255,6 @@ function buildEvalQuery({
   return `/model/eval?${params.toString()}`;
 }
 
-function emptyCatalog(): EvaluationCatalogResponseV2 {
-  return {
-    specs: [],
-    suites: [],
-    templates: [],
-    judge_policies: []
-  };
-}
-
 function filterRuns(runs: EvaluationRunSummaryV2[], query: string) {
   if (!query) {
     return runs;
@@ -243,114 +268,51 @@ function filterRuns(runs: EvaluationRunSummaryV2[], query: string) {
   );
 }
 
-function filterCatalog(catalog: EvaluationCatalogResponseV2, query: string): EvaluationCatalogResponseV2 {
-  if (!query) {
-    return catalog;
-  }
-  const normalizedQuery = query.toLowerCase();
-  return {
-    ...catalog,
-    suites: catalog.suites.filter((suite) =>
-      [
-        suite.name,
-        suite.display_name,
-        suite.description ?? "",
-        ...suite.versions.flatMap((version) => [
-          version.version,
-          version.display_name,
-          version.description ?? "",
-          ...version.items.map((item) => item.display_name)
-        ])
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery)
-    ),
-    specs: catalog.specs.filter((spec) =>
-      [
-        spec.name,
-        spec.display_name,
-        spec.description ?? "",
-        spec.capability_group ?? "",
-        spec.capability_category ?? "",
-        ...spec.versions.flatMap((version) => [
-          version.version,
-          version.display_name,
-          version.description ?? "",
-          version.engine,
-          version.execution_mode,
-          version.engine_benchmark_name ?? "",
-          ...version.dataset_files.flatMap((file) => [
-            file.file_key,
-            file.display_name,
-            file.file_name ?? "",
-            file.source_uri ?? "",
-            file.status
-          ])
-        ])
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery)
-    )
-  };
-}
-
-function filterTemplates(
-  catalog: EvaluationCatalogResponseV2,
-  query: string
-): EvaluationCatalogResponseV2 {
-  if (!query) {
-    return catalog;
-  }
-  const normalizedQuery = query.toLowerCase();
-  return {
-    ...catalog,
-    templates: catalog.templates.filter((template) =>
-      [
-        template.name,
-        template.display_name,
-        template.description ?? "",
-        template.template_type,
-        ...template.versions.map((version) => `v${version.version}`)
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery)
-    ),
-    judge_policies: catalog.judge_policies.filter((policy) =>
-      [
-        policy.name,
-        policy.display_name,
-        policy.description ?? "",
-        policy.strategy,
-        JSON.stringify(policy.execution_params_json),
-        JSON.stringify(policy.model_selector_json)
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery)
-    )
-  };
-}
-
-function filterLeaderboards(
-  leaderboards: EvaluationLeaderboardSummaryV2[],
-  query: string
-) {
+function filterLeaderboards(leaderboards: EvaluationLeaderboardSummaryV2[], query: string) {
   if (!query) {
     return leaderboards;
   }
   const normalizedQuery = query.toLowerCase();
   return leaderboards.filter((leaderboard) =>
+    [leaderboard.name, leaderboard.target_name, leaderboard.target_version]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
+function filterBenchmarks(benchmarks: BenchmarkDefinitionSummary[], query: string) {
+  if (!query) {
+    return benchmarks;
+  }
+  const normalizedQuery = query.toLowerCase();
+  return benchmarks.filter((benchmark) =>
     [
-      leaderboard.name,
-      leaderboard.description ?? "",
-      leaderboard.target_kind,
-      leaderboard.target_name,
-      leaderboard.target_display_name,
-      leaderboard.target_version,
-      leaderboard.target_version_display_name
+      benchmark.name,
+      benchmark.display_name,
+      benchmark.description,
+      benchmark.category ?? "",
+      benchmark.eval_template_name ?? "",
+      ...benchmark.tags
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
+function filterDimensions(dimensions: EvalTemplateSummary[], query: string) {
+  if (!query) {
+    return dimensions;
+  }
+  const normalizedQuery = query.toLowerCase();
+  return dimensions.filter((dimension) =>
+    [
+      dimension.name,
+      dimension.description ?? "",
+      dimension.template_type,
+      dimension.preset_id ?? "",
+      dimension.model ?? ""
     ]
       .join(" ")
       .toLowerCase()

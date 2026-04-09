@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import {
   deleteBenchmarkVersion,
+  getBenchmarkSampleFileUrl,
   getBenchmarkVersionDownloadUrl,
   getBenchmarkVersionPreview
 } from "@/features/eval/api";
@@ -79,6 +80,7 @@ export function BenchmarkDetailPanel({
   benchmark: BenchmarkDefinitionDetail;
 }) {
   const router = useRouter();
+  const isBuiltin = benchmark.source_type === "builtin";
   const versions = benchmark.versions;
   const [activeTab, setActiveTab] = React.useState<DetailTab>("details");
   const [previewMode, setPreviewMode] = React.useState<PreviewMode>("table");
@@ -102,7 +104,7 @@ export function BenchmarkDetailPanel({
   }, [selectedVersion, versions]);
 
   React.useEffect(() => {
-    if (activeTab !== "preview" || !selectedVersion) {
+    if (isBuiltin || activeTab !== "preview" || !selectedVersion) {
       return;
     }
 
@@ -149,7 +151,7 @@ export function BenchmarkDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, previewCache, selectedVersion]);
+  }, [activeTab, isBuiltin, previewCache, selectedVersion]);
 
   function handleDownloadSelectedVersion() {
     if (!selectedVersion) {
@@ -157,6 +159,10 @@ export function BenchmarkDetailPanel({
     }
 
     window.location.href = getBenchmarkVersionDownloadUrl(benchmark.name, selectedVersion.id);
+  }
+
+  function handleDownloadSampleFile() {
+    window.location.href = getBenchmarkSampleFileUrl(benchmark.name);
   }
 
   async function handleDeleteSelectedVersion() {
@@ -191,7 +197,7 @@ export function BenchmarkDetailPanel({
         <Card className="flex min-h-0 w-[320px] flex-col overflow-hidden rounded-none border-0 border-r border-slate-800/70 bg-transparent shadow-none">
         <CardHeader className="border-b border-slate-800/70 bg-transparent px-3 py-2.5">
           <div className="space-y-1">
-            <div className="text-[13px] font-medium text-zinc-100">Versions</div>
+            <div className="text-[13px] font-medium text-zinc-100">Benchmark Versions</div>
             <div className="text-xs text-zinc-500">{versions.length} 个版本</div>
           </div>
         </CardHeader>
@@ -257,11 +263,13 @@ export function BenchmarkDetailPanel({
                   label="版本详情"
                   onClick={() => setActiveTab("details")}
                 />
-                <PrimaryTabButton
-                  active={activeTab === "preview"}
-                  label="数据预览"
-                  onClick={() => setActiveTab("preview")}
-                />
+                {!isBuiltin ? (
+                  <PrimaryTabButton
+                    active={activeTab === "preview"}
+                    label="数据预览"
+                    onClick={() => setActiveTab("preview")}
+                  />
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -274,30 +282,38 @@ export function BenchmarkDetailPanel({
                     </Button>
                   </Link>
                 ) : null}
-                {selectedVersion ? (
-                  <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/${selectedVersion.id}/edit`}>
-                    <Button type="button" variant="outline">
-                      编辑 Version
-                    </Button>
-                  </Link>
-                ) : null}
-                {selectedVersion ? (
-                  <Button
-                    className="border border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
-                    disabled={deletePending}
-                    onClick={() => {
-                      setActionError(null);
-                      setDeleteConfirmOpen(true);
-                    }}
-                    type="button"
-                    variant="outline"
-                  >
-                    删除 Version
+                {isBuiltin ? (
+                  <Button onClick={handleDownloadSampleFile} type="button" variant="outline">
+                    下载示例格式
                   </Button>
-                ) : null}
-                <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/create`}>
-                  <Button type="button">新增 Version</Button>
-                </Link>
+                ) : (
+                  <>
+                    {selectedVersion ? (
+                      <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/${selectedVersion.id}/edit`}>
+                        <Button type="button" variant="outline">
+                          编辑 Version
+                        </Button>
+                      </Link>
+                    ) : null}
+                    {selectedVersion ? (
+                      <Button
+                        className="border border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+                        disabled={deletePending}
+                        onClick={() => {
+                          setActionError(null);
+                          setDeleteConfirmOpen(true);
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        删除 Version
+                      </Button>
+                    ) : null}
+                    <Link href={`/model/eval-benchmarks/${benchmark.name}/versions/create`}>
+                      <Button type="button">新增 Version</Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -306,7 +322,9 @@ export function BenchmarkDetailPanel({
             {selectedVersion ? (
               activeTab === "details" ? (
                 <BenchmarkVersionDetailTab
+                  benchmarkDisplayName={benchmark.display_name}
                   benchmarkName={benchmark.name}
+                  isBuiltin={isBuiltin}
                   version={selectedVersion}
                 />
               ) : (
@@ -362,10 +380,14 @@ export function BenchmarkDetailPanel({
 }
 
 function BenchmarkVersionDetailTab({
+  benchmarkDisplayName,
   benchmarkName,
+  isBuiltin,
   version
 }: {
+  benchmarkDisplayName: string;
   benchmarkName: string;
+  isBuiltin: boolean;
   version: BenchmarkVersionSummary;
 }) {
   return (
@@ -399,22 +421,39 @@ function BenchmarkVersionDetailTab({
               <CardTitle className="text-sm text-zinc-100">Version 信息</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm leading-6 text-zinc-300">
-              <DetailRow label="Benchmark" value={benchmarkName} />
+              <DetailRow label="Benchmark" value={`${benchmarkDisplayName} (${benchmarkName})`} />
               <DetailRow label="展示名称" value={version.display_name} />
               <DetailRow label="说明" value={version.description || "--"} />
-              <DetailRow label="数据源 URI" value={version.dataset_source_uri || "--"} />
-              <DetailRow label="旧路径" value={version.dataset_path || "--"} />
+              {isBuiltin ? (
+                <DetailRow label="数据来源" value="平台预置数据集版本" />
+              ) : (
+                <>
+                  <DetailRow label="数据源 URI" value={version.dataset_source_uri || "--"} />
+                  <DetailRow label="旧路径" value={version.dataset_path || "--"} />
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
 
         <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-zinc-100">预览提示</CardTitle>
+            <CardTitle className="text-sm text-zinc-100">
+              {isBuiltin ? "使用提示" : "预览提示"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-6 text-zinc-400">
-            <p>数据预览会直接读取当前 Version 绑定的对象存储文件，不再展示 benchmark 级别的样例和格式参考。</p>
-            <p>如果你上传的是 JSONL，右侧支持表格预览和 Raw 预览，便于快速检查样本结构。</p>
+            {isBuiltin ? (
+              <>
+                <p>基线 Benchmark 由平台统一维护，当前页面只展示可用版本信息，不提供版本编辑或数据文件预览。</p>
+                <p>如果你要准备自定义数据集，可以先下载示例格式，再按对应评测维度组织 JSONL 文件。</p>
+              </>
+            ) : (
+              <>
+                <p>数据预览会直接读取当前 Version 绑定的数据文件，便于快速检查样本结构和字段内容。</p>
+                <p>如果你上传的是 JSONL，右侧支持表格预览和 Raw 预览，便于快速抽样验证。</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

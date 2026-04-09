@@ -301,6 +301,14 @@ class EvaluationRunCreate(BaseModel):
     overrides: dict[str, Any] = Field(default_factory=dict)
 
 
+class BenchmarkEvaluationRunCreate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    benchmark_name: str
+    benchmark_version_id: str
+    model_id: UUID
+
+
 class EvaluationRunMetricResponse(BaseModel):
     metric_name: str
     metric_value: float
@@ -363,6 +371,8 @@ class EvaluationRunSummary(BaseModel):
     temporal_workflow_id: str | None = None
     progress_total: int | None = None
     progress_done: int | None = None
+    execution_progress_total: int | None = None
+    execution_progress_done: int | None = None
     error_code: str | None = None
     error_message: str | None = None
     created_at: datetime
@@ -474,8 +484,8 @@ class CompiledRunItemPlan(BaseModel):
     weight: float = 1.0
     engine: str
     execution_mode: str
-    spec_id: UUID
-    spec_version_id: UUID
+    spec_id: UUID | None = None
+    spec_version_id: UUID | None = None
     spec_name: str
     spec_version: str
     expected_sample_count: int | None = None
@@ -487,7 +497,7 @@ class CompiledRunItemPlan(BaseModel):
 
 
 class CompiledRunPlan(BaseModel):
-    kind: Literal["spec", "suite"]
+    kind: Literal["spec", "suite", "benchmark"]
     target_name: str
     target_version: str
     model_binding: ModelBindingSnapshot

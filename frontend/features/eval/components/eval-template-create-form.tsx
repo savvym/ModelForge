@@ -234,7 +234,7 @@ export function EvalTemplateCreateForm() {
         model: selectedTypeMeta.requiresModel ? model.trim() || undefined : undefined,
         description: description.trim() || undefined,
       });
-      router.push("/model/eval?tab=templates");
+      router.push("/model/eval?tab=dimensions");
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "创建失败。");

@@ -14,7 +14,7 @@ import { getEvaluationRun } from "@/features/eval/api";
 import { EvaluationRunDetailActions } from "@/features/eval/components/evaluation-run-detail-actions";
 import { formatEvaluationRunKind, getEvalStatusMeta } from "@/features/eval/status";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
-import type { EvaluationRunItemV2, EvaluationRunMetricV2 } from "@/types/api";
+import type { EvaluationRunDetailV2, EvaluationRunItemV2, EvaluationRunMetricV2 } from "@/types/api";
 
 export default async function ModelEvalDetailPage({
   params
@@ -32,6 +32,7 @@ export default async function ModelEvalDetailPage({
   const statusMeta = getEvalStatusMeta(detail.status);
   const overallMetrics = detail.metrics.filter((metric) => metric.metric_scope === "overall");
   const groupedMetrics = detail.metrics.filter((metric) => metric.metric_scope === "group");
+  const overallProgress = getRunDisplayProgress(detail);
 
   return (
     <div className="space-y-6">
@@ -65,20 +66,19 @@ export default async function ModelEvalDetailPage({
             <DetailItem
               label="当前进度"
               value={
-                typeof detail.progress_done === "number" && typeof detail.progress_total === "number"
-                  ? `${detail.progress_done}/${detail.progress_total}`
+                typeof overallProgress.done === "number" &&
+                typeof overallProgress.total === "number" &&
+                overallProgress.total > 0
+                  ? `${overallProgress.done}/${overallProgress.total}`
                   : "--"
               }
             />
             <DetailItem
-              label={detail.kind === "suite" ? "套件目标" : "评测目标"}
+              label={detail.kind === "benchmark" ? "Benchmark / Version" : "评测目标"}
               value={`${detail.execution_plan_json.target_name}@${detail.execution_plan_json.target_version}`}
             />
             <DetailItem label="评测模型" value={detail.model_name ?? "--"} />
-            <DetailItem
-              label="Judge Policy"
-              value={detail.judge_policy_id ?? "使用默认策略"}
-            />
+            <DetailItem label="运行项数" value={String(detail.items.length)} />
             <DetailItem label="Temporal Workflow" value={detail.temporal_workflow_id ?? "--"} />
             <DetailItem label="创建时间" value={formatDateTime(detail.created_at)} />
             <DetailItem label="开始时间" value={formatDateTime(detail.started_at)} />
@@ -132,7 +132,7 @@ export default async function ModelEvalDetailPage({
         <CardHeader className="gap-2">
           <CardTitle className="text-base text-slate-50">运行项</CardTitle>
           <p className="text-sm text-slate-400">
-            Suite 会 fan-out 成多个运行项；单项评测则只会生成一个 item。
+            基线评测可能展开为多个运行项；自定义 Benchmark 通常只生成一个运行项。
           </p>
         </CardHeader>
         <CardContent>
@@ -143,7 +143,7 @@ export default async function ModelEvalDetailPage({
                   <TableHead>运行项</TableHead>
                   <TableHead>分组</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>执行引擎</TableHead>
+                  <TableHead>执行进度</TableHead>
                   <TableHead>分数</TableHead>
                   <TableHead>结果目录</TableHead>
                 </TableRow>
@@ -169,7 +169,13 @@ export default async function ModelEvalDetailPage({
                           {itemStatus.label}
                         </Badge>
                       </TableCell>
-                      <TableCell>{`${item.engine} / ${item.execution_mode}`}</TableCell>
+                      <TableCell>
+                        {typeof item.progress_done === "number" &&
+                        typeof item.progress_total === "number" &&
+                        item.progress_total > 0
+                          ? `${item.progress_done}/${item.progress_total}`
+                          : "--"}
+                      </TableCell>
                       <TableCell>
                         {overallMetric ? overallMetric.metric_value.toFixed(4) : "--"}
                       </TableCell>
@@ -266,6 +272,41 @@ function MetricCard({ metric }: { metric: EvaluationRunMetricV2 }) {
       </div>
     </div>
   );
+}
+
+function getRunDisplayProgress(
+  run: Pick<
+    EvaluationRunDetailV2,
+    "progress_done" | "progress_total" | "execution_progress_done" | "execution_progress_total" | "items"
+  >
+) {
+  if (
+    typeof run.execution_progress_total === "number" &&
+    run.execution_progress_total > 0
+  ) {
+    return {
+      done: run.execution_progress_done ?? 0,
+      total: run.execution_progress_total
+    };
+  }
+
+  const itemTotals = run.items
+    .filter((item) => typeof item.progress_total === "number" && item.progress_total > 0)
+    .map((item) => ({
+      done: item.progress_done ?? 0,
+      total: item.progress_total ?? 0
+    }));
+  if (itemTotals.length > 0) {
+    return {
+      done: itemTotals.reduce((sum, item) => sum + item.done, 0),
+      total: itemTotals.reduce((sum, item) => sum + item.total, 0)
+    };
+  }
+
+  return {
+    done: run.progress_done ?? 0,
+    total: run.progress_total ?? 0
+  };
 }
 
 function DetailItem({ label, value }: { label: string; value: string }) {

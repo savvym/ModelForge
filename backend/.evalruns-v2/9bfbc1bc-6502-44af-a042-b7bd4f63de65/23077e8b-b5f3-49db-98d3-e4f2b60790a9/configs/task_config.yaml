@@ -1,0 +1,89 @@
+analysis_report: false
+api_url: https://ai.zhanghd.com/v1
+chat_template: null
+dataset_args:
+  nta_generic:
+    benchmark_name: NTA Bench Network
+    eval_method: judge-template
+    field_mapping: {}
+    judge_model:
+      api_format: responses
+      api_key: sk-2b01ea6efb8f66c027fe80e71613b7c21832c1b156f32f8499f6e426e3334914
+      api_url: https://ai.zhanghd.com/v1
+      display_name: GPT-5.4
+      headers: {}
+      model_name: gpt-5.4
+      organization: null
+    local_path: /Users/zhanghaodong/Desktop/nta/nta-platform/backend/.evalruns-v2/9bfbc1bc-6502-44af-a042-b7bd4f63de65/23077e8b-b5f3-49db-98d3-e4f2b60790a9/inputs/00-nta-bench-network-v1.jsonl
+    prompt_config: {}
+    template_config:
+      output_config:
+        reasoning_hint: Explain whether each rubric item is satisfied
+        score_hint: true if all rubric items are satisfied, false otherwise
+      output_type: boolean
+      prompt: 'You are a strict grader.
+
+        Score the response against every rubric item using all-or-nothing grading.
+
+        If any single rubric item is not fully satisfied, the overall score must be
+        false.
+
+        Return only valid JSON.
+
+
+        Rubrics:
+
+        {{target}}
+
+
+        Response:
+
+        {{output}}
+
+
+        Return exactly this JSON schema:
+
+        {"reasoning": "string", "score": true or false}'
+      vars:
+      - target
+      - output
+dataset_dir: /Users/zhanghaodong/.cache/modelscope/hub/datasets
+dataset_hub: modelscope
+datasets:
+- nta_generic
+debug: false
+enable_progress_tracker: false
+eval_backend: Native
+eval_batch_size: 1
+eval_config: null
+eval_type: nta_openai_compatible
+evalscope_version: 1.5.2.post1
+generation_config:
+  batch_size: 1
+  max_tokens: 4096
+  temperature: 0.0
+  timeout: 180.0
+ignore_errors: false
+judge_model_args: {}
+judge_strategy: auto
+judge_worker_num: null
+limit: null
+model: gpt-5.4
+model_args:
+  api_format: responses
+  headers: {}
+  organization: null
+  timeout_s: 180.0
+model_id: gpt-5.4
+model_task: text_generation
+no_timestamp: true
+repeats: 1
+rerun_review: false
+sandbox_manager_config: {}
+sandbox_type: docker
+seed: 42
+stream: null
+timeout: null
+use_cache: null
+use_sandbox: false
+work_dir: /Users/zhanghaodong/Desktop/nta/nta-platform/backend/.evalruns-v2/9bfbc1bc-6502-44af-a042-b7bd4f63de65/23077e8b-b5f3-49db-98d3-e4f2b60790a9

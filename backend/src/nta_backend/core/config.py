@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     temporal_task_queue_eval: str = "eval-jobs"
     temporal_task_queue_batch: str = "batch-jobs"
     temporal_task_queue_dataset: str = "dataset-import"
+    probe_registration_token: SecretStr | None = None
+    probe_heartbeat_timeout_seconds: int = 90
+    probe_task_claim_ttl_seconds: int = 300
 
     s3_endpoint_url: str = "http://127.0.0.1:8081"
     s3_browser_endpoint_url: str | None = "http://127.0.0.1:8081"

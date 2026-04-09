@@ -18,6 +18,7 @@ from nta_backend.api.routers import (
     lake,
     model_providers,
     models,
+    probes,
     projects,
     streams,
     uploads,
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(evaluation_catalog_v2.router)
     app.include_router(evaluation_leaderboards_v2.router)
     app.include_router(evaluation_runs_v2.router)
+    app.include_router(probes.router)
     app.include_router(ws.router)
     logger.info("API application initialized with %s routers", len(api_router.routes))
     return app

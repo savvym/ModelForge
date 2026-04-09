@@ -1,0 +1,9 @@
+2026-04-09 17:00:57 - evalscope - INFO: Dump task config to /Users/zhanghaodong/Desktop/nta/nta-platform/backend/.evalruns-v2/9bfbc1bc-6502-44af-a042-b7bd4f63de65/23077e8b-b5f3-49db-98d3-e4f2b60790a9/configs/task_config.yaml
+2026-04-09 17:00:57 - evalscope - INFO: Creating model gpt-5.4 with eval_type=nta_openai_compatible base_url=https://ai.zhanghd.com/v1, config={'timeout': 180.0, 'retries': 5, 'retry_interval': 10, 'max_tokens': 4096, 'temperature': 0.0}, model_args={'api_format': 'responses', 'organization': None, 'headers': {}, 'timeout_s': 180.0}
+2026-04-09 17:01:22 - evalscope - INFO: Creating model gpt-5.4 with eval_type=nta_openai_compatible base_url=https://ai.zhanghd.com/v1, config={'timeout': 180.0, 'retries': 5, 'retry_interval': 10, 'max_tokens': 1024, 'temperature': 0.0}, model_args={'api_format': 'responses', 'organization': None, 'headers': {}, 'timeout_s': 180.0}
+2026-04-09 17:01:57 - evalscope - INFO: Evaluating[nta_generic]   2%| 1/48 [Elapsed: 01:00 < Remaining: 31:40, 40.44s/it]
+2026-04-09 17:02:58 - evalscope - INFO: Evaluating[nta_generic]   4%| 2/48 [Elapsed: 02:01 < Remaining: 32:27, 42.33s/it]
+2026-04-09 17:03:58 - evalscope - INFO: Evaluating[nta_generic]   8%| 4/48 [Elapsed: 03:01 < Remaining: 33:04, 45.10s/it]
+2026-04-09 17:04:59 - evalscope - INFO: Evaluating[nta_generic]   8%| 4/48 [Elapsed: 04:02 < Remaining: 33:04, 45.10s/it]
+2026-04-09 17:06:00 - evalscope - INFO: Evaluating[nta_generic]  10%| 5/48 [Elapsed: 05:02 < Remaining: 45:29, 63.47s/it]
+2026-04-09 17:07:00 - evalscope - INFO: Evaluating[nta_generic]  12%| 6/48 [Elapsed: 06:03 < Remaining: 47:44, 68.21s/it]

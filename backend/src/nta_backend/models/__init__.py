@@ -23,6 +23,7 @@ from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.jobs import BatchJob, EvalJob, EvalJobMetric, JobLog
 from nta_backend.models.lake import LakeAsset, LakeBatch
 from nta_backend.models.modeling import Endpoint, Model, ModelProvider
+from nta_backend.models.probe import Probe, ProbeHeartbeat, ProbeTask
 from nta_backend.models.security import SecurityEvent, VpcBinding
 from nta_backend.models.usage import QuotaRule, UsageDailyAggregate, UsageEvent
 
@@ -59,6 +60,9 @@ __all__ = [
     "ModelProvider",
     "Project",
     "ProjectMember",
+    "Probe",
+    "ProbeHeartbeat",
+    "ProbeTask",
     "QuotaRule",
     "SecurityEvent",
     "TemplateSpec",

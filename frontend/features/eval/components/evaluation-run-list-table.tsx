@@ -127,7 +127,8 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
                 const cancelBlockedReason = getEvaluationRunCancelBlockedReason(run.status);
                 const isDeleting = pendingDeleteId === run.id;
                 const isCancelling = pendingCancelId === run.id;
-                const progressPercent = getProgressPercent(run.progress_done, run.progress_total);
+                const progress = getRunDisplayProgress(run);
+                const progressPercent = getProgressPercent(progress.done, progress.total);
 
                 return (
                   <TableRow key={run.id}>
@@ -161,10 +162,10 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
                         </div>
                         <div className="text-xs text-slate-500">
                           {progressPercent}%
-                          {typeof run.progress_done === "number" &&
-                          typeof run.progress_total === "number" &&
-                          run.progress_total > 0
-                            ? ` · ${run.progress_done}/${run.progress_total}`
+                          {typeof progress.done === "number" &&
+                          typeof progress.total === "number" &&
+                          progress.total > 0
+                            ? ` · ${progress.done}/${progress.total}`
                             : ""}
                         </div>
                       </div>
@@ -261,6 +262,27 @@ function getProgressPercent(done?: number | null, total?: number | null) {
     return 0;
   }
   return Math.min(100, Math.max(0, Math.round((Math.max(done ?? 0, 0) / total) * 100)));
+}
+
+function getRunDisplayProgress(
+  run: Pick<
+    EvaluationRunSummaryV2,
+    "progress_done" | "progress_total" | "execution_progress_done" | "execution_progress_total"
+  >
+) {
+  if (
+    typeof run.execution_progress_total === "number" &&
+    run.execution_progress_total > 0
+  ) {
+    return {
+      done: run.execution_progress_done ?? 0,
+      total: run.execution_progress_total
+    };
+  }
+  return {
+    done: run.progress_done ?? 0,
+    total: run.progress_total ?? 0
+  };
 }
 
 function formatDateTime(value?: string | null) {

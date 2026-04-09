@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Response, status
 
 from nta_backend.schemas.evaluation_v2 import (
+    BenchmarkEvaluationRunCreate,
     EvaluationRunCancelResponse,
     EvaluationRunCreate,
     EvaluationRunDetail,
@@ -29,6 +30,20 @@ async def get_evaluation_run(run_id: str) -> EvaluationRunDetail:
 async def create_evaluation_run(payload: EvaluationRunCreate) -> EvaluationRunSummary:
     try:
         return await service.create_run(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/benchmark",
+    response_model=EvaluationRunSummary,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_benchmark_evaluation_run(
+    payload: BenchmarkEvaluationRunCreate,
+) -> EvaluationRunSummary:
+    try:
+        return await service.create_benchmark_run(payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

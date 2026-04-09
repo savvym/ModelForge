@@ -705,6 +705,8 @@ export interface EvaluationRunSummaryV2 {
   temporal_workflow_id?: string | null;
   progress_total?: number | null;
   progress_done?: number | null;
+  execution_progress_total?: number | null;
+  execution_progress_done?: number | null;
   error_code?: string | null;
   error_message?: string | null;
   created_at: string;
@@ -730,6 +732,14 @@ export interface EvaluationRunCreateInputV2 {
   model_id: string;
   judge_policy_id?: string | null;
   overrides?: Record<string, unknown>;
+}
+
+export interface BenchmarkEvaluationRunCreateInputV2 {
+  name?: string | null;
+  description?: string | null;
+  benchmark_name: string;
+  benchmark_version_id: string;
+  model_id: string;
 }
 
 export interface EvaluationRunCancelResponseV2 {

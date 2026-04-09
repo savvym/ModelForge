@@ -124,11 +124,17 @@ export function BenchmarkVersionEditorForm({
       return;
     }
     if (!form.dataset_source_uri.trim()) {
-      setFeedback({ tone: "error", text: "请先上传数据文件，或从对象存储选择一个 s3:// URI。" });
+      setFeedback({
+        tone: "error",
+        text: "请提供数据源 URI，可使用 s3://、file:// 或本地绝对路径。"
+      });
       return;
     }
-    if (!form.dataset_source_uri.trim().startsWith("s3://")) {
-      setFeedback({ tone: "error", text: "Benchmark Version 仅支持使用对象存储中的 s3:// URI。" });
+    if (!isSupportedDatasetSource(form.dataset_source_uri.trim())) {
+      setFeedback({
+        tone: "error",
+        text: "Benchmark Version 目前支持 s3://、file:// 或本地绝对路径。"
+      });
       return;
     }
 
@@ -170,7 +176,7 @@ export function BenchmarkVersionEditorForm({
         <ConsoleBreadcrumb
           items={[
             { label: "模型评测", href: "/model/eval" },
-            { label: "评测管理", href: "/model/eval?tab=management" },
+            { label: "Benchmark", href: "/model/eval?tab=benchmarks" },
             { label: benchmark.display_name, href: `/model/eval-benchmarks/${benchmark.name}` },
             {
               label: mode === "edit" && initialVersion ? initialVersion.display_name : "新增 Version",
@@ -240,7 +246,7 @@ export function BenchmarkVersionEditorForm({
           <Field
             label="数据源 URI"
             onChange={(value) => updateField("dataset_source_uri", value)}
-            placeholder="例如 s3://nta-default/projects/<project-id>/files/benchmarks/.../dataset.jsonl"
+            placeholder="例如 /data/benchmarks/network.jsonl 或 file:///data/network.jsonl"
             value={form.dataset_source_uri}
           />
           <SelectField
@@ -256,7 +262,7 @@ export function BenchmarkVersionEditorForm({
             <Label>对象存储文件</Label>
             <div className="flex flex-wrap gap-2">
               <Button
-                disabled={isBusy}
+                disabled={isBusy || !projectId}
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
                 variant="outline"
@@ -265,7 +271,7 @@ export function BenchmarkVersionEditorForm({
                 {isUploading ? "上传中..." : "上传到对象存储"}
               </Button>
               <Button
-                disabled={isBusy}
+                disabled={isBusy || !projectId}
                 onClick={() => setBrowserOpen(true)}
                 type="button"
                 variant="outline"
@@ -275,15 +281,14 @@ export function BenchmarkVersionEditorForm({
               </Button>
             </div>
             <div className="text-xs leading-5 text-slate-500">
-              Benchmark Version 统一使用对象存储中的 JSONL 文件。上传后的对象会放在
-              `projects/&lt;project_id&gt;/benchmarks/{benchmark.name}/versions/&lt;version_id&gt;/`
-              目录下，并自动回填 `s3://` URI。
+              Benchmark Version 对应这个 Benchmark 的某一个数据集版本。你可以直接填写
+              `s3://`、`file://` 或本地绝对路径；如果当前有项目上下文，也可以先上传到对象存储，再自动回填 URI。
             </div>
           </div>
           <div className="lg:col-span-2">
             <div className="rounded-2xl border border-slate-800/80 bg-[rgba(15,23,32,0.72)] px-4 py-3 text-sm leading-6 text-slate-400">
-              系统会在创建或更新 Version 时，从对象存储读取 JSONL 数据、逐行校验是否符合
-              Benchmark 的样本 schema，并自动计算样本数后落库。
+              系统会在创建或更新 Version 时读取数据文件、校验样本结构，并自动统计样本数。
+              上传前请确保 JSONL 已符合这个 Benchmark 绑定的评测维度格式。
             </div>
           </div>
           <div className="lg:col-span-2">
@@ -359,6 +364,10 @@ function buildDraftVersionId() {
     return `ver-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
   }
   return `ver-${Math.random().toString(16).slice(2, 10).padEnd(8, "0").slice(0, 8)}`;
+}
+
+function isSupportedDatasetSource(value: string) {
+  return value.startsWith("s3://") || value.startsWith("file://") || value.startsWith("/");
 }
 
 function SelectField({

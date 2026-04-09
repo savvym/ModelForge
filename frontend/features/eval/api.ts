@@ -1,5 +1,6 @@
 import { apiFetch, getApiBaseUrl } from "@/lib/api-client/http";
 import type {
+  BenchmarkEvaluationRunCreateInputV2,
   BenchmarkDefinitionCreateInput,
   BenchmarkDefinitionDetail,
   BenchmarkDefinitionSummary,
@@ -237,6 +238,16 @@ export async function createEvaluationRun(
   payload: EvaluationRunCreateInputV2
 ): Promise<EvaluationRunSummaryV2> {
   return apiFetch<EvaluationRunSummaryV2>("/api/v2/evaluation-runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function createBenchmarkEvaluationRun(
+  payload: BenchmarkEvaluationRunCreateInputV2
+): Promise<EvaluationRunSummaryV2> {
+  return apiFetch<EvaluationRunSummaryV2>("/api/v2/evaluation-runs/benchmark", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)

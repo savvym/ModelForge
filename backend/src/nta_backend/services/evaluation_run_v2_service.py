@@ -22,7 +22,11 @@ from nta_backend.core.object_store import (
     put_object_bytes,
 )
 from nta_backend.core.project_context import resolve_active_project_id
-from nta_backend.evaluation_v2.compiler import compile_run_request
+from nta_backend.evaluation_v2.compiler import (
+    CompiledRunContext,
+    compile_benchmark_run_request,
+    compile_run_request,
+)
 from nta_backend.evaluation_v2.engine_registry import get_engine_adapter
 from nta_backend.evaluation_v2.execution import ExecutionCancelledError, ExecutionContext
 from nta_backend.models.evaluation_v2 import (
@@ -41,6 +45,7 @@ from nta_backend.models.evaluation_v2 import (
     TemplateSpecVersion,
 )
 from nta_backend.schemas.evaluation_v2 import (
+    BenchmarkEvaluationRunCreate,
     CompiledRunItemPlan,
     EvaluationRunCancelResponse,
     EvaluationRunCreate,
@@ -153,8 +158,32 @@ def _serialize_item(
     )
 
 
-def _serialize_run_summary(run: EvaluationRun) -> EvaluationRunSummary:
+def _compute_execution_progress(
+    items: list[EvaluationRunItem],
+) -> tuple[int | None, int | None]:
+    progress_pairs: list[tuple[int, int]] = []
+    for item in items:
+        if item.progress_total is None or item.progress_total <= 0:
+            continue
+        total = max(item.progress_total, 0)
+        done = min(max(item.progress_done or 0, 0), total)
+        progress_pairs.append((done, total))
+    if not progress_pairs:
+        return None, None
+    return (
+        sum(done for done, _ in progress_pairs),
+        sum(total for _, total in progress_pairs),
+    )
+
+
+def _serialize_run_summary(
+    run: EvaluationRun,
+    *,
+    items: list[EvaluationRunItem] | None = None,
+) -> EvaluationRunSummary:
     done, total = _progress_percent(run.progress_done, run.progress_total)
+    execution_done, execution_total = _compute_execution_progress(items or [])
+    execution_done, execution_total = _progress_percent(execution_done, execution_total)
     return EvaluationRunSummary(
         id=run.id,
         name=run.name,
@@ -166,6 +195,8 @@ def _serialize_run_summary(run: EvaluationRun) -> EvaluationRunSummary:
         temporal_workflow_id=run.temporal_workflow_id,
         progress_total=total,
         progress_done=done,
+        execution_progress_total=execution_total,
+        execution_progress_done=execution_done,
         error_code=run.error_code,
         error_message=run.error_message,
         created_at=run.created_at,
@@ -701,6 +732,97 @@ async def activity_execute_evaluation_run_item(
             shutil.rmtree(output_dir, ignore_errors=True)
 
 
+async def _persist_compiled_run(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    current_user_id: UUID | None,
+    compiled: CompiledRunContext,
+    requested_name: str | None,
+    description: str | None,
+) -> EvaluationRun:
+    target_display = f"{compiled.plan.target_name}@{compiled.plan.target_version}"
+    run = EvaluationRun(
+        project_id=project_id,
+        created_by=current_user_id,
+        name=(requested_name or f"{target_display} · {compiled.plan.model_binding.display_name}").strip(),
+        description=description,
+        kind=compiled.plan.kind,
+        status="queued",
+        model_id=compiled.plan.model_binding.model_id,
+        model_name=compiled.plan.model_binding.display_name,
+        source_spec_id=compiled.source_spec_id,
+        source_spec_version_id=compiled.source_spec_version_id,
+        source_suite_id=compiled.source_suite_id,
+        source_suite_version_id=compiled.source_suite_version_id,
+        judge_policy_id=compiled.judge_policy_id,
+        execution_plan_json=compiled.plan.model_dump(mode="json"),
+        progress_total=len(compiled.plan.items),
+        progress_done=0,
+    )
+    session.add(run)
+    await session.flush()
+
+    for plan_item in compiled.plan.items:
+        item = EvaluationRunItem(
+            run_id=run.id,
+            item_key=plan_item.item_key,
+            display_name=plan_item.display_name,
+            group_name=plan_item.group_name,
+            weight=plan_item.weight,
+            status="queued",
+            spec_id=plan_item.spec_id,
+            spec_version_id=plan_item.spec_version_id,
+            engine=plan_item.engine,
+            execution_mode=plan_item.execution_mode,
+            model_binding_json=plan_item.model_binding.model_dump(mode="json"),
+            judge_policy_snapshot_json=plan_item.judge_policy_snapshot,
+            template_snapshot_json=plan_item.template_snapshot,
+            plan_json=plan_item.model_dump(mode="json"),
+            progress_total=plan_item.expected_sample_count,
+            progress_done=0,
+        )
+        session.add(item)
+        await session.flush()
+        item.temporal_workflow_id = f"evaluation-run-item-{item.id}"
+
+    await session.flush()
+    run.temporal_workflow_id = f"evaluation-run-{run.id}"
+    await session.commit()
+    return run
+
+
+async def _start_run_workflow(
+    *,
+    run_id: UUID,
+    workflow_id: str | None,
+) -> EvaluationRunSummary:
+    from nta_backend.core.temporal import start_evaluation_run_workflow
+    from nta_backend.workflows.evaluation_run import EvaluationRunWorkflowInput
+
+    workflow_input = EvaluationRunWorkflowInput(run_id=str(run_id))
+    try:
+        await start_evaluation_run_workflow(
+            workflow_input,
+            workflow_id=workflow_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        async with SessionLocal() as session:
+            failed_run = await session.get(EvaluationRun, run_id)
+            if failed_run is not None:
+                failed_run.status = "failed"
+                failed_run.error_message = f"Failed to start evaluation run workflow: {exc}"[:500]
+                failed_run.finished_at = _utc_now()
+                await session.commit()
+        raise ValueError("启动评测执行失败，请稍后重试。") from exc
+
+    async with SessionLocal() as session:
+        created = await session.get(EvaluationRun, run_id)
+        if created is None:
+            raise KeyError(str(run_id))
+        return _serialize_run_summary(created)
+
+
 class EvaluationRunV2Service:
     async def list_runs(self) -> list[EvaluationRunSummary]:
         async with SessionLocal() as session:
@@ -720,7 +842,23 @@ class EvaluationRunV2Service:
                 .where(EvaluationRun.project_id == project_id)
                 .order_by(EvaluationRun.created_at.desc(), EvaluationRun.id.desc())
             )
-            return [_serialize_run_summary(run) for run in rows.scalars().all()]
+            runs = rows.scalars().all()
+            run_ids = [run.id for run in runs]
+            items_by_run: dict[UUID, list[EvaluationRunItem]] = {}
+            if run_ids:
+                item_rows = (
+                    await session.execute(
+                        select(EvaluationRunItem)
+                        .where(EvaluationRunItem.run_id.in_(run_ids))
+                        .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+                    )
+                ).scalars().all()
+                for item in item_rows:
+                    items_by_run.setdefault(item.run_id, []).append(item)
+            return [
+                _serialize_run_summary(run, items=items_by_run.get(run.id, []))
+                for run in runs
+            ]
 
     async def get_run(self, run_id: str) -> EvaluationRunDetail:
         async with SessionLocal() as session:
@@ -769,7 +907,7 @@ class EvaluationRunV2Service:
             for sample in item_samples_rows:
                 samples_by_item.setdefault(sample.run_item_id, []).append(sample)
             return EvaluationRunDetail(
-                **_serialize_run_summary(run).model_dump(),
+                **_serialize_run_summary(run, items=item_rows).model_dump(),
                 source_spec_id=run.source_spec_id,
                 source_spec_version_id=run.source_spec_version_id,
                 source_suite_id=run.source_suite_id,
@@ -792,74 +930,39 @@ class EvaluationRunV2Service:
             project_id = await resolve_active_project_id(session)
             current_user = await resolve_current_user(session)
             compiled = await compile_run_request(session, project_id=project_id, payload=payload)
-            target_display = f"{compiled.plan.target_name}@{compiled.plan.target_version}"
-            run = EvaluationRun(
+            run = await _persist_compiled_run(
+                session,
                 project_id=project_id,
-                created_by=current_user.id if current_user is not None else None,
-                name=(payload.name or f"{target_display} · {compiled.plan.model_binding.display_name}").strip(),
+                current_user_id=current_user.id if current_user is not None else None,
+                compiled=compiled,
+                requested_name=payload.name,
                 description=payload.description,
-                kind=compiled.plan.kind,
-                status="queued",
-                model_id=compiled.plan.model_binding.model_id,
-                model_name=compiled.plan.model_binding.display_name,
-                source_spec_id=compiled.source_spec_id,
-                source_spec_version_id=compiled.source_spec_version_id,
-                source_suite_id=compiled.source_suite_id,
-                source_suite_version_id=compiled.source_suite_version_id,
-                judge_policy_id=compiled.judge_policy_id,
-                execution_plan_json=compiled.plan.model_dump(mode="json"),
-                progress_total=len(compiled.plan.items),
-                progress_done=0,
             )
-            session.add(run)
-            await session.flush()
-            for plan_item in compiled.plan.items:
-                item = EvaluationRunItem(
-                    run_id=run.id,
-                    item_key=plan_item.item_key,
-                    display_name=plan_item.display_name,
-                    group_name=plan_item.group_name,
-                    weight=plan_item.weight,
-                    status="queued",
-                    spec_id=plan_item.spec_id,
-                    spec_version_id=plan_item.spec_version_id,
-                    engine=plan_item.engine,
-                    execution_mode=plan_item.execution_mode,
-                    model_binding_json=plan_item.model_binding.model_dump(mode="json"),
-                    judge_policy_snapshot_json=plan_item.judge_policy_snapshot,
-                    template_snapshot_json=plan_item.template_snapshot,
-                    plan_json=plan_item.model_dump(mode="json"),
-                    progress_total=plan_item.expected_sample_count,
-                    progress_done=0,
-                )
-                session.add(
-                    item
-                )
-                await session.flush()
-                item.temporal_workflow_id = f"evaluation-run-item-{item.id}"
-            await session.flush()
-            run.temporal_workflow_id = f"evaluation-run-{run.id}"
-            await session.commit()
 
-        from nta_backend.core.temporal import start_evaluation_run_workflow
-        from nta_backend.workflows.evaluation_run import EvaluationRunWorkflowInput
+        return await _start_run_workflow(run_id=run.id, workflow_id=run.temporal_workflow_id)
 
-        workflow_input = EvaluationRunWorkflowInput(run_id=str(run.id))
-        try:
-            await start_evaluation_run_workflow(
-                workflow_input,
-                workflow_id=run.temporal_workflow_id,
+    async def create_benchmark_run(
+        self,
+        payload: BenchmarkEvaluationRunCreate,
+    ) -> EvaluationRunSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            current_user = await resolve_current_user(session)
+            compiled = await compile_benchmark_run_request(
+                session,
+                project_id=project_id,
+                payload=payload,
             )
-        except Exception as exc:  # noqa: BLE001
-            async with SessionLocal() as session:
-                failed_run = await session.get(EvaluationRun, run.id)
-                if failed_run is not None:
-                    failed_run.status = "failed"
-                    failed_run.error_message = f"Failed to start evaluation run workflow: {exc}"[:500]
-                    failed_run.finished_at = _utc_now()
-                    await session.commit()
-            raise
-        return _serialize_run_summary(run)
+            run = await _persist_compiled_run(
+                session,
+                project_id=project_id,
+                current_user_id=current_user.id if current_user is not None else None,
+                compiled=compiled,
+                requested_name=payload.name,
+                description=payload.description,
+            )
+
+        return await _start_run_workflow(run_id=run.id, workflow_id=run.temporal_workflow_id)
 
     async def cancel_run(self, run_id: str) -> EvaluationRunCancelResponse:
         run_uuid = UUID(run_id)
