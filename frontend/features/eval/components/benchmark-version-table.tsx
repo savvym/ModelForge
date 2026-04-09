@@ -49,8 +49,7 @@ export function BenchmarkVersionTable({
                 {version.description}
               </TableCell>
               <TableCell className="max-w-[420px] break-all text-xs leading-6 text-slate-400">
-                {version.dataset_source_uri ||
-                  (version.dataset_path ? `legacy local: ${version.dataset_path}` : "--")}
+                {version.dataset_source_uri || "--"}
               </TableCell>
               <TableCell className="align-top text-slate-300">
                 {version.sample_count.toLocaleString()}

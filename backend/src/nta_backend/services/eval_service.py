@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from mimetypes import guess_type
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
@@ -52,8 +51,6 @@ from nta_backend.services.benchmark_catalog_service import (
     resolve_benchmark_version_record,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-LOCAL_EVALRUNS_ROOT = REPO_ROOT / "backend" / ".evalruns"
 EVAL_ARTIFACT_BUCKET = get_settings().s3_bucket_eval_artifacts
 _MODEL_TIMEOUT_S = 180.0
 _MODEL_MAX_TOKENS = 4096
@@ -197,44 +194,11 @@ def _eval_method_requires_judge_model(eval_method: str | None) -> bool:
     }
 
 
-def _artifact_local_path(value: str | None) -> Path | None:
-    if not value or not value.startswith("/"):
-        return None
-
-    path = Path(value)
-    try:
-        path.relative_to(LOCAL_EVALRUNS_ROOT)
-    except ValueError:
-        return None
-    return path
-
-
-def _cleanup_local_eval_artifacts(paths: set[Path]) -> None:
-    for path in sorted(paths, key=lambda item: len(item.parts), reverse=True):
-        if not path.exists():
-            continue
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-            continue
-        path.unlink(missing_ok=True)
-
-
 def _collect_eval_artifact_cleanup(
     job: EvalJob,
-) -> tuple[set[Path], set[tuple[str, str]], set[tuple[str, str]]]:
-    local_paths: set[Path] = set()
+) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
     s3_prefixes: set[tuple[str, str]] = set()
     s3_objects: set[tuple[str, str]] = set()
-
-    for candidate in (
-        job.artifact_prefix_uri,
-        job.results_prefix_uri,
-        job.samples_prefix_uri,
-        job.report_object_uri,
-    ):
-        local_path = _artifact_local_path(candidate)
-        if local_path is not None:
-            local_paths.add(local_path)
 
     for candidate in (job.artifact_prefix_uri, job.results_prefix_uri, job.samples_prefix_uri):
         parsed = _parse_s3_uri(candidate)
@@ -248,11 +212,7 @@ def _collect_eval_artifact_cleanup(
     if parsed_report is not None:
         s3_objects.add(parsed_report)
 
-    return local_paths, s3_prefixes, s3_objects
-
-
-def _eval_output_dir(job: EvalJob) -> Path:
-    return LOCAL_EVALRUNS_ROOT / build_eval_job_code(job.created_at, job.id)
+    return s3_prefixes, s3_objects
 
 
 def _guess_artifact_content_type(file_name: str) -> str:
@@ -476,7 +436,6 @@ async def _resolve_dataset_input(
         raise ValueError("请选择可用 Benchmark Version。")
     dataset_path = _materialize_benchmark_version_dataset(
         dataset_source_uri=version.dataset_source_uri,
-        dataset_path=version.dataset_path,
     )
     field_mapping = dict(benchmark_definition.field_mapping_json or {})
     prompt_config = dict(benchmark_definition.prompt_config_json or {})
@@ -523,28 +482,10 @@ async def _resolve_dataset_input(
 def _materialize_benchmark_version_dataset(
     *,
     dataset_source_uri: str | None,
-    dataset_path: str | None,
 ) -> Path:
-    if dataset_path:
-        local_path = Path(dataset_path)
-        if local_path.exists():
-            return local_path
-
-    if dataset_source_uri and dataset_source_uri.startswith("file://"):
-        local_path = Path(dataset_source_uri.removeprefix("file://"))
-        if local_path.exists():
-            return local_path
-        raise FileNotFoundError(str(local_path))
-
-    if dataset_source_uri and dataset_source_uri.startswith("/"):
-        local_path = Path(dataset_source_uri)
-        if local_path.exists():
-            return local_path
-        raise FileNotFoundError(str(local_path))
-
     parsed = _parse_s3_uri(dataset_source_uri)
     if parsed is None:
-        raise FileNotFoundError(str(dataset_source_uri or dataset_path))
+        raise ValueError("Benchmark Version 数据源仅支持 s3:// 对象存储 URI。")
 
     bucket, object_key = parsed
     payload = get_object_bytes(bucket, object_key)
@@ -597,13 +538,6 @@ def _load_eval_report_payload(job: EvalJob) -> dict[str, Any] | None:
     report_uri = job.report_object_uri
     if not report_uri:
         return None
-
-    path = Path(report_uri)
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
 
     parsed = _parse_s3_uri(report_uri)
     if parsed is None:
@@ -761,7 +695,6 @@ async def _run_eval_job(
     progress_listener: Callable[[int, int], None] | None = None,
 ) -> None:
     async with SessionLocal() as session:
-        output_dir: Path | None = None
         try:
             job = await _get_job_or_raise(session, job_id)
             if job.status == "cancelled":
@@ -771,8 +704,6 @@ async def _run_eval_job(
                 job.finished_at = job.finished_at or _utc_now()
                 await session.commit()
                 return
-            output_dir = _eval_output_dir(job)
-            output_dir.mkdir(parents=True, exist_ok=True)
 
             job.status = "preparing"
             job.started_at = _utc_now()
@@ -824,64 +755,66 @@ async def _run_eval_job(
                 if progress_listener is not None:
                     loop.call_soon_threadsafe(progress_listener, progress_done, progress_total)
 
-            execution_request = EvalExecutionRequest(
-                benchmark_name=dataset_input.benchmark_name,
-                dataset_path=dataset_input.dataset_path,
-                output_dir=output_dir,
-                eval_method=dataset_input.eval_method,
-                eval_model=ExecutorModelConfig(
-                    model_name=eval_model.model_name,
-                    display_name=eval_model.display_name,
-                    api_url=eval_model.api_url,
-                    api_key=eval_model.api_key,
-                    api_format=eval_model.api_format,
-                    organization=eval_model.organization,
-                    headers=dict(eval_model.headers),
-                ),
-                judge_model=(
-                    ExecutorModelConfig(
-                        model_name=judge_model.model_name,
-                        display_name=judge_model.display_name,
-                        api_url=judge_model.api_url,
-                        api_key=judge_model.api_key,
-                        api_format=judge_model.api_format,
-                        organization=judge_model.organization,
-                        headers=dict(judge_model.headers),
-                    )
-                    if judge_model is not None
-                    else None
-                ),
-                field_mapping=dataset_input.field_mapping,
-                prompt_config=dataset_input.prompt_config,
-                template_config=dataset_input.template_config,
-                progress_callback=_progress_callback,
-                cancellation_event=cancel_event,
-            )
-            execution_result = await asyncio.to_thread(_EVAL_EXECUTOR.execute, execution_request)
-            _raise_if_cancel_requested(cancel_event)
+            with TemporaryDirectory(prefix=f"nta-evaljob-{job_id[:8]}-") as scratch_dir:
+                output_dir = Path(scratch_dir)
+                execution_request = EvalExecutionRequest(
+                    benchmark_name=dataset_input.benchmark_name,
+                    dataset_path=dataset_input.dataset_path,
+                    output_dir=output_dir,
+                    eval_method=dataset_input.eval_method,
+                    eval_model=ExecutorModelConfig(
+                        model_name=eval_model.model_name,
+                        display_name=eval_model.display_name,
+                        api_url=eval_model.api_url,
+                        api_key=eval_model.api_key,
+                        api_format=eval_model.api_format,
+                        organization=eval_model.organization,
+                        headers=dict(eval_model.headers),
+                    ),
+                    judge_model=(
+                        ExecutorModelConfig(
+                            model_name=judge_model.model_name,
+                            display_name=judge_model.display_name,
+                            api_url=judge_model.api_url,
+                            api_key=judge_model.api_key,
+                            api_format=judge_model.api_format,
+                            organization=judge_model.organization,
+                            headers=dict(judge_model.headers),
+                        )
+                        if judge_model is not None
+                        else None
+                    ),
+                    field_mapping=dataset_input.field_mapping,
+                    prompt_config=dataset_input.prompt_config,
+                    template_config=dataset_input.template_config,
+                    progress_callback=_progress_callback,
+                    cancellation_event=cancel_event,
+                )
+                execution_result = await asyncio.to_thread(_EVAL_EXECUTOR.execute, execution_request)
+                _raise_if_cancel_requested(cancel_event)
 
-            job.status = "scoring"
-            await session.commit()
+                job.status = "scoring"
+                await session.commit()
 
-            (
-                artifact_prefix_uri,
-                results_prefix_uri,
-                samples_prefix_uri,
-                report_object_uri,
-            ) = await asyncio.to_thread(_upload_eval_artifacts, job, output_dir)
-            job.artifact_prefix_uri = artifact_prefix_uri
-            job.report_object_uri = report_object_uri
-            job.results_prefix_uri = results_prefix_uri
-            job.samples_prefix_uri = samples_prefix_uri
+                (
+                    artifact_prefix_uri,
+                    results_prefix_uri,
+                    samples_prefix_uri,
+                    report_object_uri,
+                ) = await asyncio.to_thread(_upload_eval_artifacts, job, output_dir)
+                job.artifact_prefix_uri = artifact_prefix_uri
+                job.report_object_uri = report_object_uri
+                job.results_prefix_uri = results_prefix_uri
+                job.samples_prefix_uri = samples_prefix_uri
 
-            await session.execute(delete(EvalJobMetric).where(EvalJobMetric.eval_job_id == job.id))
-            _persist_eval_metrics(session, job.id, execution_result.report_payload)
+                await session.execute(delete(EvalJobMetric).where(EvalJobMetric.eval_job_id == job.id))
+                _persist_eval_metrics(session, job.id, execution_result.report_payload)
 
-            job.status = "completed"
-            job.cancel_requested = False
-            job.finished_at = _utc_now()
-            job.error_message = None
-            await session.commit()
+                job.status = "completed"
+                job.cancel_requested = False
+                job.finished_at = _utc_now()
+                job.error_message = None
+                await session.commit()
         except EvalExecutionCancelledError:
             await session.rollback()
             await _mark_eval_job_cancelled(job_id)
@@ -901,9 +834,6 @@ async def _run_eval_job(
             job.finished_at = _utc_now()
             job.error_message = _truncate_error_message(str(exc) or exc.__class__.__name__)
             await session.commit()
-        finally:
-            if output_dir is not None:
-                _cleanup_local_eval_artifacts({output_dir})
 
 
 async def activity_is_eval_job_cancel_requested(*, job_id: str) -> bool:
@@ -1170,14 +1100,10 @@ class EvalJobService:
             if job.status in _DELETE_BLOCKED_STATUSES:
                 raise ValueError("运行中的评测任务暂不支持删除，请等待任务完成后再删除。")
 
-            local_paths, s3_prefixes, s3_objects = _collect_eval_artifact_cleanup(job)
+            s3_prefixes, s3_objects = _collect_eval_artifact_cleanup(job)
             await session.delete(job)
             await session.commit()
 
-        try:
-            _cleanup_local_eval_artifacts(local_paths)
-        except OSError:
-            pass
         for bucket, object_key in s3_objects:
             try:
                 delete_object(bucket, object_key)

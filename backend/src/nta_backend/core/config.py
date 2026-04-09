@@ -44,7 +44,6 @@ class Settings(BaseSettings):
     s3_access_key_id: str = "rustfsadmin"
     s3_secret_access_key: SecretStr = SecretStr("ChangeMe123!")
     s3_bucket_main: str = "nta-default"
-    s3_local_fallback_enabled: bool = True
 
     @property
     def s3_bucket_dataset_raw(self) -> str:

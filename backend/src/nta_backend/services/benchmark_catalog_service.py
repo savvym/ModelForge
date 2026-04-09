@@ -51,7 +51,6 @@ class _BenchmarkUsage:
 
 @dataclass(frozen=True)
 class _ResolvedVersionSource:
-    dataset_path: str | None
     dataset_source_uri: str
     sample_count: int
 
@@ -222,7 +221,7 @@ def _serialize_version(
         id=version.version_id,
         display_name=version.display_name,
         description=version.description or "",
-        dataset_path=version.dataset_path,
+        dataset_path=None,
         dataset_source_uri=version.dataset_source_uri,
         sample_count=version.sample_count,
         enabled=version.enabled,
@@ -691,58 +690,20 @@ def _resolve_preview_kind(location: str, content_type: str | None) -> str:
 
 def _load_version_file_payload(version: BenchmarkVersionRecord) -> _VersionFilePayload:
     dataset_source_uri = version.dataset_source_uri
-    if dataset_source_uri:
-        if dataset_source_uri.startswith("s3://"):
-            bucket, object_key = _parse_s3_uri(dataset_source_uri)
-            payload = get_object_bytes(bucket, object_key)
-            return _VersionFilePayload(
-                file_name=PurePosixPath(object_key).name or version.version_id,
-                body=payload.body,
-                content_type=_guess_preview_content_type(object_key, payload.content_type),
-                object_bucket=bucket,
-                object_key=object_key,
-            )
+    if not dataset_source_uri:
+        raise ValueError("当前 Version 还没有可读取的对象存储文件。")
+    if not dataset_source_uri.startswith("s3://"):
+        raise ValueError("Benchmark Version 数据源仅支持 s3:// 对象存储 URI。")
 
-        if dataset_source_uri.startswith("file://"):
-            local_path = Path(dataset_source_uri.removeprefix("file://"))
-            if local_path.exists():
-                return _VersionFilePayload(
-                    file_name=local_path.name or version.version_id,
-                    body=local_path.read_bytes(),
-                    content_type=_guess_preview_content_type(
-                        str(local_path),
-                        guess_type(local_path.name)[0],
-                    ),
-                )
-            raise FileNotFoundError(str(local_path))
-
-        if dataset_source_uri.startswith("/"):
-            local_path = Path(dataset_source_uri)
-            if local_path.exists():
-                return _VersionFilePayload(
-                    file_name=local_path.name or version.version_id,
-                    body=local_path.read_bytes(),
-                    content_type=_guess_preview_content_type(
-                        str(local_path),
-                        guess_type(local_path.name)[0],
-                    ),
-                )
-            raise FileNotFoundError(str(local_path))
-
-    if version.dataset_path:
-        local_path = Path(version.dataset_path)
-        if local_path.exists():
-            return _VersionFilePayload(
-                file_name=local_path.name or version.version_id,
-                body=local_path.read_bytes(),
-                content_type=_guess_preview_content_type(
-                    str(local_path),
-                    guess_type(local_path.name)[0],
-                ),
-            )
-        raise FileNotFoundError(str(local_path))
-
-    raise ValueError("当前 Version 还没有可读取的数据文件。")
+    bucket, object_key = _parse_s3_uri(dataset_source_uri)
+    payload = get_object_bytes(bucket, object_key)
+    return _VersionFilePayload(
+        file_name=PurePosixPath(object_key).name or version.version_id,
+        body=payload.body,
+        content_type=_guess_preview_content_type(object_key, payload.content_type),
+        object_bucket=bucket,
+        object_key=object_key,
+    )
 
 
 async def _list_benchmark_eval_job_references(
@@ -794,42 +755,33 @@ def _resolve_managed_version_prefix(
 def _materialize_dataset_source(
     *,
     dataset_source_uri: str | None,
-    dataset_path: str | None,
-) -> tuple[Path, str | None, str, bool]:
-    if dataset_source_uri:
-        if dataset_source_uri.startswith("s3://"):
-            bucket, object_key = _parse_s3_uri(dataset_source_uri)
-            payload = get_object_bytes(bucket, object_key)
-            suffix = Path(object_key).suffix or ".jsonl"
-            with NamedTemporaryFile(
-                mode="wb",
-                suffix=suffix,
-                prefix="benchmark-version-",
-                delete=False,
-            ) as handle:
-                handle.write(payload.body)
-                return Path(handle.name), None, dataset_source_uri, True
+) -> tuple[Path, str, bool]:
+    if not dataset_source_uri:
+        raise ValueError("请提供 Benchmark Version 数据源 URI。")
+    if not dataset_source_uri.startswith("s3://"):
         raise ValueError("Benchmark Version 数据源目前仅支持 s3:// 对象存储 URI。")
 
-    if dataset_path:
-        local_path = Path(dataset_path)
-        if local_path.exists():
-            return local_path, dataset_path, dataset_path, False
-        raise FileNotFoundError(str(local_path))
-
-    raise ValueError("请提供 Benchmark Version 数据源 URI。")
+    bucket, object_key = _parse_s3_uri(dataset_source_uri)
+    payload = get_object_bytes(bucket, object_key)
+    suffix = Path(object_key).suffix or ".jsonl"
+    with NamedTemporaryFile(
+        mode="wb",
+        suffix=suffix,
+        prefix="benchmark-version-",
+        delete=False,
+    ) as handle:
+        handle.write(payload.body)
+        return Path(handle.name), dataset_source_uri, True
 
 
 def _inspect_dataset_source(
     *,
     benchmark_name: str,
     dataset_source_uri: str | None,
-    dataset_path: str | None,
     benchmark_definition: BenchmarkDefinitionRecord | None = None,
 ) -> _ResolvedVersionSource:
-    local_path, normalized_path, normalized_uri, should_cleanup = _materialize_dataset_source(
+    local_path, normalized_uri, should_cleanup = _materialize_dataset_source(
         dataset_source_uri=dataset_source_uri,
-        dataset_path=dataset_path,
     )
     try:
         if benchmark_definition is not None and benchmark_definition.source_type == "custom":
@@ -851,7 +803,6 @@ def _inspect_dataset_source(
         if sample_count <= 0:
             raise ValueError("Benchmark Version 数据集为空。")
         return _ResolvedVersionSource(
-            dataset_path=normalized_path,
             dataset_source_uri=normalized_uri,
             sample_count=sample_count,
         )
@@ -1140,7 +1091,6 @@ class BenchmarkCatalogService:
             resolved_source = _inspect_dataset_source(
                 benchmark_name=definition.name,
                 dataset_source_uri=_normalize_optional_text(payload.dataset_source_uri),
-                dataset_path=None,
                 benchmark_definition=definition,
             )
 
@@ -1149,7 +1099,7 @@ class BenchmarkCatalogService:
                 version_id=version_id,
                 display_name=_normalize_required_text(payload.display_name, "display_name"),
                 description=_normalize_optional_text(payload.description),
-                dataset_path=resolved_source.dataset_path,
+                dataset_path=None,
                 dataset_source_uri=resolved_source.dataset_source_uri,
                 sample_count=resolved_source.sample_count,
                 enabled=payload.enabled,
@@ -1186,10 +1136,9 @@ class BenchmarkCatalogService:
                 resolved_source = _inspect_dataset_source(
                     benchmark_name=definition.name,
                     dataset_source_uri=version.dataset_source_uri,
-                    dataset_path=version.dataset_path,
                     benchmark_definition=definition,
                 )
-                version.dataset_path = resolved_source.dataset_path
+                version.dataset_path = None
                 version.dataset_source_uri = resolved_source.dataset_source_uri
                 version.sample_count = resolved_source.sample_count
             try:
