@@ -108,7 +108,7 @@ export function BenchmarkDetailPanel({
       return;
     }
 
-    if (!selectedVersion.dataset_source_uri && !selectedVersion.dataset_path) {
+    if (!selectedVersion.dataset_source_uri) {
       setPreviewError("当前 Version 还没有可预览的数据文件。");
       return;
     }
@@ -427,10 +427,7 @@ function BenchmarkVersionDetailTab({
               {isBuiltin ? (
                 <DetailRow label="数据来源" value="平台预置数据集版本" />
               ) : (
-                <>
-                  <DetailRow label="数据源 URI" value={version.dataset_source_uri || "--"} />
-                  <DetailRow label="旧路径" value={version.dataset_path || "--"} />
-                </>
+                <DetailRow label="数据源 URI" value={version.dataset_source_uri || "--"} />
               )}
             </CardContent>
           </Card>

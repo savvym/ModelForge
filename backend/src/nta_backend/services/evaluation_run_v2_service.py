@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
@@ -56,8 +56,6 @@ from nta_backend.schemas.evaluation_v2 import (
     EvaluationRunSummary,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-LOCAL_EVALRUNS_V2_ROOT = REPO_ROOT / "backend" / ".evalruns-v2"
 EVAL_ARTIFACT_BUCKET = get_settings().s3_bucket_eval_artifacts
 
 
@@ -653,7 +651,6 @@ async def activity_execute_evaluation_run_item(
 ) -> dict[str, str]:
     run_uuid = UUID(run_id)
     item_uuid = UUID(item_id)
-    output_dir = LOCAL_EVALRUNS_V2_ROOT / run_id / item_id
     try:
         if await _is_run_cancel_requested(run_uuid):
             raise ExecutionCancelledError("Evaluation run was cancelled.")
@@ -684,28 +681,30 @@ async def activity_execute_evaluation_run_item(
             engine=item_plan.engine,
             execution_mode=item_plan.execution_mode,
         )
-        result = await asyncio.to_thread(
-            adapter.execute,
-            item_plan=item_plan,
-            context=ExecutionContext(
-                output_dir=output_dir,
-                progress_callback=_progress_callback,
-                cancellation_event=cancel_event,
-            ),
-        )
-        async with SessionLocal() as session:
-            run = await session.get(EvaluationRun, run_uuid)
-            item = await session.get(EvaluationRunItem, item_uuid)
-            if run is None or item is None:
-                return {"run_id": run_id, "item_id": item_id, "status": "missing"}
-            await _persist_item_result(
-                session,
-                run=run,
-                item=item,
-                report_payload=result.report_payload,
-                output_dir=output_dir,
+        with TemporaryDirectory(prefix=f"nta-evalrun-v2-{run_id[:8]}-{item_id[:8]}-") as scratch_dir:
+            output_dir = Path(scratch_dir)
+            result = await asyncio.to_thread(
+                adapter.execute,
+                item_plan=item_plan,
+                context=ExecutionContext(
+                    output_dir=output_dir,
+                    progress_callback=_progress_callback,
+                    cancellation_event=cancel_event,
+                ),
             )
-            await session.commit()
+            async with SessionLocal() as session:
+                run = await session.get(EvaluationRun, run_uuid)
+                item = await session.get(EvaluationRunItem, item_uuid)
+                if run is None or item is None:
+                    return {"run_id": run_id, "item_id": item_id, "status": "missing"}
+                await _persist_item_result(
+                    session,
+                    run=run,
+                    item=item,
+                    report_payload=result.report_payload,
+                    output_dir=output_dir,
+                )
+                await session.commit()
         await _persist_run_progress(run_uuid)
         return {"run_id": run_id, "item_id": item_id, "status": "completed"}
     except ExecutionCancelledError:
@@ -727,9 +726,6 @@ async def activity_execute_evaluation_run_item(
                 await session.commit()
         await _persist_run_progress(run_uuid)
         raise
-    finally:
-        if output_dir.exists():
-            shutil.rmtree(output_dir, ignore_errors=True)
 
 
 async def _persist_compiled_run(

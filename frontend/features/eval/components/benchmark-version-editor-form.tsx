@@ -126,14 +126,14 @@ export function BenchmarkVersionEditorForm({
     if (!form.dataset_source_uri.trim()) {
       setFeedback({
         tone: "error",
-        text: "请提供数据源 URI，可使用 s3://、file:// 或本地绝对路径。"
+        text: "请提供数据源 URI，当前仅支持 s3://。"
       });
       return;
     }
     if (!isSupportedDatasetSource(form.dataset_source_uri.trim())) {
       setFeedback({
         tone: "error",
-        text: "Benchmark Version 目前支持 s3://、file:// 或本地绝对路径。"
+        text: "Benchmark Version 目前仅支持 s3:// 对象存储 URI。"
       });
       return;
     }
@@ -246,7 +246,7 @@ export function BenchmarkVersionEditorForm({
           <Field
             label="数据源 URI"
             onChange={(value) => updateField("dataset_source_uri", value)}
-            placeholder="例如 /data/benchmarks/network.jsonl 或 file:///data/network.jsonl"
+            placeholder="例如 s3://nta-default/projects/.../network.jsonl"
             value={form.dataset_source_uri}
           />
           <SelectField
@@ -281,8 +281,8 @@ export function BenchmarkVersionEditorForm({
               </Button>
             </div>
             <div className="text-xs leading-5 text-slate-500">
-              Benchmark Version 对应这个 Benchmark 的某一个数据集版本。你可以直接填写
-              `s3://`、`file://` 或本地绝对路径；如果当前有项目上下文，也可以先上传到对象存储，再自动回填 URI。
+              Benchmark Version 对应这个 Benchmark 的某一个数据集版本。当前只接受
+              `s3://` 数据源；如果当前有项目上下文，也可以先上传到对象存储，再自动回填 URI。
             </div>
           </div>
           <div className="lg:col-span-2">
@@ -367,7 +367,7 @@ function buildDraftVersionId() {
 }
 
 function isSupportedDatasetSource(value: string) {
-  return value.startsWith("s3://") || value.startsWith("file://") || value.startsWith("/");
+  return value.startsWith("s3://");
 }
 
 function SelectField({

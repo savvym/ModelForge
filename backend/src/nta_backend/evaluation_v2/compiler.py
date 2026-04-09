@@ -206,7 +206,7 @@ async def compile_benchmark_run_request(
         project_id=project_id,
         template=template,
     )
-    source_uri = (version.dataset_source_uri or version.dataset_path or "").strip()
+    source_uri = (version.dataset_source_uri or "").strip()
     if not source_uri:
         raise ValueError("所选 Benchmark Version 还没有可执行的数据文件。")
 
