@@ -121,9 +121,9 @@ class ProbeAgent:
             task_id=str(task_id),
             auth_token=self.auth_token,
             payload=ProbeTaskProgressRequest(
-                summary="Running evalscope perf.",
+                summary="Resolving runtime config.",
                 step=0,
-                total=1,
+                total=2,
             ),
         )
         try:
@@ -132,7 +132,20 @@ class ProbeAgent:
                 raise EvalScopePerfExecutionError(
                     f"Unsupported runtime kind: {runtime_kind or 'unknown'}"
                 )
-            config = EvalScopePerfTaskConfig.model_validate(payload_json.get("config") or {})
+            runtime_config = await self._client.get_task_runtime_config(
+                task_id=str(task_id),
+                auth_token=self.auth_token,
+            )
+            config = EvalScopePerfTaskConfig.model_validate(runtime_config.config)
+            await self._client.report_progress(
+                task_id=str(task_id),
+                auth_token=self.auth_token,
+                payload=ProbeTaskProgressRequest(
+                    summary="Running evalscope perf.",
+                    step=1,
+                    total=2,
+                ),
+            )
             result = await self._executor.execute(
                 task_id=task_id,
                 config=config,

@@ -15,6 +15,7 @@ from nta_backend.core.db import SessionLocal
 from nta_backend.core.project_context import resolve_active_project_id
 from nta_backend.models.probe import Probe, ProbeHeartbeat, ProbeTask
 from nta_backend.schemas.probe import (
+    EvalScopePerfTaskConfig,
     ProbeDetail,
     ProbeHeartbeatRequest,
     ProbeHeartbeatResponse,
@@ -29,9 +30,16 @@ from nta_backend.schemas.probe import (
     ProbeTaskDetail,
     ProbeTaskFailRequest,
     ProbeTaskProgressRequest,
+    ProbeTaskRuntimeConfigResponse,
     ProbeTaskStartRequest,
     ProbeTaskSummary,
     ProbeTaskTransitionResponse,
+)
+from nta_backend.services.model_registry_service import (
+    _get_provider_or_raise,
+    _normalize_api_format,
+    _normalize_base_url,
+    _provider_request_headers,
 )
 
 
@@ -197,6 +205,11 @@ class ProbeService:
                 project_id=project_id,
                 probe_id=payload.probe_id,
             )
+            stored_config = await self._build_task_config_payload(
+                session,
+                project_id=project_id,
+                config=payload.config,
+            )
             task = ProbeTask(
                 project_id=project_id,
                 probe_id=probe.id,
@@ -208,7 +221,7 @@ class ProbeService:
                 payload_json={
                     "runtime_kind": payload.runtime_kind,
                     "timeout_seconds": payload.timeout_seconds,
-                    "config": payload.config.model_dump(mode="json"),
+                    "config": stored_config,
                 },
                 progress_json={},
                 created_by=user.id,
@@ -217,6 +230,38 @@ class ProbeService:
             await session.commit()
             await session.refresh(task)
             return ProbeTaskDetail(**_serialize_task(task).model_dump())
+
+    async def get_task_runtime_config(
+        self,
+        task_id: str,
+        *,
+        authorization: str | None,
+    ) -> ProbeTaskRuntimeConfigResponse:
+        async with SessionLocal() as session:
+            task = await self._authenticate_task(
+                session,
+                task_id=UUID(task_id),
+                authorization=authorization,
+            )
+            if task.status not in {"claimed", "running"}:
+                raise ValueError(
+                    f"Task {task.id} runtime config is unavailable in status {task.status}."
+                )
+            payload_json = dict(task.payload_json or {})
+            runtime_kind = str(payload_json.get("runtime_kind") or "").strip() or "evalscope-perf"
+            if runtime_kind != "evalscope-perf":
+                raise ValueError(f"Unsupported runtime kind: {runtime_kind}")
+            config_payload = dict(payload_json.get("config") or {})
+            resolved_config = await self._resolve_runtime_config(
+                session,
+                project_id=task.project_id,
+                config_payload=config_payload,
+            )
+            return ProbeTaskRuntimeConfigResponse(
+                task_id=task.id,
+                runtime_kind="evalscope-perf",
+                config=resolved_config,
+            )
 
     async def list_tasks(
         self,
@@ -590,6 +635,77 @@ class ProbeService:
             raise KeyError(str(task_id))
         await self._authenticate_probe(session, probe_id=task.probe_id, authorization=authorization)
         return task
+
+    async def _build_task_config_payload(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: UUID,
+        config: EvalScopePerfTaskConfig,
+    ) -> dict:
+        payload = config.model_dump(mode="json")
+        provider_id = config.provider_id
+        if provider_id is None:
+            payload["url"] = (config.url or "").strip()
+            return payload
+
+        provider = await _get_provider_or_raise(session, provider_id, project_id)
+        api_format = _normalize_api_format(provider.api_format)
+        if provider.status != "active":
+            raise ValueError("Selected Provider is not active.")
+        if api_format != "chat-completions":
+            raise ValueError("Probe perf currently only supports chat-completions providers.")
+
+        payload.pop("url", None)
+        payload.pop("api", None)
+        payload.pop("headers", None)
+        payload.pop("api_key", None)
+        payload.pop("api_key_env", None)
+        payload["provider_id"] = str(provider.id)
+        payload["provider_name"] = provider.name
+        return payload
+
+    async def _resolve_runtime_config(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: UUID,
+        config_payload: dict,
+    ) -> EvalScopePerfTaskConfig:
+        payload = dict(config_payload)
+        provider_id_value = payload.get("provider_id")
+        if not provider_id_value:
+            return EvalScopePerfTaskConfig.model_validate(payload)
+
+        provider = await _get_provider_or_raise(session, UUID(str(provider_id_value)), project_id)
+        api_format = _normalize_api_format(provider.api_format)
+        if provider.status != "active":
+            raise ValueError("Selected Provider is not active.")
+        if api_format != "chat-completions":
+            raise ValueError("Probe perf currently only supports chat-completions providers.")
+
+        resolved_headers = _provider_request_headers(provider)
+        authorization_header = resolved_headers.get("Authorization")
+        api_key: str | None = None
+        if provider.api_key and authorization_header == f"Bearer {provider.api_key}":
+            api_key = provider.api_key
+            resolved_headers.pop("Authorization", None)
+
+        resolved_payload = {
+            **payload,
+            "provider_id": provider.id,
+            "provider_name": provider.name,
+            "url": f"{_normalize_base_url(provider.base_url)}/chat/completions",
+            "api": "openai",
+            "headers": {
+                str(key): str(value)
+                for key, value in resolved_headers.items()
+                if value is not None
+            },
+            "api_key": api_key,
+            "api_key_env": None,
+        }
+        return EvalScopePerfTaskConfig.model_validate(resolved_payload)
 
     def _validate_registration_token(self, authorization: str | None) -> None:
         expected = get_settings().probe_registration_token

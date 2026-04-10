@@ -13,6 +13,7 @@ from nta_backend.schemas.probe import (
     ProbeTaskDetail,
     ProbeTaskFailRequest,
     ProbeTaskProgressRequest,
+    ProbeTaskRuntimeConfigResponse,
     ProbeTaskStartRequest,
     ProbeTaskSummary,
     ProbeTaskTransitionResponse,
@@ -144,6 +145,27 @@ async def claim_probe_task(
         ) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+
+@router.get(
+    "/api/v2/probes/tasks/{task_id}/runtime-config",
+    response_model=ProbeTaskRuntimeConfigResponse,
+)
+async def get_probe_task_runtime_config(
+    task_id: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> ProbeTaskRuntimeConfigResponse:
+    try:
+        return await service.get_task_runtime_config(task_id, authorization=authorization)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Probe task not found",
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/api/v2/probes/tasks/{task_id}/start", response_model=ProbeTaskTransitionResponse)

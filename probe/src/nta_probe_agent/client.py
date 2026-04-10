@@ -13,6 +13,7 @@ from nta_probe_agent.schemas import (
     ProbeTaskCompleteRequest,
     ProbeTaskFailRequest,
     ProbeTaskProgressRequest,
+    ProbeTaskRuntimeConfigResponse,
     ProbeTaskStartRequest,
     ProbeTaskTransitionResponse,
 )
@@ -100,6 +101,20 @@ class ProbeControlPlaneClient:
             token=auth_token,
         )
         return ProbeTaskTransitionResponse.model_validate(data)
+
+    async def get_task_runtime_config(
+        self,
+        *,
+        task_id: str,
+        auth_token: str,
+    ) -> ProbeTaskRuntimeConfigResponse:
+        data = await self._request(
+            "GET",
+            f"/api/v2/probes/tasks/{task_id}/runtime-config",
+            json=None,
+            token=auth_token,
+        )
+        return ProbeTaskRuntimeConfigResponse.model_validate(data)
 
     async def report_progress(
         self,

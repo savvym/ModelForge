@@ -15,24 +15,25 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createProbeTask } from "@/features/eval/api";
-import type { ProbeSummary } from "@/types/api";
+import type { ModelProviderSummary, ProbeSummary } from "@/types/api";
 
 type ProbeTaskCreateFormProps = {
   onCreated?: () => void;
   probes: ProbeSummary[];
+  providers: ModelProviderSummary[];
 };
 
 export function ProbeTaskCreateForm({
   onCreated,
-  probes
+  probes,
+  providers
 }: ProbeTaskCreateFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = React.useState(false);
   const [probeId, setProbeId] = React.useState(probes[0]?.id ?? "");
+  const [providerId, setProviderId] = React.useState(providers[0]?.id ?? "");
   const [name, setName] = React.useState("");
   const [model, setModel] = React.useState("");
-  const [url, setUrl] = React.useState("");
-  const [apiKeyEnv, setApiKeyEnv] = React.useState("OPENAI_API_KEY");
   const [prompt, setPrompt] = React.useState("请简短回复 ok。");
   const [number, setNumber] = React.useState("4");
   const [parallel, setParallel] = React.useState("1");
@@ -51,12 +52,23 @@ export function ProbeTaskCreateForm({
     setProbeId(probes[0]?.id ?? "");
   }, [probeId, probes]);
 
-  const disabled = submitting || probes.length === 0;
+  React.useEffect(() => {
+    if (!providers.length) {
+      setProviderId("");
+      return;
+    }
+    if (providers.some((provider) => provider.id === providerId)) {
+      return;
+    }
+    setProviderId(providers[0]?.id ?? "");
+  }, [providerId, providers]);
+
+  const disabled = submitting || probes.length === 0 || providers.length === 0;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!probeId || !model.trim() || !url.trim()) {
-      toast.error("请先填写 Probe、模型名称和目标 URL。");
+    if (!probeId || !providerId || !model.trim()) {
+      toast.error("请先填写 Probe、Provider 和模型名称。");
       return;
     }
 
@@ -85,8 +97,7 @@ export function ProbeTaskCreateForm({
         timeout_seconds: parsedTimeoutSeconds,
         config: {
           model: model.trim(),
-          url: url.trim(),
-          api_key_env: apiKeyEnv.trim() || undefined,
+          provider_id: providerId,
           prompt: prompt.trim() || undefined,
           number: parsedNumber,
           parallel: parsedParallel,
@@ -113,6 +124,12 @@ export function ProbeTaskCreateForm({
         </div>
       ) : null}
 
+      {providers.length === 0 ? (
+        <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+          当前项目还没有可用于 Probe 压测的 Provider。先到模型广场里创建一个处于 active 状态、API 格式为 chat-completions 的 Provider。
+        </div>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <FieldBlock
           description="选择一个目标 Probe。离线 Probe 也可以先排队，等它重新上线后再领取任务。"
@@ -132,6 +149,24 @@ export function ProbeTaskCreateForm({
           </Select>
         </FieldBlock>
 
+        <FieldBlock
+          description="Probe 会在执行前通过服务端解析这个 Provider 的认证信息和请求头，不再手填 URL 或 API Key 环境变量。"
+          label="Provider"
+        >
+          <Select disabled={disabled} onValueChange={setProviderId} value={providerId}>
+            <SelectTrigger>
+              <SelectValue placeholder="选择 Provider" />
+            </SelectTrigger>
+            <SelectContent>
+              {providers.map((provider) => (
+                <SelectItem key={provider.id} value={provider.id}>
+                  {provider.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FieldBlock>
+
         <FieldBlock description="给这次压测起一个容易识别的名字。" label="任务名称">
           <Input
             disabled={disabled}
@@ -145,26 +180,8 @@ export function ProbeTaskCreateForm({
           <Input
             disabled={disabled}
             onChange={(event) => setModel(event.target.value)}
-            placeholder="例如：GPT-5.4"
+            placeholder="例如：gpt-5.4-mini"
             value={model}
-          />
-        </FieldBlock>
-
-        <FieldBlock description="探针实际压测的 OpenAI 兼容接口地址。" label="目标 URL">
-          <Input
-            disabled={disabled}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://example.com/v1/chat/completions"
-            value={url}
-          />
-        </FieldBlock>
-
-        <FieldBlock description="Probe 进程读取 API Key 的环境变量名。" label="API Key 环境变量">
-          <Input
-            disabled={disabled}
-            onChange={(event) => setApiKeyEnv(event.target.value)}
-            placeholder="OPENAI_API_KEY"
-            value={apiKeyEnv}
           />
         </FieldBlock>
 

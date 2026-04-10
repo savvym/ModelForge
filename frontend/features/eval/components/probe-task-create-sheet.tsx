@@ -5,16 +5,18 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ProbeTaskCreateForm } from "@/features/eval/components/probe-task-create-form";
-import type { ProbeSummary } from "@/types/api";
+import type { ModelProviderSummary, ProbeSummary } from "@/types/api";
 
 type ProbeTaskCreateSheetProps = {
   initialOpen?: boolean;
   probes: ProbeSummary[];
+  providers: ModelProviderSummary[];
 };
 
 export function ProbeTaskCreateSheet({
   initialOpen = false,
-  probes
+  probes,
+  providers
 }: ProbeTaskCreateSheetProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -57,7 +59,11 @@ export function ProbeTaskCreateSheet({
           </SheetHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
-            <ProbeTaskCreateForm onCreated={() => handleOpenChange(false)} probes={probes} />
+            <ProbeTaskCreateForm
+              onCreated={() => handleOpenChange(false)}
+              probes={probes}
+              providers={providers}
+            />
           </div>
         </SheetContent>
       </Sheet>

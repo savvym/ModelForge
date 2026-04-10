@@ -9,9 +9,10 @@ import { ProbeDetailPanel } from "@/features/eval/components/probe-detail-panel"
 import { ProbeNodeList } from "@/features/eval/components/probe-node-list";
 import { ProbeTaskCreateSheet } from "@/features/eval/components/probe-task-create-sheet";
 import { ProbeTaskListTable } from "@/features/eval/components/probe-task-list-table";
+import { getModelProviders } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import { cn } from "@/lib/utils";
-import type { ProbeDetail, ProbeSummary, ProbeTaskSummary } from "@/types/api";
+import type { ModelProviderSummary, ProbeDetail, ProbeSummary, ProbeTaskSummary } from "@/types/api";
 
 const probeTabs = [
   { key: "nodes", label: "Probe 节点" },
@@ -34,6 +35,7 @@ export default async function ModelProbePage({
   let probes: ProbeSummary[] = [];
   let probeOptions: ProbeSummary[] = [];
   let probeTasks: ProbeTaskSummary[] = [];
+  let providers: ModelProviderSummary[] = [];
   let selectedProbeId: string | null = null;
   let selectedProbe: ProbeDetail | null = null;
 
@@ -49,12 +51,16 @@ export default async function ModelProbePage({
   }
 
   if (currentTab === "tasks") {
-    const [probeResult, taskResult] = await Promise.all([
+    const [probeResult, taskResult, providerResult] = await Promise.all([
       getProbes(projectId).catch(() => []),
-      getProbeTasks(projectId).catch(() => [])
+      getProbeTasks(projectId).catch(() => []),
+      getModelProviders(projectId).catch(() => [])
     ]);
     probeOptions = probeResult;
     probeTasks = filterProbeTasks(taskResult, query, probeResult);
+    providers = providerResult.filter(
+      (provider) => provider.status === "active" && provider.api_format === "chat-completions"
+    );
   }
 
   return (
@@ -130,7 +136,7 @@ export default async function ModelProbePage({
               </ConsoleListSearchForm>
             </ConsoleListToolbarCluster>
 
-            <ProbeTaskCreateSheet initialOpen={createOpen} probes={probeOptions} />
+            <ProbeTaskCreateSheet initialOpen={createOpen} probes={probeOptions} providers={providers} />
           </ConsoleListToolbar>
 
           <div className="space-y-3">
@@ -205,6 +211,7 @@ function filterProbeTasks(
       task.task_type,
       task.status,
       task.error_message ?? "",
+      getTaskProviderName(task),
       probeNameMap.get(task.probe_id) ?? "",
       typeof task.progress_json.summary === "string" ? task.progress_json.summary : ""
     ]
@@ -212,4 +219,13 @@ function filterProbeTasks(
       .toLowerCase()
       .includes(normalizedQuery)
   );
+}
+
+function getTaskProviderName(task: ProbeTaskSummary) {
+  const config =
+    task.payload_json && typeof task.payload_json.config === "object" && task.payload_json.config
+      ? (task.payload_json.config as Record<string, unknown>)
+      : null;
+  const providerName = config?.provider_name;
+  return typeof providerName === "string" ? providerName : "";
 }

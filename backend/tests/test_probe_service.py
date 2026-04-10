@@ -5,7 +5,9 @@ import pytest
 from sqlalchemy import delete
 
 from nta_backend.core.db import SessionLocal
+from nta_backend.models.modeling import ModelProvider
 from nta_backend.models.probe import Probe, ProbeHeartbeat, ProbeTask
+from nta_backend.schemas.model_registry import ModelProviderCreate
 from nta_backend.schemas.probe import (
     EvalScopePerfTaskConfig,
     ProbeHeartbeatRequest,
@@ -14,6 +16,7 @@ from nta_backend.schemas.probe import (
     ProbeTaskCreate,
     ProbeTaskStartRequest,
 )
+from nta_backend.services.model_registry_service import ModelRegistryService
 from nta_backend.services.probe_service import ProbeService
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -212,4 +215,89 @@ async def test_probe_delete_requires_offline_status() -> None:
                     delete(ProbeHeartbeat).where(ProbeHeartbeat.probe_id == probe_id)
                 )
                 await session.execute(delete(Probe).where(Probe.id == probe_id))
+            await session.commit()
+
+
+async def test_probe_runtime_config_resolves_provider_credentials() -> None:
+    service = ProbeService()
+    registry_service = ModelRegistryService()
+    probe_id: UUID | None = None
+    task_id: UUID | None = None
+    provider_id: UUID | None = None
+    probe_name = f"pytest-probe-{uuid4().hex[:8]}"
+    provider_name = f"pytest-provider-{uuid4().hex[:8]}"
+
+    try:
+        registration = await service.register_probe(
+            ProbeRegistrationRequest(
+                name=probe_name,
+                display_name="Pytest Probe Provider",
+                tags=["pytest"],
+            ),
+            authorization=None,
+            client_ip="127.0.0.1",
+        )
+        probe_id = registration.probe_id
+        auth_header = f"Bearer {registration.auth_token}"
+
+        provider = await registry_service.create_provider(
+            ModelProviderCreate(
+                name=provider_name,
+                api_format="chat-completions",
+                base_url="https://example.com/v1",
+                api_key="provider-secret",
+                description="pytest",
+            )
+        )
+        provider_id = UUID(str(provider.id))
+
+        created_task = await service.create_task(
+            ProbeTaskCreate(
+                probe_id=probe_id,
+                name="pytest provider perf",
+                config=EvalScopePerfTaskConfig(
+                    model="demo-model",
+                    provider_id=provider_id,
+                    prompt="hello",
+                    number=2,
+                    parallel=1,
+                ),
+            )
+        )
+        task_id = created_task.id
+
+        stored_config = created_task.payload_json["config"]
+        assert stored_config["provider_id"] == str(provider_id)
+        assert stored_config["provider_name"] == provider_name
+        assert "api_key" not in stored_config
+        assert "api_key_env" not in stored_config
+        assert "url" not in stored_config
+
+        claimed = await service.claim_task(str(probe_id), authorization=auth_header)
+        assert claimed.task is not None
+        assert claimed.task.id == task_id
+
+        runtime_config = await service.get_task_runtime_config(
+            str(task_id),
+            authorization=auth_header,
+        )
+
+        assert runtime_config.task_id == task_id
+        assert runtime_config.config.provider_id == provider_id
+        assert runtime_config.config.provider_name == provider_name
+        assert runtime_config.config.url == "https://example.com/v1/chat/completions"
+        assert runtime_config.config.api == "openai"
+        assert runtime_config.config.api_key == "provider-secret"
+        assert runtime_config.config.api_key_env is None
+    finally:
+        async with SessionLocal() as session:
+            if task_id is not None:
+                await session.execute(delete(ProbeTask).where(ProbeTask.id == task_id))
+            if probe_id is not None:
+                await session.execute(
+                    delete(ProbeHeartbeat).where(ProbeHeartbeat.probe_id == probe_id)
+                )
+                await session.execute(delete(Probe).where(Probe.id == probe_id))
+            if provider_id is not None:
+                await session.execute(delete(ModelProvider).where(ModelProvider.id == provider_id))
             await session.commit()

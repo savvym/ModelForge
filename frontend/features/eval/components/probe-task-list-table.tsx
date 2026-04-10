@@ -48,6 +48,11 @@ export function ProbeTaskListTable({
                   <TableCell className="min-w-[300px] align-top">
                     <div className="font-medium text-slate-100">{task.name}</div>
                     <div className="mt-1 text-xs text-slate-500">{task.task_type}</div>
+                    {getTaskProviderName(task) ? (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Provider · {getTaskProviderName(task)}
+                      </div>
+                    ) : null}
                     <div className="mt-1 text-xs text-slate-600">{task.id}</div>
                     {task.error_message ? (
                       <div className="mt-2 line-clamp-2 text-xs text-rose-300">
@@ -104,6 +109,15 @@ function getTaskProgress(task: ProbeTaskSummary) {
     label: "--",
     summary: null
   };
+}
+
+function getTaskProviderName(task: ProbeTaskSummary) {
+  const config =
+    task.payload_json && typeof task.payload_json.config === "object" && task.payload_json.config
+      ? (task.payload_json.config as Record<string, unknown>)
+      : null;
+  const providerName = config?.provider_name;
+  return typeof providerName === "string" && providerName.trim() ? providerName.trim() : null;
 }
 
 function getNumericValue(value: unknown) {

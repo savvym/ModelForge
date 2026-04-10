@@ -79,7 +79,9 @@ class ProbeDetail(ProbeSummary):
 
 class EvalScopePerfTaskConfig(BaseModel):
     model: str
-    url: str
+    provider_id: UUID | None = None
+    provider_name: str | None = None
+    url: str | None = None
     api: str = "openai"
     headers: dict[str, str] = Field(default_factory=dict)
     api_key: str | None = None
@@ -105,6 +107,12 @@ class EvalScopePerfTaskConfig(BaseModel):
     enable_progress_tracker: bool = True
     extra_args: dict[str, Any] = Field(default_factory=dict)
     output_name: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_provider_or_url(self) -> EvalScopePerfTaskConfig:
+        if self.provider_id is None and not (self.url or "").strip():
+            raise ValueError("Probe perf config requires either provider_id or url.")
+        return self
 
 
 class ProbeTaskCreate(BaseModel):
@@ -161,6 +169,12 @@ class ProbeTaskClaim(BaseModel):
 
 class ProbeTaskClaimResponse(BaseModel):
     task: ProbeTaskClaim | None = None
+
+
+class ProbeTaskRuntimeConfigResponse(BaseModel):
+    task_id: UUID
+    runtime_kind: Literal["evalscope-perf"]
+    config: EvalScopePerfTaskConfig
 
 
 class ProbeTaskStartRequest(BaseModel):

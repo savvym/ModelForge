@@ -510,7 +510,9 @@ export interface ProbeDetail extends ProbeSummary {
 
 export interface EvalScopePerfTaskConfigInput {
   model: string;
-  url: string;
+  provider_id?: string | null;
+  provider_name?: string | null;
+  url?: string | null;
   api?: string;
   headers?: Record<string, string>;
   api_key?: string | null;
