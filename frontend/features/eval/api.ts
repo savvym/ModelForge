@@ -15,6 +15,10 @@ import type {
   BenchmarkVersionSummary,
   BenchmarkVersionUpdateInput,
   ObjectStoreObjectPreviewResponse,
+  ProbeSummary,
+  ProbeTaskCreateInput,
+  ProbeTaskDetail,
+  ProbeTaskSummary,
   EvaluationCatalogResponseV2,
   EvaluationLeaderboardAddRunsInputV2,
   EvaluationLeaderboardCreateInputV2,
@@ -190,6 +194,44 @@ export async function updateEvalTemplate(
 ): Promise<EvalTemplateSummary> {
   return apiFetch<EvalTemplateSummary>(`/eval-templates/${name}`, {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+// -- Probes --
+
+export async function getProbes(
+  projectId?: string | null
+): Promise<ProbeSummary[]> {
+  return apiFetch<ProbeSummary[]>("/api/v2/probes", { projectId });
+}
+
+export async function getProbeTasks(
+  projectId?: string | null,
+  options?: {
+    probeId?: string | null;
+    status?: string | null;
+  }
+): Promise<ProbeTaskSummary[]> {
+  const params = new URLSearchParams();
+  if (options?.probeId) {
+    params.set("probe_id", options.probeId);
+  }
+  if (options?.status) {
+    params.set("status", options.status);
+  }
+  const query = params.toString();
+  return apiFetch<ProbeTaskSummary[]>(`/api/v2/probe-tasks${query ? `?${query}` : ""}`, {
+    projectId
+  });
+}
+
+export async function createProbeTask(
+  payload: ProbeTaskCreateInput
+): Promise<ProbeTaskDetail> {
+  return apiFetch<ProbeTaskDetail>("/api/v2/probe-tasks", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });

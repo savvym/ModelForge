@@ -13,7 +13,6 @@ import {
   FolderCog,
   Gauge,
   LayoutDashboard,
-  Library,
   type LucideIcon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -49,7 +48,11 @@ export function ConsoleShell({
   const router = useRouter();
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(currentProjectId);
-  const isFilesPage = pathname === "/files" || pathname.startsWith("/files/");
+  const isStorageBrowserPage =
+    pathname === "/files" ||
+    pathname.startsWith("/files/") ||
+    pathname === "/data" ||
+    pathname.startsWith("/data/");
   const isCustomWorkbenchPage =
     pathname === "/experience" ||
     pathname === "/dataset-create" ||
@@ -273,10 +276,12 @@ export function ConsoleShell({
           <div
             className={cn(
               "min-h-0 flex-1 bg-transparent",
-              isFilesPage ? "overflow-hidden pb-0 pl-3 pr-0 pt-2.5" : "overflow-hidden pb-0 pl-4 pr-0 pt-3"
+              isStorageBrowserPage
+                ? "overflow-hidden pb-0 pl-3 pr-0 pt-2.5"
+                : "overflow-hidden pb-0 pl-4 pr-0 pt-3"
             )}
           >
-            {isFilesPage || isCustomWorkbenchPage ? (
+            {isStorageBrowserPage || isCustomWorkbenchPage ? (
               children
             ) : (
               <div className="console-workbench h-full min-h-0">
@@ -304,8 +309,7 @@ const iconByHref: Record<string, LucideIcon> = {
   "/dataset": Database,
   "/lake-assets": Database,
   "/files": HardDrive,
-  "/data": Database,
-  "/knowledge": Library,
+  "/data": HardDrive,
   "/project": FolderCog
 } as const;
 

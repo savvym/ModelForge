@@ -82,6 +82,7 @@ import type {
 } from "@/types/api";
 
 type ObjectStoreConsoleMode = "files" | "data";
+type ObjectStoreConsolePresentation = "files" | "rustfs";
 type UploadLifecycleStatus = "preparing" | "uploading" | "finalizing";
 type UploadQueueItemStatus = "queued" | UploadLifecycleStatus | "completed" | "failed";
 type ObjectPreviewKind = ObjectStoreObjectPreviewResponse["preview_kind"];
@@ -100,12 +101,16 @@ export function ObjectStoreConsole({
   mode,
   initialBucket,
   initialPrefix,
-  rootPrefix
+  rootPrefix,
+  presentation = "files",
+  allowMutations = true
 }: {
   mode: ObjectStoreConsoleMode;
   initialBucket?: string | null;
   initialPrefix?: string | null;
   rootPrefix?: string;
+  presentation?: ObjectStoreConsolePresentation;
+  allowMutations?: boolean;
 }) {
   const [browser, setBrowser] = React.useState<ObjectStoreBrowserResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -151,6 +156,7 @@ export function ObjectStoreConsole({
   const explorerAutoExpandScopeRef = React.useRef<string | null>(null);
   const lastTextPreviewObjectKeyRef = React.useRef<string | null>(null);
   const deferredSearchQuery = React.useDeferredValue(searchQuery.trim().toLowerCase());
+  const presentationConfig = getObjectStoreConsolePresentationConfig(presentation);
 
   const loadBrowser = React.useCallback(
     async (bucket?: string, prefix?: string, nextSelectedKey?: string) => {
@@ -219,17 +225,29 @@ export function ObjectStoreConsole({
     : "/";
   const filesBreadcrumbs = buildBreadcrumbSegments(browser?.prefix ?? "", rootPrefix);
   const currentDirectoryTitle =
-    mode === "files" ? filesBreadcrumbs.at(-1)?.label ?? "Files" : browser?.prefix || "对象存储";
+    mode === "files"
+      ? filesBreadcrumbs.at(-1)?.label ?? presentationConfig.label
+      : browser?.prefix || "对象存储";
   const filesDirectoryLocation =
-    mode === "files" ? buildFilesLocationLabel(browser?.prefix ?? "", rootPrefix) : currentPath;
+    mode === "files"
+      ? buildBrowserLocationLabel(
+          browser?.prefix ?? "",
+          rootPrefix,
+          presentationConfig.locationLabel
+        )
+      : currentPath;
   const createFolderLocation =
     mode === "files"
-      ? buildFilesLocationLabel(createFolderPrefix || browser?.prefix || rootPrefix || "", rootPrefix)
+      ? buildBrowserLocationLabel(
+          createFolderPrefix || browser?.prefix || rootPrefix || "",
+          rootPrefix,
+          presentationConfig.locationLabel
+        )
       : currentPath;
   const explorerRootPrefix = normalizePrefix(rootPrefix) || normalizePrefix(browser?.prefix) || "";
   const filesPathSegments = React.useMemo(
-    () => [{ label: "Files", prefix: explorerRootPrefix }, ...filesBreadcrumbs],
-    [explorerRootPrefix, filesBreadcrumbs]
+    () => [{ label: presentationConfig.rootNodeLabel, prefix: explorerRootPrefix }, ...filesBreadcrumbs],
+    [explorerRootPrefix, filesBreadcrumbs, presentationConfig.rootNodeLabel]
   );
   const explorerItems = filteredPrefixes;
   const explorerFiles = filteredObjects;
@@ -268,6 +286,7 @@ export function ObjectStoreConsole({
     isPreviewableFile(activePreviewEntry?.name ?? "");
   const canEditActiveTextFile =
     Boolean(
+      allowMutations &&
       activePreview &&
       activePreview.preview_kind === "text" &&
       !activePreview.truncated
@@ -841,7 +860,7 @@ export function ObjectStoreConsole({
   }
 
   async function handleUpload(files: FileList | File[]) {
-    if (!browser || mode !== "files") {
+    if (!browser || mode !== "files" || !allowMutations) {
       return;
     }
 
@@ -930,7 +949,7 @@ export function ObjectStoreConsole({
   const normalizedFolderDraft = normalizeFolderNameInput(folderDraft);
 
   async function handleCreateFolder(folderNameInput = folderDraft) {
-    if (!browser || mode !== "files") {
+    if (!browser || mode !== "files" || !allowMutations) {
       return;
     }
 
@@ -969,7 +988,7 @@ export function ObjectStoreConsole({
   }
 
   async function handleDelete(entry: ObjectStoreObjectEntry) {
-    if (!browser || mode !== "files") {
+    if (!browser || mode !== "files" || !allowMutations) {
       return;
     }
 
@@ -997,7 +1016,7 @@ export function ObjectStoreConsole({
   }
 
   async function handleDeletePrefix(prefix: string, label: string) {
-    if (!browser || mode !== "files") {
+    if (!browser || mode !== "files" || !allowMutations) {
       return;
     }
 
@@ -1103,30 +1122,9 @@ export function ObjectStoreConsole({
         <DropdownMenuContent align="end" className="min-w-[200px] rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100">
           <DropdownMenuItem
             className="rounded-lg"
-            onSelect={() => openCreateFolderDialog(normalizedPrefix)}
-          >
-            <Plus className="h-4 w-4 text-zinc-500" />
-            Create folder
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-lg"
-            onSelect={() => openUploadPicker(normalizedPrefix)}
-          >
-            <UploadCloud className="h-4 w-4 text-zinc-500" />
-            Upload files
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-lg"
-            onSelect={() => openFolderUploadPicker(normalizedPrefix)}
-          >
-            <FolderOpen className="h-4 w-4 text-zinc-500" />
-            Upload folder
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-lg"
             onSelect={() =>
               void handleCopy(
-                `${window.location.origin}${buildConsoleHref("/files", {
+                `${window.location.origin}${buildConsoleHref(presentationConfig.routePath, {
                   prefix: normalizedPrefix
                 })}`,
                 "已复制目录链接"
@@ -1143,14 +1141,39 @@ export function ObjectStoreConsole({
             <RefreshCw className="h-4 w-4 text-zinc-500" />
             Refresh
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-lg"
-            disabled={!canDeleteDirectory}
-            onSelect={() => void handleDeletePrefix(normalizedPrefix, labelForPrefix(normalizedPrefix))}
-          >
-            <Trash2 className="h-4 w-4 text-zinc-500" />
-            Delete
-          </DropdownMenuItem>
+          {allowMutations ? (
+            <>
+              <DropdownMenuItem
+                className="rounded-lg"
+                onSelect={() => openCreateFolderDialog(normalizedPrefix)}
+              >
+                <Plus className="h-4 w-4 text-zinc-500" />
+                Create folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-lg"
+                onSelect={() => openUploadPicker(normalizedPrefix)}
+              >
+                <UploadCloud className="h-4 w-4 text-zinc-500" />
+                Upload files
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-lg"
+                onSelect={() => openFolderUploadPicker(normalizedPrefix)}
+              >
+                <FolderOpen className="h-4 w-4 text-zinc-500" />
+                Upload folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-lg"
+                disabled={!canDeleteDirectory}
+                onSelect={() => void handleDeletePrefix(normalizedPrefix, labelForPrefix(normalizedPrefix))}
+              >
+                <Trash2 className="h-4 w-4 text-zinc-500" />
+                Delete
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -1267,13 +1290,15 @@ export function ObjectStoreConsole({
               <Download className="h-4 w-4 text-zinc-500" />
               Download
             </DropdownMenuItem>
-            <DropdownMenuItem
-              className="rounded-lg"
-              onSelect={() => void handleDelete(activePreviewEntry)}
-            >
-              <Trash2 className="h-4 w-4 text-zinc-500" />
-              Delete
-            </DropdownMenuItem>
+            {allowMutations ? (
+              <DropdownMenuItem
+                className="rounded-lg"
+                onSelect={() => void handleDelete(activePreviewEntry)}
+              >
+                <Trash2 className="h-4 w-4 text-zinc-500" />
+                Delete
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       );
@@ -1299,30 +1324,34 @@ export function ObjectStoreConsole({
             <RefreshCw className="h-4 w-4 text-zinc-500" />
             Refresh
           </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-lg" onSelect={() => openCreateFolderDialog()}>
-            <Plus className="h-4 w-4 text-zinc-500" />
-            New folder
-          </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-lg" onSelect={() => openUploadPicker()}>
-            <UploadCloud className="h-4 w-4 text-zinc-500" />
-            Upload file
-          </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-lg" onSelect={() => openFolderUploadPicker()}>
-            <FolderOpen className="h-4 w-4 text-zinc-500" />
-            Upload folder
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-lg"
-            disabled={!selectedEntry}
-            onSelect={() => {
-              if (selectedEntry) {
-                void handleDelete(selectedEntry);
-              }
-            }}
-          >
-            <Trash2 className="h-4 w-4 text-zinc-500" />
-            Delete
-          </DropdownMenuItem>
+          {allowMutations ? (
+            <>
+              <DropdownMenuItem className="rounded-lg" onSelect={() => openCreateFolderDialog()}>
+                <Plus className="h-4 w-4 text-zinc-500" />
+                New folder
+              </DropdownMenuItem>
+              <DropdownMenuItem className="rounded-lg" onSelect={() => openUploadPicker()}>
+                <UploadCloud className="h-4 w-4 text-zinc-500" />
+                Upload file
+              </DropdownMenuItem>
+              <DropdownMenuItem className="rounded-lg" onSelect={() => openFolderUploadPicker()}>
+                <FolderOpen className="h-4 w-4 text-zinc-500" />
+                Upload folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-lg"
+                disabled={!selectedEntry}
+                onSelect={() => {
+                  if (selectedEntry) {
+                    void handleDelete(selectedEntry);
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4 text-zinc-500" />
+                Delete
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -1360,7 +1389,7 @@ export function ObjectStoreConsole({
             className="rounded-lg"
             onSelect={() =>
               void handleCopy(
-                `${window.location.origin}${buildConsoleHref("/files", {
+                `${window.location.origin}${buildConsoleHref(presentationConfig.routePath, {
                   prefix: entry.prefix
                 })}`,
                 "已复制目录链接"
@@ -1370,13 +1399,15 @@ export function ObjectStoreConsole({
             <Copy className="h-4 w-4 text-zinc-500" />
             Copy link
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-lg"
-            onSelect={() => void handleDeletePrefix(entry.prefix, entry.name)}
-          >
-            <Trash2 className="h-4 w-4 text-zinc-500" />
-            Delete
-          </DropdownMenuItem>
+          {allowMutations ? (
+            <DropdownMenuItem
+              className="rounded-lg"
+              onSelect={() => void handleDeletePrefix(entry.prefix, entry.name)}
+            >
+              <Trash2 className="h-4 w-4 text-zinc-500" />
+              Delete
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -1449,10 +1480,12 @@ export function ObjectStoreConsole({
             <Copy className="h-4 w-4 text-zinc-500" />
             Copy link
           </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-lg" onSelect={() => void handleDelete(entry)}>
-            <Trash2 className="h-4 w-4 text-zinc-500" />
-            Delete
-          </DropdownMenuItem>
+          {allowMutations ? (
+            <DropdownMenuItem className="rounded-lg" onSelect={() => void handleDelete(entry)}>
+              <Trash2 className="h-4 w-4 text-zinc-500" />
+              Delete
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -1483,7 +1516,7 @@ export function ObjectStoreConsole({
           >
             <CardHeader className="border-b border-slate-800/70 bg-transparent px-3 py-2.5">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[13px] font-medium text-zinc-100">Files</div>
+                <div className="text-[13px] font-medium text-zinc-100">{presentationConfig.label}</div>
                 <div className="flex gap-2">
                   <button
                     aria-label="Refresh tree"
@@ -1511,7 +1544,7 @@ export function ObjectStoreConsole({
 
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
               <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
-                {browser ? renderExplorerTree(explorerRootPrefix, "Shared", 0) : null}
+                {browser ? renderExplorerTree(explorerRootPrefix, presentationConfig.rootNodeLabel, 0) : null}
               </div>
             </CardContent>
           </Card>
@@ -1525,14 +1558,20 @@ export function ObjectStoreConsole({
           <Card
             className={cn(
               "flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none",
-              draggingFiles && "ring-2 ring-sky-500/30"
+              allowMutations && draggingFiles && "ring-2 ring-sky-500/30"
             )}
             onDragEnter={(event) => {
               event.preventDefault();
+              if (!allowMutations) {
+                return;
+              }
               setDraggingFiles(true);
             }}
             onDragLeave={(event) => {
               event.preventDefault();
+              if (!allowMutations) {
+                return;
+              }
               const currentTarget = event.currentTarget;
               const relatedTarget = event.relatedTarget;
               if (relatedTarget instanceof Node && currentTarget.contains(relatedTarget)) {
@@ -1540,9 +1579,17 @@ export function ObjectStoreConsole({
               }
               setDraggingFiles(false);
             }}
-            onDragOver={(event) => event.preventDefault()}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!allowMutations) {
+                return;
+              }
+            }}
             onDrop={(event) => {
               event.preventDefault();
+              if (!allowMutations) {
+                return;
+              }
               setDraggingFiles(false);
               if (event.dataTransfer.files) {
                 void handleUpload(event.dataTransfer.files);
@@ -1599,7 +1646,7 @@ export function ObjectStoreConsole({
                               key: activePreviewEntry.key,
                               disposition: "inline"
                             })
-                          : `${window.location.origin}${buildConsoleHref("/files", {
+                          : `${window.location.origin}${buildConsoleHref(presentationConfig.routePath, {
                               prefix: browser?.prefix
                             })}`,
                         showPreviewPane ? "已复制文件链接" : "已复制当前目录链接"
@@ -1610,7 +1657,7 @@ export function ObjectStoreConsole({
                     <Link2 className="h-4 w-4" />
                   </button>
                   {renderPaneActionsMenu()}
-                  {showPreviewPane && activePreviewEntry ? (
+                  {allowMutations && showPreviewPane && activePreviewEntry ? (
                     <>
                       <div className="inline-flex items-center rounded-full border border-zinc-800 bg-[rgba(15,20,28,0.86)] p-1">
                         <Button
@@ -1656,7 +1703,9 @@ export function ObjectStoreConsole({
                         "h-8 border-slate-700/80 bg-[rgba(12,18,25,0.72)] text-[13px]"
                       )}
                       onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder="Filter"
+                      placeholder={
+                        presentation === "rustfs" ? "Filter current project objects" : "Filter"
+                      }
                       value={searchQuery}
                     />
                   </div>
@@ -1801,7 +1850,9 @@ export function ObjectStoreConsole({
                         <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
                           {deferredSearchQuery
                             ? "Try another filter."
-                            : "Use Actions to upload files or create folders."}
+                            : allowMutations
+                              ? "Use Actions to upload files or create folders."
+                              : "Browse the current project layout in RustFS from this pane."}
                         </p>
                       </div>
                     ) : null}
@@ -1855,7 +1906,7 @@ export function ObjectStoreConsole({
           </Card>
         </div>
 
-        {uploadQueueSummary ? (
+        {allowMutations && uploadQueueSummary ? (
           <div className="pointer-events-none fixed bottom-4 right-4 z-50 w-[min(28rem,calc(100vw-1.5rem))] sm:bottom-6 sm:right-6 sm:w-[24rem]">
             <Card className="pointer-events-auto overflow-hidden border-zinc-200 bg-white/96 shadow-[0_24px_80px_rgba(24,24,27,0.18)] backdrop-blur">
               <CardHeader className="space-y-0 border-b border-zinc-200 bg-zinc-50/80 px-4 py-3">
@@ -1927,85 +1978,87 @@ export function ObjectStoreConsole({
           </div>
         ) : null}
 
-        <Dialog
-          onOpenChange={(open) => {
-            setCreateFolderOpen(open);
-            if (!open) {
-              setFolderDraft("");
-              setFolderDialogError(null);
-            }
-          }}
-          open={createFolderOpen}
-        >
-          <DialogContent className="max-w-[460px] gap-0 overflow-hidden p-0">
-            <div className="border-b border-zinc-200 bg-[linear-gradient(180deg,rgba(244,244,245,0.95),rgba(255,255,255,1))] px-5 py-4">
-              <div className="mb-2 inline-flex items-center rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-                Files
-              </div>
-              <DialogHeader className="space-y-1">
-                <DialogTitle>New folder</DialogTitle>
-                <DialogDescription>
-                  在 {createFolderLocation} 下创建一个新目录。
-                </DialogDescription>
-              </DialogHeader>
-            </div>
-
-            <form
-              className="space-y-5 px-5 py-5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleCreateFolder();
-              }}
-            >
-              <div className="space-y-2">
-                <Label className="text-[13px] font-medium text-zinc-700" htmlFor="new-folder-name">
-                  Folder name
-                </Label>
-                <Input
-                  autoFocus
-                  className="h-11 rounded-lg border-zinc-200 bg-white text-sm"
-                  id="new-folder-name"
-                  onChange={(event) => setFolderDraft(event.target.value)}
-                  placeholder="例如：raw-html、reports、2026-03"
-                  value={folderDraft}
-                />
-                <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
-                  <span>仅支持单层目录名称，不支持 `/`。</span>
-                  <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-600">
-                    {normalizedFolderDraft || "未命名"}
-                  </span>
+        {allowMutations ? (
+          <Dialog
+            onOpenChange={(open) => {
+              setCreateFolderOpen(open);
+              if (!open) {
+                setFolderDraft("");
+                setFolderDialogError(null);
+              }
+            }}
+            open={createFolderOpen}
+          >
+            <DialogContent className="max-w-[460px] gap-0 overflow-hidden p-0">
+              <div className="border-b border-zinc-200 bg-[linear-gradient(180deg,rgba(244,244,245,0.95),rgba(255,255,255,1))] px-5 py-4">
+                <div className="mb-2 inline-flex items-center rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+                  {presentationConfig.label}
                 </div>
-                {folderDialogError ? (
-                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                    {folderDialogError}
-                  </div>
-                ) : null}
+                <DialogHeader className="space-y-1">
+                  <DialogTitle>New folder</DialogTitle>
+                  <DialogDescription>
+                    在 {createFolderLocation} 下创建一个新目录。
+                  </DialogDescription>
+                </DialogHeader>
               </div>
 
-              <DialogFooter className="border-t border-zinc-100 pt-4">
-                <Button
-                  onClick={() => {
-                    setCreateFolderOpen(false);
-                    setFolderDraft("");
-                    setFolderDialogError(null);
-                  }}
-                  type="button"
-                  variant="outline"
-                >
-                  取消
-                </Button>
-                <Button
-                  className="rounded-md bg-zinc-950 text-white hover:bg-zinc-800"
-                  disabled={creatingFolder || !normalizedFolderDraft}
-                  type="submit"
-                >
-                  {creatingFolder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  创建文件夹
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+              <form
+                className="space-y-5 px-5 py-5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleCreateFolder();
+                }}
+              >
+                <div className="space-y-2">
+                  <Label className="text-[13px] font-medium text-zinc-700" htmlFor="new-folder-name">
+                    Folder name
+                  </Label>
+                  <Input
+                    autoFocus
+                    className="h-11 rounded-lg border-zinc-200 bg-white text-sm"
+                    id="new-folder-name"
+                    onChange={(event) => setFolderDraft(event.target.value)}
+                    placeholder="例如：raw-html、reports、2026-03"
+                    value={folderDraft}
+                  />
+                  <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+                    <span>仅支持单层目录名称，不支持 `/`。</span>
+                    <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-600">
+                      {normalizedFolderDraft || "未命名"}
+                    </span>
+                  </div>
+                  {folderDialogError ? (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                      {folderDialogError}
+                    </div>
+                  ) : null}
+                </div>
+
+                <DialogFooter className="border-t border-zinc-100 pt-4">
+                  <Button
+                    onClick={() => {
+                      setCreateFolderOpen(false);
+                      setFolderDraft("");
+                      setFolderDialogError(null);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    className="rounded-md bg-zinc-950 text-white hover:bg-zinc-800"
+                    disabled={creatingFolder || !normalizedFolderDraft}
+                    type="submit"
+                  >
+                    {creatingFolder ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    创建文件夹
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        ) : null}
       </div>
     );
   }
@@ -2775,33 +2828,46 @@ function UploadQueueRow({ item }: { item: UploadQueueItem }) {
   const progress = calculateUploadPercent(item.uploadedBytes, item.sizeBytes);
   const progressTone =
     item.status === "failed"
-      ? "bg-rose-500"
+      ? "bg-[#d86184]"
       : item.status === "completed"
-        ? "bg-emerald-500"
+        ? "bg-[#2ec79a]"
         : item.status === "queued"
-          ? "bg-zinc-300"
-          : "bg-sky-600";
-  const metaTone = item.status === "failed" ? "text-rose-700" : "text-sky-700";
+          ? "bg-[rgba(145,157,173,0.85)]"
+          : "bg-[#2492d8]";
+  const statusTone =
+    item.status === "failed"
+      ? "text-[#f2a5ba]"
+      : item.status === "completed"
+        ? "text-[#91e7c9]"
+        : item.status === "queued"
+          ? "text-[#c6cfda]"
+          : "text-[#86d1ff]";
+  const progressTextTone =
+    item.status === "failed"
+      ? "text-[#f0b3c4]"
+      : item.status === "completed"
+        ? "text-[#b2f2db]"
+        : "text-[#c7d4e4]";
 
   return (
-    <div className="rounded-md border border-sky-100 bg-white/70 px-3 py-2.5">
+    <div className="rounded-xl border border-[rgba(73,88,107,0.82)] bg-[rgba(17,23,31,0.92)] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-zinc-950">{item.label}</div>
-          <div className={cn("mt-1 flex flex-wrap items-center gap-2 text-xs", metaTone)}>
-            <span>{renderUploadQueueStatusLabel(item.status)}</span>
-            <span>
+          <div className="truncate text-sm font-medium text-[#f2f7ff]">{item.label}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+            <span className={cn("font-medium", statusTone)}>{renderUploadQueueStatusLabel(item.status)}</span>
+            <span className="text-[#9fb0c4]">
               {formatFileSize(item.uploadedBytes)} / {formatFileSize(item.sizeBytes)}
             </span>
           </div>
           {item.error ? (
-            <div className="mt-1 text-xs text-rose-600">{item.error}</div>
+            <div className="mt-1 text-xs text-[#f0a6b8]">{item.error}</div>
           ) : null}
         </div>
-        <div className="shrink-0 text-xs font-medium text-zinc-500">{progress}%</div>
+        <div className={cn("shrink-0 text-xs font-semibold", progressTextTone)}>{progress}%</div>
       </div>
 
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
         <div
           className={cn("h-full rounded-full transition-[width] duration-150", progressTone)}
           style={{ width: `${progress}%` }}
@@ -2871,10 +2937,34 @@ function buildCurrentPathLabel({
   return prefix ? `/${trimTrailingSlash(prefix)}` : "/";
 }
 
-function buildFilesLocationLabel(prefix: string, rootPrefix?: string) {
+function buildBrowserLocationLabel(
+  prefix: string,
+  rootPrefix: string | undefined,
+  rootLabel: string
+) {
   const relativePrefix = toRelativePrefix(prefix, rootPrefix);
   const segments = relativePrefix.split("/").filter(Boolean);
-  return segments.length > 0 ? `Files / ${segments.join(" / ")}` : "Files";
+  return segments.length > 0 ? `${rootLabel} / ${segments.join(" / ")}` : rootLabel;
+}
+
+function getObjectStoreConsolePresentationConfig(
+  presentation: ObjectStoreConsolePresentation
+) {
+  if (presentation === "rustfs") {
+    return {
+      label: "RustFS",
+      locationLabel: "RustFS",
+      rootNodeLabel: "当前项目",
+      routePath: "/data"
+    };
+  }
+
+  return {
+    label: "Files",
+    locationLabel: "Files",
+    rootNodeLabel: "Shared",
+    routePath: "/files"
+  };
 }
 
 function buildBreadcrumbSegments(prefix: string, rootPrefix?: string) {

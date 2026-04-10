@@ -53,8 +53,7 @@ export const consoleNavSections: ConsoleNavSection[] = [
       { title: "数据集", href: "/dataset", group: "workspace" },
       { title: "湖资产", href: "/lake-assets", group: "workspace" },
       { title: "Files", href: "/files", group: "workspace" },
-      { title: "Data", href: "/data", group: "workspace" },
-      { title: "知识库", href: "/knowledge", group: "workspace" }
+      { title: "RustFS", href: "/data", group: "workspace" }
     ]
   },
   {
@@ -107,12 +106,11 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
     group: "workspace"
   },
   data: {
-    title: "Data",
-    description: "底层 S3 / RustFS 对象存储浏览器，直接查看 bucket、prefix 与 object key。",
+    title: "RustFS",
+    description: "当前项目的 RustFS 浏览器，可直接查看 files、lake 与其他对象前缀的真实目录结构。",
     group: "workspace"
   },
   "dataset-create": { title: "创建数据集", description: "创建数据集和版本上传流程。", group: "workspace" },
   "dataset-detail": { title: "数据集详情", description: "查看数据集元数据与版本列表。", group: "workspace" },
-  knowledge: { title: "知识库", description: "RAG 知识库和文档导入流程。", group: "workspace" },
   project: { title: "项目配置", description: "项目配额和授权管理。", group: "system" },
 };

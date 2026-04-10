@@ -360,6 +360,7 @@ class ProbeService:
                     or_(
                         ProbeTask.status == "queued",
                         (ProbeTask.status == "claimed") & (ProbeTask.lease_expires_at < now),
+                        (ProbeTask.status == "running") & (ProbeTask.lease_expires_at < now),
                     ),
                 )
                 .order_by(ProbeTask.created_at.asc(), ProbeTask.id.asc())
@@ -368,9 +369,12 @@ class ProbeService:
             task = row.scalars().first()
             if task is None:
                 return ProbeTaskClaimResponse(task=None)
+            was_running = task.status == "running"
             task.status = "claimed"
             task.claimed_at = now
             task.lease_expires_at = lease_deadline
+            if was_running:
+                task.started_at = None
             task.attempt_count = int(task.attempt_count or 0) + 1
             task.error_message = None
             await session.commit()

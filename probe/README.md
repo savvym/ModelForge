@@ -1,6 +1,6 @@
 # NTA Probe Agent
 
-`probe/` 是独立分发的探针项目，负责：
+`probe/` 是独立分发的探针项目，也是唯一对外分发的 `probe-agent` 客户端源码目录，负责：
 
 - 节点自动注册
 - 心跳和健康信息上报
@@ -8,6 +8,8 @@
 - 回传任务结果
 
 当前任务执行器先对接 `evalscope perf`。
+
+服务端控制面仍在 `backend/` 中，负责 Probe 注册、心跳、任务分发和结果接收；客户端只需要分发这个 `probe/` 包。
 
 ## Quick Start
 

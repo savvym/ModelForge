@@ -475,6 +475,99 @@ export interface EvalTemplateUpdateInput {
   description?: string | null;
 }
 
+export interface ProbeHeartbeatSummary {
+  ip_address: string;
+  network_metrics_json: Record<string, unknown>;
+  agent_status_json: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ProbeSummary {
+  id: string;
+  name: string;
+  display_name: string;
+  status: string;
+  ip_address?: string | null;
+  isp?: string | null;
+  asn?: number | null;
+  region?: string | null;
+  country?: string | null;
+  city?: string | null;
+  network_type: string;
+  tags_json: unknown[];
+  agent_version?: string | null;
+  device_info_json: Record<string, unknown>;
+  metadata_json: Record<string, unknown>;
+  last_heartbeat?: string | null;
+  last_error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProbeDetail extends ProbeSummary {
+  heartbeats: ProbeHeartbeatSummary[];
+}
+
+export interface EvalScopePerfTaskConfigInput {
+  model: string;
+  url: string;
+  api?: string;
+  headers?: Record<string, string>;
+  api_key?: string | null;
+  api_key_env?: string | null;
+  prompt?: string | null;
+  query_template?: string | null;
+  dataset?: string;
+  dataset_path?: string | null;
+  number?: number | number[];
+  parallel?: number | number[];
+  rate?: number;
+  max_tokens?: number | null;
+  min_tokens?: number | null;
+  stream?: boolean;
+  temperature?: number;
+  top_p?: number | null;
+  top_k?: number | null;
+  seed?: number | null;
+  connect_timeout?: number | null;
+  read_timeout?: number | null;
+  total_timeout?: number | null;
+  no_test_connection?: boolean;
+  enable_progress_tracker?: boolean;
+  extra_args?: Record<string, unknown>;
+  output_name?: string | null;
+}
+
+export interface ProbeTaskCreateInput {
+  probe_id: string;
+  name?: string | null;
+  runtime_kind?: "evalscope-perf";
+  timeout_seconds?: number;
+  config: EvalScopePerfTaskConfigInput;
+}
+
+export interface ProbeTaskSummary {
+  id: string;
+  probe_id: string;
+  name: string;
+  task_type: string;
+  status: string;
+  timeout_seconds: number;
+  attempt_count: number;
+  payload_json: Record<string, unknown>;
+  progress_json: Record<string, unknown>;
+  result_json?: Record<string, unknown> | null;
+  error_message?: string | null;
+  claimed_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  lease_expires_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProbeTaskDetail extends ProbeTaskSummary {}
+
 // -- Evaluation V2 --
 
 export interface EvalSpecVersionSummaryV2 {
