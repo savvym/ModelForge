@@ -169,3 +169,47 @@ async def test_probe_reclaims_expired_running_task() -> None:
                 )
                 await session.execute(delete(Probe).where(Probe.id == probe_id))
             await session.commit()
+
+
+async def test_probe_delete_requires_offline_status() -> None:
+    service = ProbeService()
+    probe_id: UUID | None = None
+    probe_name = f"pytest-probe-{uuid4().hex[:8]}"
+
+    try:
+        registration = await service.register_probe(
+            ProbeRegistrationRequest(
+                name=probe_name,
+                display_name="Pytest Probe Delete",
+                tags=["pytest"],
+            ),
+            authorization=None,
+            client_ip="127.0.0.1",
+        )
+        probe_id = registration.probe_id
+
+        with pytest.raises(ValueError, match="Only offline probes can be deleted."):
+            await service.delete_probe(str(probe_id))
+
+        async with SessionLocal() as session:
+            probe = await session.get(Probe, probe_id)
+            assert probe is not None
+            probe.last_heartbeat = datetime.now(UTC) - timedelta(days=1)
+            await session.commit()
+
+        await service.delete_probe(str(probe_id))
+
+        async with SessionLocal() as session:
+            deleted_probe = await session.get(Probe, probe_id)
+            assert deleted_probe is None
+    finally:
+        async with SessionLocal() as session:
+            if probe_id is not None:
+                await session.execute(
+                    delete(ProbeTask).where(ProbeTask.probe_id == probe_id)
+                )
+                await session.execute(
+                    delete(ProbeHeartbeat).where(ProbeHeartbeat.probe_id == probe_id)
+                )
+                await session.execute(delete(Probe).where(Probe.id == probe_id))
+            await session.commit()

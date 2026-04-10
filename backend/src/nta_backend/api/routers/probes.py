@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 
 from nta_backend.schemas.probe import (
     ProbeDetail,
@@ -37,6 +37,20 @@ async def get_probe(probe_id: str) -> ProbeDetail:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Probe not found",
         ) from exc
+
+
+@router.delete("/api/v2/probes/{probe_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_probe(probe_id: str) -> Response:
+    try:
+        await service.delete_probe(probe_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Probe not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

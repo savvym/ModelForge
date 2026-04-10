@@ -15,6 +15,7 @@ import type {
   BenchmarkVersionSummary,
   BenchmarkVersionUpdateInput,
   ObjectStoreObjectPreviewResponse,
+  ProbeDetail,
   ProbeSummary,
   ProbeTaskCreateInput,
   ProbeTaskDetail,
@@ -205,6 +206,19 @@ export async function getProbes(
   projectId?: string | null
 ): Promise<ProbeSummary[]> {
   return apiFetch<ProbeSummary[]>("/api/v2/probes", { projectId });
+}
+
+export async function getProbeDetail(
+  probeId: string,
+  projectId?: string | null
+): Promise<ProbeDetail> {
+  return apiFetch<ProbeDetail>(`/api/v2/probes/${probeId}`, { projectId });
+}
+
+export async function deleteProbe(probeId: string): Promise<void> {
+  return apiFetch<void>(`/api/v2/probes/${probeId}`, {
+    method: "DELETE"
+  });
 }
 
 export async function getProbeTasks(

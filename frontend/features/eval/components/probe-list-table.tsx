@@ -38,11 +38,6 @@ export function ProbeListTable({ probes }: { probes: ProbeSummary[] }) {
                     <div className="font-medium text-slate-100">{probe.display_name}</div>
                     <div className="mt-1 text-xs text-slate-500">{probe.name}</div>
                     <div className="mt-1 text-xs text-slate-600">{probe.id}</div>
-                    {probe.last_error_message ? (
-                      <div className="mt-2 line-clamp-2 text-xs text-rose-300">
-                        {probe.last_error_message}
-                      </div>
-                    ) : null}
                   </TableCell>
                   <TableCell>
                     <Badge className={statusMeta.className} variant={statusMeta.variant}>

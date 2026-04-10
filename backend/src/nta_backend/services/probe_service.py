@@ -175,6 +175,19 @@ class ProbeService:
                 ],
             )
 
+    async def delete_probe(self, probe_id: str) -> None:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            probe = await self._get_probe_or_raise(
+                session,
+                project_id=project_id,
+                probe_id=UUID(probe_id),
+            )
+            if _effective_probe_status(probe) == "online":
+                raise ValueError("Only offline probes can be deleted.")
+            await session.delete(probe)
+            await session.commit()
+
     async def create_task(self, payload: ProbeTaskCreate) -> ProbeTaskDetail:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)

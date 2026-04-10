@@ -43,7 +43,8 @@ export const consoleNavSections: ConsoleNavSection[] = [
     title: "模型定制",
     items: [
       { title: "模型精调", href: "/model/finetune", group: "workspace" },
-      { title: "模型评测", href: "/model/eval", group: "workspace" }
+      { title: "模型评测", href: "/model/eval", group: "workspace" },
+      { title: "Probe", href: "/model/probes", group: "workspace" }
     ]
   },
   {
@@ -72,6 +73,7 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   "model-finetune": { title: "模型精调", description: "训练任务和精调流程管理。", group: "workspace" },
   "model-warehouse": { title: "模型广场", description: "兼容旧路由，实际跳转到模型广场。", group: "overview" },
   "model-eval": { title: "模型评测", description: "评测任务与评测管理入口。", group: "workspace" },
+  "model-probes": { title: "Probe", description: "Probe 节点与 Probe 任务管理。", group: "workspace" },
   "model-eval-leaderboards": {
     title: "排行榜",
     description: "按 Eval Spec / Suite Version 组织和管理模型排行榜。",

@@ -27,7 +27,7 @@ export function ProbeTaskCreateSheet({
 
   function buildHref(nextOpen: boolean) {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", "probes");
+    params.set("tab", "tasks");
     if (nextOpen) {
       params.set("create", "1");
     } else {
