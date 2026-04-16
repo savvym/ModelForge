@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { RouteTabs } from "@/components/console/route-tabs";
 import {
   ConsoleListFilterField,
   ConsoleListSearchForm,
@@ -8,7 +9,6 @@ import {
 } from "@/components/console/list-surface";
 import { getDatasets } from "@/features/dataset/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
-import { cn } from "@/lib/utils";
 
 const datasetScopes = [
   { key: "my-datasets", label: "我的数据集" },
@@ -53,30 +53,20 @@ export default async function DatasetPage({
     currentScope === "my-datasets"
       ? await renderDatasetSurface(filteredDatasets, currentScope, query, recipeFilters)
       : null;
+  const scopeTabs = datasetScopes.map((scope) => ({
+    href: buildDatasetQuery({
+      scope: scope.key,
+      q: query,
+      recipe: recipeFilters
+    }),
+    label: scope.label,
+    value: scope.key
+  }));
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-800/80">
-        <div className="flex min-w-0 items-center gap-5">
-          {datasetScopes.map((scope) => (
-            <Link
-              key={scope.key}
-              className={cn(
-                "-mb-px inline-flex h-9 items-center border-b-2 px-0.5 text-[13px] transition-colors",
-                currentScope === scope.key
-                  ? "border-slate-100 font-medium text-slate-50"
-                  : "border-transparent text-slate-500 hover:text-slate-200"
-              )}
-              href={buildDatasetQuery({
-                scope: scope.key,
-                q: query,
-                recipe: recipeFilters
-              })}
-            >
-              {scope.label}
-            </Link>
-          ))}
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="border-b border-border/70 pb-3">
+        <RouteTabs items={scopeTabs} value={currentScope} />
       </div>
 
       {datasetsSurface}
@@ -123,8 +113,8 @@ async function renderDatasetSurface(
           </ConsoleListFilterField>
         </ConsoleListToolbarCluster>
 
-        <Link href="/dataset-create">
-          <Button size="sm">创建数据集</Button>
+        <Link className={buttonVariants({ size: "sm" })} href="/dataset-create">
+          创建数据集
         </Link>
       </ConsoleListToolbar>
 

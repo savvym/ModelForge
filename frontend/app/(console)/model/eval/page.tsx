@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { RouteTabs } from "@/components/console/route-tabs";
 import {
   ConsoleListSearchForm,
   ConsoleListToolbar,
@@ -19,7 +20,6 @@ import { EvaluationRunCreateSheet } from "@/features/eval/components/evaluation-
 import { EvaluationRunListTable } from "@/features/eval/components/evaluation-run-list-table";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
-import { cn } from "@/lib/utils";
 import type {
   BenchmarkDefinitionSummary,
   EvalTemplateSummary,
@@ -96,28 +96,16 @@ export default async function ModelEvalPage({
 
   const builtinBenchmarks = benchmarks.filter((benchmark) => benchmark.source_type === "builtin");
   const customBenchmarks = benchmarks.filter((benchmark) => benchmark.source_type !== "builtin");
+  const evalRouteTabs = evalTabs.map((tab) => ({
+    href: buildEvalQuery({ tab: tab.key, q: query }),
+    label: tab.label,
+    value: tab.key
+  }));
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-800/80">
-        <div className="flex min-w-0 items-center gap-5">
-          {evalTabs.map((tab) => (
-            <Link
-              aria-current={currentTab === tab.key ? "page" : undefined}
-              key={tab.key}
-              className={cn(
-                "-mb-px inline-flex h-9 items-center border-b-2 px-0.5 text-[13px] transition-colors",
-                currentTab === tab.key
-                  ? "border-slate-100 font-medium text-slate-50"
-                  : "border-transparent text-slate-500 hover:text-slate-200"
-              )}
-              href={buildEvalQuery({ tab: tab.key, q: query })}
-              prefetch
-            >
-              {tab.label}
-            </Link>
-          ))}
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="border-b border-border/70 pb-3">
+        <RouteTabs items={evalRouteTabs} value={currentTab} />
       </div>
 
       {currentTab === "runs" ? (
@@ -195,11 +183,11 @@ export default async function ModelEvalPage({
             </div>
           </ConsoleListToolbar>
 
-          <div className="space-y-6">
-            <section className="space-y-3">
-              <div className="space-y-1">
-                <h2 className="text-base font-semibold text-slate-100">基线 Benchmark</h2>
-                <p className="text-sm text-slate-400">
+          <div className="flex flex-col gap-6">
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-base font-semibold text-foreground">基线 Benchmark</h2>
+                <p className="text-sm text-muted-foreground">
                   平台预置的标准能力评测集合，只展示与使用，不在这里做维护。
                 </p>
               </div>
@@ -209,10 +197,10 @@ export default async function ModelEvalPage({
               />
             </section>
 
-            <section className="space-y-3">
-              <div className="space-y-1">
-                <h2 className="text-base font-semibold text-slate-100">我的 Benchmark</h2>
-                <p className="text-sm text-slate-400">
+            <section className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-base font-semibold text-foreground">我的 Benchmark</h2>
+                <p className="text-sm text-muted-foreground">
                   自定义 Benchmark 会绑定一个评测维度，Benchmark Version 就是该 Benchmark 的数据集版本。
                 </p>
               </div>

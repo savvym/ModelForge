@@ -1,5 +1,6 @@
 import { Boxes, CheckCircle2, HardDrive, ShieldCheck } from "lucide-react";
 import { ConsolePage } from "@/components/console/console-page";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getProjects } from "@/features/project/api";
@@ -62,107 +63,111 @@ export default async function OverviewPage() {
   return (
     <ConsolePage pageKey="overview" showScaffold={false}>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_340px]">
-        <Card className="overflow-hidden rounded-[20px] border-slate-800/70 bg-[rgba(13,18,25,0.56)] shadow-none">
-          <CardHeader className="border-b border-slate-800/70 bg-transparent px-5 py-4">
+        <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
+          <CardHeader className="border-b border-border/70 px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
+              <div className="flex flex-col gap-1.5">
+                <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   当前项目
                 </div>
-                <CardTitle className="text-[22px] text-slate-100">
+                <CardTitle className="text-[22px]">
                   {currentProject ? currentProject.name : "当前还没有可用项目"}
                 </CardTitle>
               </div>
-              {currentProject ? <Badge>{currentProject.status}</Badge> : null}
+              {currentProject ? <Badge variant="secondary">{currentProject.status}</Badge> : null}
             </div>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
+          <CardContent className="flex flex-col gap-4 pt-4">
             <div className="grid gap-3 md:grid-cols-3">
               {summaryItems.map((item) => (
                 <div
-                  className="rounded-xl border border-slate-800/70 bg-[rgba(10,15,22,0.48)] px-4 py-3"
+                  className="rounded-lg border border-border/60 bg-background/30 px-4 py-3"
                   key={item.label}
                 >
-                  <div className="text-[11px] tracking-[0.12em] text-slate-500">{item.label}</div>
-                  <div className="mt-2 text-[28px] font-semibold text-slate-50">{item.value}</div>
-                  <div className="mt-1.5 text-[13px] leading-5 text-slate-400">{item.note}</div>
+                  <div className="text-[11px] tracking-[0.12em] text-muted-foreground">{item.label}</div>
+                  <div className="mt-2 text-[28px] font-semibold text-foreground">{item.value}</div>
+                  <div className="mt-1.5 text-[13px] leading-5 text-muted-foreground">{item.note}</div>
                 </div>
               ))}
             </div>
 
             {currentProject ? (
-              <div className="rounded-2xl border border-slate-800/70 bg-[rgba(10,15,22,0.5)] p-5">
+              <div className="rounded-xl border border-border/60 bg-background/30 p-5">
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-lg font-semibold text-slate-50">{currentProject.name}</div>
-                  <div className="rounded-full border border-slate-700 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                  <div className="text-lg font-semibold text-foreground">{currentProject.name}</div>
+                  <Badge className="uppercase tracking-[0.14em]" variant="outline">
                     {currentProject.code}
-                  </div>
+                  </Badge>
                 </div>
-                <p className="mt-2.5 max-w-3xl text-[13px] leading-6 text-slate-400">
+                <p className="mt-2.5 max-w-3xl text-[13px] leading-6 text-muted-foreground">
                   {currentProject.description || "系统默认项目。未显式切换项目时，资源默认归属到该项目。"}
                 </p>
                 <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-800/65 bg-[rgba(9,14,20,0.44)] px-4 py-3">
-                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">创建时间</div>
-                    <div className="mt-2 font-medium text-slate-100">
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">创建时间</div>
+                    <div className="mt-2 font-medium text-foreground">
                       {new Date(currentProject.created_at).toLocaleString("zh-CN")}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-800/65 bg-[rgba(9,14,20,0.44)] px-4 py-3">
-                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">资源范围</div>
-                    <div className="mt-2 font-medium text-slate-100">数据集 / 模型 / 评测</div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">资源范围</div>
+                    <div className="mt-2 font-medium text-foreground">数据集 / 模型 / 评测</div>
                   </div>
-                  <div className="rounded-xl border border-slate-800/65 bg-[rgba(9,14,20,0.44)] px-4 py-3">
-                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">连接状态</div>
-                    <div className="mt-2 font-medium text-slate-100">服务已连接</div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">连接状态</div>
+                    <div className="mt-2 font-medium text-foreground">服务已连接</div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-slate-700 px-4 py-5 text-[13px] leading-6 text-slate-400">
-                暂无项目数据，请先连接后端服务后再刷新。
-              </div>
+              <Alert className="border-dashed border-border/70 bg-background/40">
+                <AlertTitle>暂无项目数据</AlertTitle>
+                <AlertDescription className="text-[13px] leading-6">
+                  请先连接后端服务，然后刷新当前页面。
+                </AlertDescription>
+              </Alert>
             )}
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-[20px] border-slate-800/70 bg-[rgba(13,18,25,0.56)] shadow-none">
-          <CardHeader className="border-b border-slate-800/70 bg-transparent px-5 py-4">
-            <CardTitle className="flex items-center gap-2 text-base text-slate-100">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]" />
+        <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
+          <CardHeader className="border-b border-border/70 px-5 py-4">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <span className="size-2 rounded-full bg-emerald-400" />
               服务健康
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 pt-4">
+          <CardContent className="flex flex-col gap-3 pt-4">
             {healthItems.map((item) => (
               <div
                 className={cn(
-                  "flex items-start gap-3 rounded-xl border px-4 py-3",
+                  "flex items-start gap-3 rounded-lg border px-4 py-3",
                   item.healthy
-                    ? "border-emerald-500/20 bg-[rgba(22,101,52,0.14)]"
-                    : "border-amber-500/20 bg-[rgba(120,53,15,0.16)]"
+                    ? "border-emerald-500/30 bg-emerald-500/10"
+                    : "border-amber-500/30 bg-amber-500/10"
                 )}
                 key={item.label}
               >
                 <div
                   className={cn(
-                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-                    item.healthy ? "bg-emerald-500/18 text-emerald-300" : "bg-amber-500/18 text-amber-200"
+                    "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full",
+                    item.healthy ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"
                   )}
                 >
                   <item.icon className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium text-slate-100">{item.label}</div>
-                  <div className="mt-1 text-[12px] leading-5 text-slate-400">{item.description}</div>
+                  <div className="text-[13px] font-medium text-foreground">{item.label}</div>
+                  <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{item.description}</div>
                 </div>
-                <div
+                <Badge
                   className={cn(
-                    "mt-0.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium",
+                    "mt-0.5 gap-1",
                     item.healthy
-                      ? "bg-emerald-500/16 text-emerald-200"
-                      : "bg-amber-500/16 text-amber-100"
+                      ? "border-emerald-500/25 bg-emerald-500/12 text-emerald-200"
+                      : "border-amber-500/25 bg-amber-500/12 text-amber-100"
                   )}
+                  variant="outline"
                 >
                   {item.healthy ? (
                     <CheckCircle2 className="h-3.5 w-3.5" />
@@ -170,7 +175,7 @@ export default async function OverviewPage() {
                     <span className="h-2 w-2 rounded-full bg-amber-100" />
                   )}
                   {item.status}
-                </div>
+                </Badge>
               </div>
             ))}
           </CardContent>

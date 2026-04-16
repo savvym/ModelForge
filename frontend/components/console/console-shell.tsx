@@ -27,6 +27,7 @@ import { CURRENT_PROJECT_COOKIE } from "@/features/project/constants";
 import type { ProjectSummary } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { consoleNavSections } from "@/lib/console-navigation";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -128,37 +129,42 @@ export function ConsoleShell({
   return (
     <div
       className={cn(
-        "console-shell grid h-dvh min-h-0 grid-cols-1 grid-rows-[46px_minmax(0,1fr)] overflow-hidden",
+        "console-shell grid h-dvh min-h-0 grid-cols-1 grid-rows-[52px_minmax(0,1fr)] overflow-hidden bg-background text-foreground",
         isNavCollapsed ? "md:grid-cols-[72px_minmax(0,1fr)]" : "md:grid-cols-[232px_minmax(0,1fr)]"
       )}
     >
-      <div className="col-span-full flex items-center gap-3 border-b border-slate-800/80 bg-[rgba(9,13,19,0.94)] px-3 backdrop-blur-xl">
+      <div className="col-span-full flex items-center gap-3 border-b border-border/80 bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex min-w-0 items-center gap-1.5">
-          <button
+          <Button
             aria-label={isNavCollapsed ? "展开导航栏" : "收起导航栏"}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-slate-500 transition-colors hover:border-slate-700/80 hover:bg-slate-800/45 hover:text-slate-100"
+            className="size-8 rounded-md text-muted-foreground"
             onClick={() => setIsNavCollapsed((current) => !current)}
+            size="icon"
             title={isNavCollapsed ? "展开导航栏" : "收起导航栏"}
             type="button"
+            variant="ghost"
           >
-            {isNavCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
+            {isNavCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </Button>
           <ConsoleNavLink
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-transparent bg-transparent text-teal-300/80 transition-colors hover:border-slate-700/80 hover:bg-slate-800/40 hover:text-teal-200"
+            className={cn(
+              buttonVariants({ size: "icon", variant: "ghost" }),
+              "size-8 rounded-md text-primary/80 hover:text-primary"
+            )}
             href="/overview"
             title="返回概览"
           >
-            <Boxes className="h-4 w-4" />
+            <Boxes />
           </ConsoleNavLink>
 
           {projects.length ? (
-            <div className="header-project-group min-w-0 rounded-xl border border-transparent bg-transparent transition-colors hover:border-slate-700/80 hover:bg-slate-800/40 focus-within:border-slate-700/80 focus-within:bg-slate-800/40">
+            <div className="min-w-0 rounded-lg border border-transparent transition-colors hover:bg-muted/60 focus-within:bg-muted/60">
               <Select
                 onValueChange={handleProjectChange}
                 value={activeProject?.id ?? undefined}
               >
-                <SelectTrigger className="h-8 w-auto min-w-[124px] max-w-[280px] justify-start gap-1 rounded-xl !border-transparent !bg-transparent pl-2 pr-1.5 text-sm text-slate-100 shadow-none hover:!border-transparent hover:!bg-transparent focus:!border-transparent focus:ring-0 data-[state=open]:!border-transparent data-[state=open]:!bg-transparent [&>span]:flex-none [&>span]:max-w-[220px]">
-                  <span className="truncate text-left text-sm font-medium text-slate-200">
+                <SelectTrigger className="h-8 w-auto min-w-[124px] max-w-[280px] justify-start gap-1 border-transparent bg-transparent pl-2 pr-1.5 text-sm shadow-none hover:bg-muted/70 focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-muted/70 [&>span]:flex-none [&>span]:max-w-[220px]">
+                  <span className="truncate text-left text-sm font-medium text-foreground">
                     {activeProject?.name ?? "default"}
                   </span>
                 </SelectTrigger>
@@ -172,7 +178,7 @@ export function ConsoleShell({
               </Select>
             </div>
           ) : (
-            <div className="rounded-xl border border-transparent bg-transparent px-2 text-sm font-medium text-slate-200">
+            <div className="rounded-lg px-2 text-sm font-medium text-foreground">
               {activeProject?.name ?? "default"}
             </div>
           )}
@@ -180,9 +186,9 @@ export function ConsoleShell({
 
         <div className="hidden min-w-0 flex-1 md:block">
           <div className="relative mx-auto max-w-3xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-8 rounded-full border-slate-700 bg-[#0f141b] pl-9 text-sm"
+              className="h-8 rounded-full bg-background/70 pl-9 text-sm shadow-none"
               placeholder="Search data, files, and models..."
               readOnly
               value=""
@@ -205,10 +211,10 @@ export function ConsoleShell({
           )}
         >
           {isNavCollapsed ? (
-            <nav className="space-y-3 py-1">
+            <nav className="flex flex-col gap-3 py-1">
               {consoleNavSections.map((section, index) => (
                 <div
-                  className={cn("space-y-1", index > 0 && "border-t border-slate-900/70 pt-3")}
+                  className={cn("flex flex-col gap-1", index > 0 && "border-t border-border/60 pt-3")}
                   key={section.id}
                 >
                   {section.items.map((item) => {
@@ -219,15 +225,16 @@ export function ConsoleShell({
                       <ConsoleNavLink
                         aria-label={item.title}
                         className={cn(
-                          "group relative flex h-8 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-slate-800/70 hover:text-white",
-                          active && "bg-slate-800/90 text-white"
+                          buttonVariants({ size: "icon", variant: active ? "secondary" : "ghost" }),
+                          "group relative size-8 rounded-md text-muted-foreground",
+                          active && "text-foreground"
                         )}
                         href={item.href}
                         key={item.href}
                         title={item.title}
                       >
-                        <Icon className={cn("h-4 w-4 shrink-0", active && "text-sky-300")} />
-                        <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-slate-700 bg-[#111923] px-2 py-1 text-xs font-medium text-slate-200 shadow-lg group-hover:block">
+                        <Icon className={cn(active && "text-primary")} />
+                        <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md group-hover:block">
                           {item.title}
                         </span>
                       </ConsoleNavLink>
@@ -237,14 +244,14 @@ export function ConsoleShell({
               ))}
             </nav>
           ) : (
-            <nav className="space-y-4">
+            <nav className="flex flex-col gap-4">
               {consoleNavSections.map((section) => (
-                <div key={section.id}>
-                  <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                <div className="flex flex-col gap-1" key={section.id}>
+                  <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     {section.title}
                   </div>
 
-                  <div className="mt-1 space-y-0.5">
+                  <div className="flex flex-col gap-0.5">
                     {section.items.map((item) => {
                       const active = isNavItemActive(pathname, item.href);
                       const Icon = iconByHref[item.href] ?? LayoutDashboard;
@@ -254,11 +261,12 @@ export function ConsoleShell({
                           key={item.href}
                           href={item.href}
                           className={cn(
-                            "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-slate-200 transition-colors hover:bg-slate-800/75 hover:text-white",
-                            active && "bg-[linear-gradient(180deg,rgba(25,37,53,0.98),rgba(17,26,37,0.98))] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                            buttonVariants({ size: "sm", variant: active ? "secondary" : "ghost" }),
+                            "h-9 justify-start rounded-lg px-2.5 text-sm",
+                            active && "text-foreground"
                           )}
                         >
-                          <Icon className={cn("h-4 w-4 shrink-0 text-slate-400", active && "text-sky-300")} />
+                          <Icon className={cn("text-muted-foreground", active && "text-primary")} />
                           <span className="truncate">{item.title}</span>
                         </ConsoleNavLink>
                       );
@@ -284,7 +292,7 @@ export function ConsoleShell({
             {isStorageBrowserPage || isCustomWorkbenchPage ? (
               children
             ) : (
-              <div className="console-workbench h-full min-h-0">
+              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-border/70 bg-card/70 shadow-sm backdrop-blur">
                 <div className="console-workbench__scroll h-full min-h-0 overflow-y-auto px-5 py-4 pb-12">
                   {children}
                 </div>
@@ -326,14 +334,16 @@ function HeaderIconButton({
   label: string;
 }) {
   return (
-    <button
+    <Button
       aria-label={label}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-100"
+      className="size-8 rounded-md text-muted-foreground"
+      size="icon"
       title={label}
       type="button"
+      variant="ghost"
     >
-      <Icon className="h-4 w-4" />
-    </button>
+      <Icon />
+    </Button>
   );
 }
 

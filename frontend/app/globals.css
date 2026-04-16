@@ -8,12 +8,18 @@
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
     --primary: 240 5.9% 10%;
     --primary-foreground: 0 0% 98%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
     --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
@@ -30,19 +36,25 @@
   }
 
   .console-shell {
-    --background: 217 30% 10%;
+    --background: 222 38% 10%;
     --foreground: 210 22% 94%;
-    --card: 218 25% 13%;
+    --card: 220 28% 14%;
     --card-foreground: 210 22% 94%;
-    --primary: 202 100% 63%;
-    --primary-foreground: 217 41% 10%;
-    --secondary: 219 20% 18%;
+    --popover: 220 28% 13%;
+    --popover-foreground: 210 22% 94%;
+    --primary: 195 92% 68%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 218 22% 18%;
     --secondary-foreground: 210 22% 94%;
     --muted: 219 18% 17%;
     --muted-foreground: 214 14% 68%;
+    --accent: 218 22% 18%;
+    --accent-foreground: 210 22% 94%;
+    --destructive: 346 77% 58%;
+    --destructive-foreground: 0 0% 98%;
     --border: 219 18% 24%;
     --input: 219 18% 24%;
-    --ring: 202 100% 63%;
+    --ring: 195 92% 68%;
     background:
       radial-gradient(circle at 82% 18%, rgba(39, 82, 128, 0.13), transparent 24%),
       radial-gradient(circle at 22% 82%, rgba(19, 53, 88, 0.12), transparent 26%),
@@ -60,6 +72,7 @@
     color: #09111d;
   }
 
+  /* Compatibility bridge while existing console pages migrate from hard-coded zinc/slate classes to semantic tokens. */
   .console-shell .bg-white,
   .console-shell .bg-white\/60,
   .console-shell .bg-white\/95,
