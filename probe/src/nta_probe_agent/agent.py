@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
+import logging
 import os
 import platform
 import socket
@@ -9,7 +10,11 @@ from typing import Any
 from uuid import UUID
 
 from nta_probe_agent import __version__
-from nta_probe_agent.client import ProbeControlPlaneAuthError, ProbeControlPlaneClient
+from nta_probe_agent.client import (
+    ProbeControlPlaneAuthError,
+    ProbeControlPlaneClient,
+    ProbeControlPlaneError,
+)
 from nta_probe_agent.config import ProbeAgentConfig
 from nta_probe_agent.executor import EvalScopePerfExecutionError, EvalScopePerfExecutor
 from nta_probe_agent.schemas import (
@@ -22,6 +27,8 @@ from nta_probe_agent.schemas import (
     ProbeTaskStartRequest,
 )
 from nta_probe_agent.state import ProbeAgentState, ProbeAgentStateStore
+
+logger = logging.getLogger(__name__)
 
 
 class ProbeAgent:
@@ -45,6 +52,11 @@ class ProbeAgent:
         await self._client.aclose()
 
     async def run_forever(self) -> None:
+        logger.info(
+            "Starting probe agent for %s (probe_name=%s).",
+            self._config.server_base_url,
+            self._config.probe_name,
+        )
         await self.ensure_registered(
             force=not bool(self._state.probe_id and self._state.auth_token)
         )
@@ -54,6 +66,7 @@ class ProbeAgent:
 
     async def ensure_registered(self, *, force: bool = False) -> None:
         if self._state.probe_id and self._state.auth_token and not force:
+            logger.info("Reusing existing probe registration %s.", self._state.probe_id)
             return
         payload = ProbeRegistrationRequest(
             name=self._state.probe_name or self._config.probe_name,
@@ -73,12 +86,18 @@ class ProbeAgent:
             probe_name=response.name,
         )
         self._state_store.save(self._state)
+        logger.info(
+            "Registered probe %s (%s).",
+            response.name,
+            response.probe_id,
+        )
 
     async def _heartbeat_loop(self) -> None:
         while True:
             try:
                 await self._send_heartbeat()
             except ProbeControlPlaneAuthError:
+                logger.warning("Heartbeat auth expired. Re-registering probe.")
                 await self.ensure_registered(force=True)
             await asyncio.sleep(max(5, self._config.heartbeat_interval_seconds))
 
@@ -90,14 +109,17 @@ class ProbeAgent:
                     auth_token=self.auth_token,
                 )
             except ProbeControlPlaneAuthError:
+                logger.warning("Claim auth expired. Re-registering probe.")
                 await self.ensure_registered(force=True)
                 await asyncio.sleep(1)
                 continue
 
             task = claimed.task
             if task is None:
+                logger.debug("No probe task available. Sleeping before next poll.")
                 await asyncio.sleep(max(2, self._config.poll_interval_seconds))
                 continue
+            logger.info("Claimed task %s (%s).", task.id, task.name)
             await self._execute_task(
                 task.id,
                 task.payload_json,
@@ -112,6 +134,7 @@ class ProbeAgent:
         timeout_seconds: int,
     ) -> None:
         self._running_task_id = str(task_id)
+        logger.info("Starting task %s.", task_id)
         await self._client.start_task(
             task_id=str(task_id),
             auth_token=self.auth_token,
@@ -132,11 +155,7 @@ class ProbeAgent:
                 raise EvalScopePerfExecutionError(
                     f"Unsupported runtime kind: {runtime_kind or 'unknown'}"
                 )
-            runtime_config = await self._client.get_task_runtime_config(
-                task_id=str(task_id),
-                auth_token=self.auth_token,
-            )
-            config = EvalScopePerfTaskConfig.model_validate(runtime_config.config)
+            config = await self._resolve_task_config(task_id=task_id, payload_json=payload_json)
             await self._client.report_progress(
                 task_id=str(task_id),
                 auth_token=self.auth_token,
@@ -156,7 +175,9 @@ class ProbeAgent:
                 auth_token=self.auth_token,
                 payload=ProbeTaskCompleteRequest(result_json=result),
             )
+            logger.info("Task %s completed successfully.", task_id)
         except Exception as exc:
+            logger.exception("Task %s failed: %s", task_id, exc)
             await self._client.fail_task(
                 task_id=str(task_id),
                 auth_token=self.auth_token,
@@ -168,6 +189,29 @@ class ProbeAgent:
         finally:
             self._running_task_id = None
 
+    async def _resolve_task_config(
+        self,
+        *,
+        task_id: UUID,
+        payload_json: dict[str, Any],
+    ) -> EvalScopePerfTaskConfig:
+        try:
+            runtime_config = await self._client.get_task_runtime_config(
+                task_id=str(task_id),
+                auth_token=self.auth_token,
+            )
+        except ProbeControlPlaneError as exc:
+            fallback_config = payload_json.get("config")
+            if exc.status_code == 404 and isinstance(fallback_config, dict):
+                logger.warning(
+                    "Runtime config endpoint is unavailable for task %s. "
+                    "Falling back to claimed payload config.",
+                    task_id,
+                )
+                return EvalScopePerfTaskConfig.model_validate(fallback_config)
+            raise
+        return EvalScopePerfTaskConfig.model_validate(runtime_config.config)
+
     async def _send_heartbeat(self) -> None:
         await self._client.heartbeat(
             probe_id=self.probe_id,
@@ -177,6 +221,7 @@ class ProbeAgent:
                 agent_status=self._collect_agent_status(),
             ),
         )
+        logger.info("Heartbeat ok for probe %s.", self.probe_id)
 
     def _collect_device_info(self) -> dict[str, Any]:
         try:

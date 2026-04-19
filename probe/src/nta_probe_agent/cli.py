@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import logging
+import os
 from pathlib import Path
 
 from nta_probe_agent.agent import ProbeAgent
@@ -69,7 +71,17 @@ def _replace(config: ProbeAgentConfig, **changes) -> ProbeAgentConfig:
     return ProbeAgentConfig(**values)
 
 
+def _configure_logging() -> None:
+    level_name = os.getenv("NTA_PROBE_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+
+
 def main() -> None:
+    _configure_logging()
     parser = _build_parser()
     args = parser.parse_args()
     if args.command == "run":

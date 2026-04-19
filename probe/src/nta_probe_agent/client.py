@@ -20,7 +20,9 @@ from nta_probe_agent.schemas import (
 
 
 class ProbeControlPlaneError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class ProbeControlPlaneAuthError(ProbeControlPlaneError):
@@ -179,7 +181,8 @@ class ProbeControlPlaneClient:
             raise ProbeControlPlaneAuthError(response.text.strip() or "Authentication failed.")
         if response.status_code >= 400:
             raise ProbeControlPlaneError(
-                f"{method} {path} returned {response.status_code}: {response.text.strip()}"
+                f"{method} {path} returned {response.status_code}: {response.text.strip()}",
+                status_code=response.status_code,
             )
         if not response.content:
             return None
