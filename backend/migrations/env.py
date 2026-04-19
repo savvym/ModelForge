@@ -11,7 +11,10 @@ from nta_backend.models import *  # noqa: F403
 
 config = context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("+asyncpg", "+psycopg"))
+sqlalchemy_url = settings.database_url.replace("+asyncpg", "+psycopg")
+# Alembic's ConfigParser treats "%" as interpolation syntax, so URL-encoded
+# credentials need percent signs escaped before injecting the URL.
+config.set_main_option("sqlalchemy.url", sqlalchemy_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

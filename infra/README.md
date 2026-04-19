@@ -54,12 +54,12 @@ make infra-up
 
 推荐做法：
 
-1. 在服务器上复制 `compose/.env.prod.example` 为 `compose/.env.prod`
+1. 在服务器上复制 `compose/.env.prod.example` 为 `compose/.env.prod.local`
 2. 替换所有默认密码、密钥和域名
 3. 执行
 
 ```bash
-docker compose --env-file compose/.env.prod -f compose/docker-compose.prod.yml config
+docker compose --env-file compose/.env.prod.local -f compose/docker-compose.prod.yml config
 ../../scripts/release.sh
 ```
 
@@ -70,3 +70,9 @@ docker compose --env-file compose/.env.prod -f compose/docker-compose.prod.yml c
 - `/ws/*` -> `api`
 
 同时把 `postgres`、`redis`、`temporal`、`rustfs` 收在容器内网络，避免直接暴露到公网。
+
+如果应用层改接托管 PostgreSQL、Redis、COS：
+
+- 应用配置直接改 `.env.prod.local` 中的 `DATABASE_URL`、`REDIS_URL`、`S3_*`
+- COS 仍按 S3 兼容方式接入，建议把 `S3_ADDRESSING_STYLE` 改成 `virtual`
+- 当前 compose 里的 Temporal 仍默认使用本地 `postgres` 服务作为底层库，这一部分不会因为 `DATABASE_URL` 改掉而自动切到托管 PostgreSQL

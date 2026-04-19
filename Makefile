@@ -7,8 +7,9 @@ UV ?= uv
 DOCKER ?= docker
 COMPOSE_FILE ?= infra/compose/docker-compose.dev.yml
 PROD_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
-PROD_ENV_FILE ?= infra/compose/.env.prod
+PROD_ENV_FILE ?= $(if $(wildcard infra/compose/.env.prod.local),infra/compose/.env.prod.local,infra/compose/.env.prod)
 DEV_ENV_FILE ?= infra/compose/.env.example
+DEV_APP_ENV_FILE ?= $(if $(wildcard .env.dev.local),.env.dev.local,.env)
 
 .PHONY: \
 	help \
@@ -25,7 +26,7 @@ help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 dev: ## Start backend API/worker and frontend dev server (infra must already be running)
-	./scripts/dev-stack.sh
+	APP_ENV_FILE=$(DEV_APP_ENV_FILE) ./scripts/dev-stack.sh
 
 # ----- Infrastructure -------------------------------------------------------
 
@@ -45,19 +46,16 @@ infra.logs: ## Tail local infrastructure logs
 # ----- Backend --------------------------------------------------------------
 
 backend.migrate: ## Run backend DB migrations
-	cd backend && $(UV) sync
-	cd backend && PYTHONPATH=src $(UV) run python -m alembic upgrade head
+	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd backend && $(UV) sync && PYTHONPATH=src $(UV) run python -m alembic upgrade head'
 
 backend.dev: ## Start backend API + worker dev processes
-	./scripts/dev-backend.sh
+	APP_ENV_FILE=$(DEV_APP_ENV_FILE) ./scripts/dev-backend.sh
 
 backend.api: ## Start backend API only
-	cd backend && $(UV) sync
-	cd backend && PYTHONPATH=src $(UV) run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
+	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd backend && $(UV) sync && PYTHONPATH=src $(UV) run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000'
 
 backend.worker: ## Start backend worker only
-	cd backend && $(UV) sync
-	cd backend && $(UV) run python -m apps.worker.dev
+	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd backend && $(UV) sync && $(UV) run python -m apps.worker.dev'
 
 backend.test: ## Run backend tests
 	cd backend && $(UV) run pytest -q
@@ -65,7 +63,7 @@ backend.test: ## Run backend tests
 # ----- Frontend -------------------------------------------------------------
 
 frontend.dev: ## Install frontend deps and run Next.js dev server
-	cd frontend && $(PNPM) install && $(PNPM) dev
+	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd frontend && $(PNPM) install && $(PNPM) dev'
 
 format: ## Format backend code with Ruff
 	cd backend && $(UV) run ruff format .

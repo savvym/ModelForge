@@ -18,7 +18,7 @@ def _get_cached_s3_client(endpoint_url: str):
             aws_secret_access_key=settings.s3_secret_access_key.get_secret_value(),
             config=Config(
                 signature_version="s3v4",
-                s3={"addressing_style": "path"},
+                s3={"addressing_style": settings.s3_addressing_style},
                 connect_timeout=1,
                 read_timeout=2,
                 retries={"max_attempts": 0},

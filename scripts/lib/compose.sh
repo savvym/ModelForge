@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [[ -z "${ENV_FILE:-}" ]]; then
-  if [[ -f "$ROOT_DIR/infra/compose/.env.prod" ]]; then
+  if [[ -f "$ROOT_DIR/infra/compose/.env.prod.local" ]]; then
+    ENV_FILE="$ROOT_DIR/infra/compose/.env.prod.local"
+  elif [[ -f "$ROOT_DIR/infra/compose/.env.prod" ]]; then
     ENV_FILE="$ROOT_DIR/infra/compose/.env.prod"
   else
     ENV_FILE="$ROOT_DIR/infra/compose/.env.example"

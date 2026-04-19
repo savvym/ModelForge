@@ -42,6 +42,8 @@ make backend-dev
 
 本地开发也保持和生产一致的双配置模式：`S3_ENDPOINT_URL` 给后端/Worker 使用，`S3_BROWSER_ENDPOINT_URL` 给浏览器直传使用。开发环境默认都指向 dev gateway `http://127.0.0.1:8081`。
 
+接外部对象存储时，继续使用这一套 `S3_*` 配置即可；如果对象存储换成腾讯云 COS，新建 bucket 建议额外设置 `S3_ADDRESSING_STYLE=virtual`，本地 RustFS 仍保持 `path`。
+
 如果只需要单独调试某一侧：
 
 ```bash

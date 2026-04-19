@@ -10,6 +10,8 @@
 
 ## 本地启动
 
+本地开发如果需要覆盖默认 `.env`，优先新建一个不会入库的 `.env.dev.local`；`make dev`、`make backend.migrate`、`make backend.api`、`make backend.worker`、`make frontend.dev` 会自动优先加载它。
+
 1. 启动基础设施
 
 ```bash
@@ -62,10 +64,10 @@ make backend.worker
 1. 复制环境变量模板
 
 ```bash
-cp infra/compose/.env.prod.example infra/compose/.env.prod
+cp infra/compose/.env.prod.example infra/compose/.env.prod.local
 ```
 
-2. 修改 `infra/compose/.env.prod`
+2. 修改 `infra/compose/.env.prod.local`
 
 至少需要设置这些值：
 
@@ -75,28 +77,44 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
 
+如果生产环境改用托管资源：
+
+- `DATABASE_URL` 改成外部 PostgreSQL 连接串
+- `REDIS_URL` 改成外部 Redis 连接串
+- COS 继续沿用现有 S3 兼容接入，只需要把
+  - `S3_ENDPOINT_URL`
+  - `S3_BROWSER_ENDPOINT_URL`
+  - `S3_REGION`
+  - `S3_ACCESS_KEY_ID`
+  - `S3_SECRET_ACCESS_KEY`
+  - `S3_BUCKET_MAIN`
+  - `S3_ADDRESSING_STYLE`
+    配成 COS；新建 COS bucket 推荐把 `S3_ADDRESSING_STYLE` 设为 `virtual`
+
+注意：当前生产 compose 里的 Temporal 仍然默认依赖本地 `postgres` 服务作为它自己的元数据库；如果你想把这部分也切到托管 PostgreSQL，需要再单独调整 Temporal 的底层数据库连接。
+
 3. 校验 Compose 配置
 
 ```bash
-make prod.config PROD_ENV_FILE=infra/compose/.env.prod
+make prod.config PROD_ENV_FILE=infra/compose/.env.prod.local
 ```
 
 4. 全新环境首次部署
 
 ```bash
-make prod.release-with-migrate PROD_ENV_FILE=infra/compose/.env.prod
+make prod.release-with-migrate PROD_ENV_FILE=infra/compose/.env.prod.local
 ```
 
 5. 已有环境发布新版本
 
 ```bash
-make prod.release PROD_ENV_FILE=infra/compose/.env.prod
+make prod.release PROD_ENV_FILE=infra/compose/.env.prod.local
 ```
 
 6. 如果本次发布包含数据库 schema 变更，再执行迁移
 
 ```bash
-make prod.migrate PROD_ENV_FILE=infra/compose/.env.prod
+make prod.migrate PROD_ENV_FILE=infra/compose/.env.prod.local
 ```
 
 
@@ -107,11 +125,11 @@ make prod.migrate PROD_ENV_FILE=infra/compose/.env.prod
 查看生产环境日志：
 
 ```bash
-make prod.logs PROD_ENV_FILE=infra/compose/.env.prod
+make prod.logs PROD_ENV_FILE=infra/compose/.env.prod.local
 ```
 
 停止生产环境：
 
 ```bash
-make prod.down PROD_ENV_FILE=infra/compose/.env.prod
+make prod.down PROD_ENV_FILE=infra/compose/.env.prod.local
 ```

@@ -2,9 +2,17 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/infra/compose/.env.prod}"
+ENV_FILE="${ENV_FILE:-}"
 COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/infra/compose/docker-compose.prod.yml}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
+
+if [[ -z "$ENV_FILE" ]]; then
+  if [[ -f "$ROOT_DIR/infra/compose/.env.prod.local" ]]; then
+    ENV_FILE="$ROOT_DIR/infra/compose/.env.prod.local"
+  else
+    ENV_FILE="$ROOT_DIR/infra/compose/.env.prod"
+  fi
+fi
 
 usage() {
   cat <<'EOF'

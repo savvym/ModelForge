@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_SCRIPT="$ROOT_DIR/scripts/dev-backend.sh"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 PNPM_BIN="${PNPM:-pnpm}"
+source "$ROOT_DIR/scripts/lib/app-env.sh"
+load_app_env_file "$ROOT_DIR"
 
 cleanup() {
   local exit_code="${1:-$?}"

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,7 +30,7 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
     )
 
-    database_url: str = "postgresql+asyncpg://nta:nta@localhost:5432/nta_platform"
+    database_url: str = "postgresql+asyncpg://nta:nta@localhost:5432/model_forge"
     redis_url: str = "redis://localhost:6379/0"
 
     temporal_host: str = "localhost:7233"
@@ -44,6 +45,7 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = "http://127.0.0.1:8081"
     s3_browser_endpoint_url: str | None = "http://127.0.0.1:8081"
     s3_region: str = "us-east-1"
+    s3_addressing_style: Literal["auto", "path", "virtual"] = "path"
     s3_access_key_id: str = "rustfsadmin"
     s3_secret_access_key: SecretStr = SecretStr("ChangeMe123!")
     s3_bucket_main: str = "nta-default"
