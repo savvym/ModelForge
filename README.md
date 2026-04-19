@@ -18,6 +18,12 @@
 make infra.up
 ```
 
+默认会启动仍然需要本地保留的开发依赖：`gateway / rustfs / temporal / temporal-ui`，以及供 Temporal 使用的本地 `postgres` 和初始化任务；如果你还想连本地 Redis 一起拉起，可以临时执行：
+
+```bash
+make infra.up DEV_INFRA_SERVICES="postgres redis temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway"
+```
+
 2. 执行数据库迁移
 
 ```bash

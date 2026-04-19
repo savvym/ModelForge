@@ -10,6 +10,7 @@ PROD_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
 PROD_ENV_FILE ?= $(if $(wildcard infra/compose/.env.prod.local),infra/compose/.env.prod.local,infra/compose/.env.prod)
 DEV_ENV_FILE ?= infra/compose/.env.example
 DEV_APP_ENV_FILE ?= $(if $(wildcard .env.dev.local),.env.dev.local,.env)
+DEV_INFRA_SERVICES ?= postgres temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
 
 .PHONY: \
 	help \
@@ -32,7 +33,7 @@ dev: ## Start backend API/worker and frontend dev server (infra must already be 
 
 infra.up: ## Start local infrastructure (Docker Compose)
 	@command -v $(DOCKER) >/dev/null || { echo "Error: '$(DOCKER)' is not installed or not in PATH."; exit 127; }
-	$(DOCKER) compose --env-file $(DEV_ENV_FILE) -f $(COMPOSE_FILE) up -d
+	$(DOCKER) compose --env-file $(DEV_ENV_FILE) -f $(COMPOSE_FILE) up -d $(DEV_INFRA_SERVICES)
 	./scripts/verify-dev-infra.sh
 
 infra.down: ## Stop and remove local infrastructure volumes
