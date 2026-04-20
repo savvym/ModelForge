@@ -5,8 +5,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_SCRIPT="$ROOT_DIR/scripts/dev-backend.sh"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 PNPM_BIN="${PNPM:-pnpm}"
-source "$ROOT_DIR/scripts/lib/app-env.sh"
-load_app_env_file "$ROOT_DIR"
+
+if [[ ! -f "$ROOT_DIR/.env" ]]; then
+  echo "Missing env file: $ROOT_DIR/.env" >&2
+  echo "Create it from $ROOT_DIR/.env.example first." >&2
+  exit 1
+fi
+
+while IFS= read -r line || [[ -n "$line" ]]; do
+  case "$line" in
+    ""|\#*) continue
+      ;;
+    *=*) export "$line"
+      ;;
+  esac
+done < "$ROOT_DIR/.env"
 
 cleanup() {
   local exit_code="${1:-$?}"

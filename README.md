@@ -10,7 +10,7 @@
 
 ## 本地启动
 
-本地开发如果需要覆盖默认 `.env`，优先新建一个不会入库的 `.env.dev.local`；`make dev`、`make backend.migrate`、`make backend.api`、`make backend.worker`、`make frontend.dev` 会自动优先加载它。
+本地开发和部署环境统一使用仓库根目录 `.env`。如果本地还没有这个文件，先从 `.env.example` 复制一份再改。
 
 默认约定是：本地对象存储走 RustFS，线上对象存储走腾讯云 COS。也就是说，代码层统一使用同一套 `S3_*` 配置键，差异只放在环境文件里。
 
@@ -68,10 +68,10 @@ make backend.worker
 1. 复制环境变量模板
 
 ```bash
-cp infra/compose/.env.prod.example infra/compose/.env.prod.local
+cp .env.example .env
 ```
 
-2. 修改 `infra/compose/.env.prod.local`
+2. 修改根目录 `.env`
 
 至少需要设置这些值：
 
@@ -97,7 +97,7 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod.local
   - `NEXT_PUBLIC_OBJECT_STORE_ROOT_PREFIX`
     配成 COS；新建 COS bucket 推荐把 `S3_ADDRESSING_STYLE` 设为 `virtual`，并约定本地开发使用 `nta-dev`、线上部署使用 `nta-prod`
 
-本地开发推荐保持 `.env.example` 里的 RustFS 默认值：
+本地开发推荐保持 `.env` 里的 RustFS 默认值：
 
 - `S3_ENDPOINT_URL=http://127.0.0.1:8081`
 - `S3_BROWSER_ENDPOINT_URL=http://127.0.0.1:8081`
@@ -108,7 +108,7 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod.local
 - `S3_BUCKET_MAIN=nta-default`
 - `S3_DIRECT_UPLOAD_MODE=presigned`
 
-线上部署则改用 `infra/compose/.env.prod.example` 里的 COS 配置：
+线上部署则把同一份 `.env` 里的对象存储配置改成 COS：
 
 - `S3_ENDPOINT_URL=https://cos-internal.<region>.tencentcos.cn`
 - `S3_BROWSER_ENDPOINT_URL=https://cos-internal.<region>.tencentcos.cn`
@@ -120,25 +120,25 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod.local
 3. 校验 Compose 配置
 
 ```bash
-make prod.config PROD_ENV_FILE=infra/compose/.env.prod.local
+make prod.config
 ```
 
 4. 全新环境首次部署
 
 ```bash
-make prod.release-with-migrate PROD_ENV_FILE=infra/compose/.env.prod.local
+make prod.release-with-migrate
 ```
 
 5. 已有环境发布新版本
 
 ```bash
-make prod.release PROD_ENV_FILE=infra/compose/.env.prod.local
+make prod.release
 ```
 
 6. 如果本次发布包含数据库 schema 变更，再执行迁移
 
 ```bash
-make prod.migrate PROD_ENV_FILE=infra/compose/.env.prod.local
+make prod.migrate
 ```
 
 
@@ -149,11 +149,11 @@ make prod.migrate PROD_ENV_FILE=infra/compose/.env.prod.local
 查看生产环境日志：
 
 ```bash
-make prod.logs PROD_ENV_FILE=infra/compose/.env.prod.local
+make prod.logs
 ```
 
 停止生产环境：
 
 ```bash
-make prod.down PROD_ENV_FILE=infra/compose/.env.prod.local
+make prod.down
 ```

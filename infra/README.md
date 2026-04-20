@@ -17,7 +17,6 @@
 ## 目录
 
 - `compose/docker-compose.dev.yml`：开发环境 compose
-- `compose/.env.example`：compose 环境变量模板
 - `scripts/init-db.sql`：数据库初始化
 - `scripts/init-buckets.sh`：对象存储桶初始化
 - `scripts/create-temporal-namespace.sh`：Temporal namespace 初始化
@@ -65,7 +64,6 @@ make infra-up
 生产环境新增了这些文件：
 
 - `compose/docker-compose.prod.yml`
-- `compose/.env.prod.example`
 - `../nginx/default.conf`
 - `../../frontend/Dockerfile`
 - `../../backend/Dockerfile.api`
@@ -74,12 +72,12 @@ make infra-up
 
 推荐做法：
 
-1. 在服务器上复制 `compose/.env.prod.example` 为 `compose/.env.prod.local`
+1. 在服务器上复制仓库根目录 `.env.example` 为 `.env`
 2. 替换所有默认密码、密钥和域名
 3. 执行
 
 ```bash
-docker compose --env-file compose/.env.prod.local -f compose/docker-compose.prod.yml config
+docker compose --env-file .env -f compose/docker-compose.prod.yml config
 ../../scripts/release.sh
 ```
 
@@ -93,6 +91,6 @@ docker compose --env-file compose/.env.prod.local -f compose/docker-compose.prod
 
 如果应用层改接托管 PostgreSQL、Redis、COS：
 
-- 应用配置直接改 `.env.prod.local` 中的 `DATABASE_URL`、`REDIS_URL`、`S3_*`
+- 应用配置直接改仓库根目录 `.env` 中的 `DATABASE_URL`、`REDIS_URL`、`S3_*`
 - COS 仍按 S3 兼容方式接入，建议把 `S3_ADDRESSING_STYLE` 改成 `virtual`，并用 `S3_ROOT_PREFIX=nta-prod`
 - 当前 compose 里的 Temporal 仍默认使用本地 `postgres` 服务作为底层库，这一部分不会因为 `DATABASE_URL` 改掉而自动切到托管 PostgreSQL

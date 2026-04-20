@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/infra/compose/docker-compose.dev.yml}"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/infra/compose/.env.example}"
 DEV_GATEWAY_CONTAINER="${DEV_GATEWAY_CONTAINER:-nta-dev-gateway}"
 DEV_GATEWAY_URL="${DEV_GATEWAY_URL:-http://127.0.0.1:8081}"
 S3_PROBE_URL="${S3_PROBE_URL:-$DEV_GATEWAY_URL/nta-default}"

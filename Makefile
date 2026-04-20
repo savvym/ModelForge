@@ -7,9 +7,7 @@ UV ?= uv
 DOCKER ?= docker
 COMPOSE_FILE ?= infra/compose/docker-compose.dev.yml
 PROD_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
-PROD_ENV_FILE ?= $(if $(wildcard infra/compose/.env.prod.local),infra/compose/.env.prod.local,infra/compose/.env.prod)
-DEV_ENV_FILE ?= infra/compose/.env.example
-DEV_APP_ENV_FILE ?= $(if $(wildcard .env.dev.local),.env.dev.local,.env)
+ENV_FILE := .env
 DEV_INFRA_SERVICES ?= postgres redis temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
 
 .PHONY: \
@@ -27,36 +25,36 @@ help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 dev: ## Start backend API/worker and frontend dev server (infra must already be running)
-	APP_ENV_FILE=$(DEV_APP_ENV_FILE) ./scripts/dev-stack.sh
+	./scripts/dev-stack.sh
 
 # ----- Infrastructure -------------------------------------------------------
 
 infra.up: ## Start local infrastructure (Docker Compose)
 	@command -v $(DOCKER) >/dev/null || { echo "Error: '$(DOCKER)' is not installed or not in PATH."; exit 127; }
-	$(DOCKER) compose --env-file $(DEV_ENV_FILE) -f $(COMPOSE_FILE) up -d $(DEV_INFRA_SERVICES)
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) up -d $(DEV_INFRA_SERVICES)
 	./scripts/verify-dev-infra.sh
 
 infra.down: ## Stop and remove local infrastructure volumes
 	@command -v $(DOCKER) >/dev/null || { echo "Error: '$(DOCKER)' is not installed or not in PATH."; exit 127; }
-	$(DOCKER) compose --env-file $(DEV_ENV_FILE) -f $(COMPOSE_FILE) down -v
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down -v
 
 infra.logs: ## Tail local infrastructure logs
 	@command -v $(DOCKER) >/dev/null || { echo "Error: '$(DOCKER)' is not installed or not in PATH."; exit 127; }
-	$(DOCKER) compose --env-file $(DEV_ENV_FILE) -f $(COMPOSE_FILE) logs -f
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) logs -f
 
 # ----- Backend --------------------------------------------------------------
 
 backend.migrate: ## Run backend DB migrations
-	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd backend && $(UV) sync && PYTHONPATH=src $(UV) run python -m alembic upgrade head'
+	cd backend && $(UV) sync && PYTHONPATH=src $(UV) run python -m alembic upgrade head
 
 backend.dev: ## Start backend API + worker dev processes
-	APP_ENV_FILE=$(DEV_APP_ENV_FILE) ./scripts/dev-backend.sh
+	./scripts/dev-backend.sh
 
 backend.api: ## Start backend API only
-	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd backend && $(UV) sync && PYTHONPATH=src $(UV) run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000'
+	cd backend && $(UV) sync && PYTHONPATH=src $(UV) run python -m uvicorn apps.api.main:app --reload --host 0.0.0.0 --port 8000
 
 backend.worker: ## Start backend worker only
-	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd backend && $(UV) sync && $(UV) run python -m apps.worker.dev'
+	cd backend && $(UV) sync && $(UV) run python -m apps.worker.dev
 
 backend.test: ## Run backend tests
 	cd backend && $(UV) run pytest -q
@@ -64,7 +62,7 @@ backend.test: ## Run backend tests
 # ----- Frontend -------------------------------------------------------------
 
 frontend.dev: ## Install frontend deps and run Next.js dev server
-	APP_ENV_FILE=$(DEV_APP_ENV_FILE) bash -lc 'source scripts/lib/app-env.sh; load_app_env_file "$$(pwd)"; cd frontend && $(PNPM) install && $(PNPM) dev'
+	bash -lc 'while IFS= read -r line || [ -n "$$line" ]; do case "$$line" in ""|\#*) continue ;; *=*) export "$$line" ;; esac; done < .env; cd frontend && $(PNPM) install && $(PNPM) dev'
 
 format: ## Format backend code with Ruff
 	cd backend && $(UV) run ruff format .
@@ -72,28 +70,28 @@ format: ## Format backend code with Ruff
 # ----- Production -----------------------------------------------------------
 
 prod.config: ## Render production compose config
-	$(DOCKER) compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE) config
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(PROD_COMPOSE_FILE) config
 
 prod.build: ## Build production images
-	$(DOCKER) compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE) build frontend api worker
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(PROD_COMPOSE_FILE) build frontend api worker
 
 prod.up: ## Start production stack
-	$(DOCKER) compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE) up -d --remove-orphans
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(PROD_COMPOSE_FILE) up -d --remove-orphans
 
 prod.down: ## Stop production stack
-	$(DOCKER) compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE) down
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(PROD_COMPOSE_FILE) down
 
 prod.logs: ## Tail production logs
-	$(DOCKER) compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE) logs -f
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(PROD_COMPOSE_FILE) logs -f
 
 prod.migrate: ## Run production migrations
-	$(DOCKER) compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE) run --rm api alembic upgrade head
+	$(DOCKER) compose --env-file $(ENV_FILE) -f $(PROD_COMPOSE_FILE) run --rm api alembic upgrade head
 
 prod.release: ## Release production without migration
-	ENV_FILE=$(PROD_ENV_FILE) COMPOSE_FILE=$(PROD_COMPOSE_FILE) ./scripts/release.sh
+	./scripts/release.sh
 
 prod.release-with-migrate: ## Release production and run migration
-	ENV_FILE=$(PROD_ENV_FILE) COMPOSE_FILE=$(PROD_COMPOSE_FILE) ./scripts/release.sh --migrate
+	./scripts/release.sh --migrate
 
 # ----- Backward compatible aliases -----------------------------------------
 

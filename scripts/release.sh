@@ -2,17 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${ENV_FILE:-}"
-COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/infra/compose/docker-compose.prod.yml}"
+ENV_FILE="$ROOT_DIR/.env"
+COMPOSE_FILE="$ROOT_DIR/infra/compose/docker-compose.prod.yml"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
-
-if [[ -z "$ENV_FILE" ]]; then
-  if [[ -f "$ROOT_DIR/infra/compose/.env.prod.local" ]]; then
-    ENV_FILE="$ROOT_DIR/infra/compose/.env.prod.local"
-  else
-    ENV_FILE="$ROOT_DIR/infra/compose/.env.prod"
-  fi
-fi
 
 usage() {
   cat <<'EOF'
@@ -43,7 +35,7 @@ done
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Missing env file: $ENV_FILE"
-  echo "Create it from infra/compose/.env.prod.example first."
+  echo "Create it from .env.example first."
   exit 1
 fi
 
