@@ -10,7 +10,7 @@ PROD_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
 PROD_ENV_FILE ?= $(if $(wildcard infra/compose/.env.prod.local),infra/compose/.env.prod.local,infra/compose/.env.prod)
 DEV_ENV_FILE ?= infra/compose/.env.example
 DEV_APP_ENV_FILE ?= $(if $(wildcard .env.dev.local),.env.dev.local,.env)
-DEV_INFRA_SERVICES ?= postgres temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
+DEV_INFRA_SERVICES ?= postgres redis temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
 
 .PHONY: \
 	help \

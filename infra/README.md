@@ -40,17 +40,16 @@ make infra-up
 
 如果这一步失败，最常见的原因是宿主机上已有别的进程占用了 `:8081`，需要先释放该端口后再重新执行 `make infra-up`。
 
-当前默认启动集已经按新的开发配置收窄：
+当前默认启动集会直接拉起本地开发依赖：
 
-- 保留：`gateway`、`rustfs`、`rustfs-init`、`temporal`、`temporal-ui`、`temporal-namespace-init`
-- 以及供 Temporal 使用的本地 `postgres`
-- 不再默认启动本地 `redis`
-
-如果你需要把本地 Redis 也一并拉起，可以覆盖服务列表：
-
-```bash
-make infra.up DEV_INFRA_SERVICES="postgres redis temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway"
-```
+- `gateway`
+- `postgres`
+- `redis`
+- `temporal`
+- `temporal-ui`
+- `temporal-namespace-init`
+- `rustfs`
+- `rustfs-init`
 
 本地启动这一组容器时，对象存储默认就应该配成 RustFS，也就是：
 
