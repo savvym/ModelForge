@@ -52,6 +52,15 @@ make infra-up
 make infra.up DEV_INFRA_SERVICES="postgres redis temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway"
 ```
 
+本地启动这一组容器时，对象存储默认就应该配成 RustFS，也就是：
+
+- `S3_ENDPOINT_URL=http://127.0.0.1:8081`
+- `S3_BROWSER_ENDPOINT_URL=http://127.0.0.1:8081`
+- `S3_ADDRESSING_STYLE=path`
+- `S3_DIRECT_UPLOAD_MODE=presigned`
+- `S3_BUCKET_MAIN=nta-default`
+- `S3_ROOT_PREFIX=nta-dev`
+
 ## 生产部署骨架
 
 生产环境新增了这些文件：

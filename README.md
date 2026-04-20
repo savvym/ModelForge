@@ -12,6 +12,8 @@
 
 本地开发如果需要覆盖默认 `.env`，优先新建一个不会入库的 `.env.dev.local`；`make dev`、`make backend.migrate`、`make backend.api`、`make backend.worker`、`make frontend.dev` 会自动优先加载它。
 
+默认约定是：本地对象存储走 RustFS，线上对象存储走腾讯云 COS。也就是说，代码层统一使用同一套 `S3_*` 配置键，差异只放在环境文件里。
+
 1. 启动基础设施
 
 ```bash
@@ -98,6 +100,24 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod.local
   - `S3_ROOT_PREFIX`
   - `NEXT_PUBLIC_OBJECT_STORE_ROOT_PREFIX`
     配成 COS；新建 COS bucket 推荐把 `S3_ADDRESSING_STYLE` 设为 `virtual`，并约定本地开发使用 `nta-dev`、线上部署使用 `nta-prod`
+
+本地开发推荐保持 `.env.example` 里的 RustFS 默认值：
+
+- `S3_ENDPOINT_URL=http://127.0.0.1:8081`
+- `S3_BROWSER_ENDPOINT_URL=http://127.0.0.1:8081`
+- `S3_REGION=us-east-1`
+- `S3_ADDRESSING_STYLE=path`
+- `S3_ACCESS_KEY_ID=rustfsadmin`
+- `S3_SECRET_ACCESS_KEY=ChangeMe123!`
+- `S3_BUCKET_MAIN=nta-default`
+- `S3_DIRECT_UPLOAD_MODE=presigned`
+
+线上部署则改用 `infra/compose/.env.prod.example` 里的 COS 配置：
+
+- `S3_ENDPOINT_URL=https://cos-internal.<region>.tencentcos.cn`
+- `S3_BROWSER_ENDPOINT_URL=https://cos-internal.<region>.tencentcos.cn`
+- `S3_ADDRESSING_STYLE=virtual`
+- `S3_DIRECT_UPLOAD_MODE=cos-sts`
 
 注意：当前生产 compose 里的 Temporal 仍然默认依赖本地 `postgres` 服务作为它自己的元数据库；如果你想把这部分也切到托管 PostgreSQL，需要再单独调整 Temporal 的底层数据库连接。
 
