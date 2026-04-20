@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
+from nta_backend.core.direct_upload import build_direct_upload_response
 from nta_backend.core.object_store import (
     ObjectPayload,
     delete_object,
@@ -56,7 +57,6 @@ from nta_backend.schemas.object_store import ObjectStoreDirectUploadInitResponse
 ASIA_SHANGHAI = ZoneInfo("Asia/Shanghai")
 PREVIEW_LIMIT_LINES = 50
 DATASET_RAW_BUCKET = get_settings().s3_bucket_dataset_raw
-DIRECT_UPLOAD_EXPIRES_IN_SECONDS = 900
 DATASET_CODE_PATTERN = re.compile(r"^ds-\d{14}-[0-9a-z]{5}$")
 
 
@@ -211,24 +211,13 @@ def _build_direct_upload_response(
     if file_size <= 0:
         raise ValueError("请选择待上传的数据集文件")
 
-    presigned = build_presigned_upload(
+    return build_direct_upload_response(
         bucket=bucket,
         object_key=object_key,
-        expires_in=DIRECT_UPLOAD_EXPIRES_IN_SECONDS,
+        file_name=file_name,
+        file_size=file_size,
         content_type=content_type,
         browser_endpoint_url=browser_endpoint_url,
-    )
-    return ObjectStoreDirectUploadInitResponse(
-        bucket=bucket,
-        object_key=object_key,
-        uri=_build_source_uri(bucket, object_key),
-        file_name=file_name,
-        size_bytes=file_size,
-        content_type=content_type,
-        expires_in=DIRECT_UPLOAD_EXPIRES_IN_SECONDS,
-        method=str(presigned["method"]),
-        headers=dict(presigned["headers"]),
-        url=str(presigned["url"]),
     )
 
 
@@ -629,11 +618,7 @@ async def activity_process_dataset_import(
         version_files = files_by_version.get(version.id, [])
         file_item = version_files[0] if version_files else None
         file_name, object_payload = await _read_dataset_payload(version_files, version)
-        object_key = (
-            file_item.object_key
-            if file_item is not None
-            else version.object_key
-        )
+        object_key = file_item.object_key if file_item is not None else version.object_key
         if not object_key:
             raise ValueError("数据集对象存储路径缺失")
 
@@ -670,11 +655,7 @@ async def activity_finalize_dataset_import(
         version_files = files_by_version.get(version.id, [])
         file_item = version_files[0] if version_files else None
         file_name, object_payload = await _read_dataset_payload(version_files, version)
-        object_key = (
-            file_item.object_key
-            if file_item is not None
-            else version.object_key
-        )
+        object_key = file_item.object_key if file_item is not None else version.object_key
         if not object_key:
             raise ValueError("数据集对象存储路径缺失")
 
@@ -1117,9 +1098,7 @@ class DatasetService:
             version_files = files_by_version.get(version.id, [])
             file_item = version_files[0] if version_files else None
             expected_object_key = (
-                file_item.object_key
-                if file_item is not None
-                else version.object_key
+                file_item.object_key if file_item is not None else version.object_key
             )
             if payload.upload.bucket != DATASET_RAW_BUCKET:
                 raise ValueError("上传目标桶不正确")
@@ -1326,14 +1305,17 @@ class DatasetService:
             dataset = await _get_dataset_or_raise(session, dataset_id, project_id)
 
             created_at = _now()
-            next_version = int(
-                await session.scalar(
-                    select(func.max(DatasetVersion.version)).where(
-                        DatasetVersion.dataset_id == dataset.id
+            next_version = (
+                int(
+                    await session.scalar(
+                        select(func.max(DatasetVersion.version)).where(
+                            DatasetVersion.dataset_id == dataset.id
+                        )
                     )
+                    or 0
                 )
-                or 0
-            ) + 1
+                + 1
+            )
             version_id = uuid4()
             file_name, object_key, stored_payload = _mirror_s3_import(
                 project_id=project_id,
@@ -1416,14 +1398,17 @@ class DatasetService:
             dataset = await _get_dataset_or_raise(session, dataset_id, project_id)
 
             created_at = _now()
-            next_version = int(
-                await session.scalar(
-                    select(func.max(DatasetVersion.version)).where(
-                        DatasetVersion.dataset_id == dataset.id
+            next_version = (
+                int(
+                    await session.scalar(
+                        select(func.max(DatasetVersion.version)).where(
+                            DatasetVersion.dataset_id == dataset.id
+                        )
                     )
+                    or 0
                 )
-                or 0
-            ) + 1
+                + 1
+            )
             version_id = uuid4()
             object_key = _build_object_key(
                 project_id=project_id,
@@ -1498,14 +1483,17 @@ class DatasetService:
             dataset = await _get_dataset_or_raise(session, dataset_id, project_id)
 
             created_at = _now()
-            next_version = int(
-                await session.scalar(
-                    select(func.max(DatasetVersion.version)).where(
-                        DatasetVersion.dataset_id == dataset.id
+            next_version = (
+                int(
+                    await session.scalar(
+                        select(func.max(DatasetVersion.version)).where(
+                            DatasetVersion.dataset_id == dataset.id
+                        )
                     )
+                    or 0
                 )
-                or 0
-            ) + 1
+                + 1
+            )
             version_id = uuid4()
             file_name, object_key, stored_payload = await _store_uploaded_file(
                 project_id=project_id,
@@ -1588,9 +1576,7 @@ class DatasetService:
             )
             version_ids = [version.id for version in versions]
             object_keys = [
-                file_item.object_key
-                for files in files_by_version.values()
-                for file_item in files
+                file_item.object_key for files in files_by_version.values() for file_item in files
             ]
             object_prefixes = {
                 build_dataset_version_prefix(
@@ -1632,8 +1618,7 @@ class DatasetService:
 
             files_by_version = await _get_version_files(session, [version.id])
             object_keys = [
-                file_item.object_key
-                for file_item in files_by_version.get(version.id, [])
+                file_item.object_key for file_item in files_by_version.get(version.id, [])
             ]
             object_prefixes = {
                 build_dataset_version_prefix(

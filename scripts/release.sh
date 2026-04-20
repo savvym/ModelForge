@@ -55,10 +55,10 @@ echo "[1/5] Build application images"
 compose build frontend api worker
 
 echo "[2/5] Start stateful infrastructure"
-compose up -d postgres redis temporal temporal-ui rustfs
+compose up -d postgres redis temporal temporal-ui
 
 echo "[3/5] Run one-shot init jobs"
-compose up -d temporal-namespace-init rustfs-init
+compose up -d temporal-namespace-init
 
 if [[ "$RUN_MIGRATIONS" == "true" ]]; then
   echo "[4/5] Apply database migrations"

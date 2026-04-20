@@ -10,9 +10,9 @@ from sqlalchemy import case, func, select
 
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
+from nta_backend.core.direct_upload import build_direct_upload_response
 from nta_backend.core.object_store import delete_object, delete_object_prefix
 from nta_backend.core.project_context import resolve_active_project_id
-from nta_backend.core.s3 import build_presigned_upload
 from nta_backend.core.storage_layout import (
     build_lake_asset_code,
     build_lake_batch_code,
@@ -34,7 +34,6 @@ from nta_backend.schemas.lake import (
 from nta_backend.schemas.object_store import ObjectStoreDirectUploadInitResponse
 
 ASIA_SHANGHAI = ZoneInfo("Asia/Shanghai")
-DIRECT_UPLOAD_EXPIRES_IN_SECONDS = 900
 LAKE_RAW_BUCKET = get_settings().s3_bucket_dataset_raw
 LAKE_BATCH_CODE_PATTERN = re.compile(r"^lb-\d{14}-[0-9a-z]{5}$")
 LAKE_ASSET_CODE_PATTERN = re.compile(r"^la-\d{14}-[0-9a-z]{5}$")
@@ -92,24 +91,13 @@ def _build_direct_upload_response(
     content_type: str | None,
     browser_endpoint_url: str | None = None,
 ) -> ObjectStoreDirectUploadInitResponse:
-    presigned = build_presigned_upload(
+    return build_direct_upload_response(
         bucket=bucket,
         object_key=object_key,
-        expires_in=DIRECT_UPLOAD_EXPIRES_IN_SECONDS,
+        file_name=file_name,
+        file_size=file_size,
         content_type=content_type,
         browser_endpoint_url=browser_endpoint_url,
-    )
-    return ObjectStoreDirectUploadInitResponse(
-        bucket=bucket,
-        object_key=object_key,
-        uri=_build_source_uri(bucket, object_key),
-        file_name=file_name,
-        size_bytes=file_size,
-        content_type=content_type,
-        expires_in=DIRECT_UPLOAD_EXPIRES_IN_SECONDS,
-        method=str(presigned["method"]),
-        headers=dict(presigned["headers"]),
-        url=str(presigned["url"]),
     )
 
 
@@ -153,15 +141,9 @@ async def _refresh_batch_aggregates(session, batch: LakeBatch) -> None:
     counts_row = await session.execute(
         select(
             func.count(LakeAsset.id),
-            func.sum(
-                case((LakeAsset.status == "ready", 1), else_=0)
-            ),
-            func.sum(
-                case((LakeAsset.status == "failed", 1), else_=0)
-            ),
-            func.sum(
-                case((LakeAsset.status == "uploading", 1), else_=0)
-            ),
+            func.sum(case((LakeAsset.status == "ready", 1), else_=0)),
+            func.sum(case((LakeAsset.status == "failed", 1), else_=0)),
+            func.sum(case((LakeAsset.status == "uploading", 1), else_=0)),
             func.coalesce(func.sum(LakeAsset.size_bytes), 0),
         ).where(
             LakeAsset.batch_id == batch.id,
@@ -599,11 +581,7 @@ class LakeService:
 
             await session.flush()
 
-            remaining_assets = [
-                item
-                for item in batch_assets
-                if item.id not in target_asset_ids
-            ]
+            remaining_assets = [item for item in batch_assets if item.id not in target_asset_ids]
             remaining_file_assets = [item for item in remaining_assets if item.object_key]
 
             if not remaining_file_assets:

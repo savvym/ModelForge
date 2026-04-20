@@ -19,6 +19,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { createBenchmarkVersion, updateBenchmarkVersion } from "@/features/eval/api";
 import { uploadManagedFile } from "@/features/object-store/api";
 import { S3BrowserDialog } from "@/features/object-store/components/s3-browser-dialog";
+import {
+  buildBenchmarkVersionPrefix,
+  buildObjectStoreRootPrefix
+} from "@/lib/object-store-layout";
 import { cn } from "@/lib/utils";
 import type { BenchmarkDefinitionSummary, BenchmarkVersionSummary } from "@/types/api";
 
@@ -95,7 +99,7 @@ export function BenchmarkVersionEditorForm({
     try {
       const upload = await uploadManagedFile({
         file,
-        prefix: `projects/${projectId}/benchmarks/${benchmark.name}/versions/${versionId}/`
+        prefix: buildBenchmarkVersionPrefix(projectId, benchmark.name, versionId)
       });
       setForm((current) => ({
         ...current,
@@ -246,7 +250,7 @@ export function BenchmarkVersionEditorForm({
           <Field
             label="数据源 URI"
             onChange={(value) => updateField("dataset_source_uri", value)}
-            placeholder="例如 s3://nta-default/projects/.../network.jsonl"
+            placeholder={`例如 s3://your-bucket/${buildObjectStoreRootPrefix()}projects/.../network.jsonl`}
             value={form.dataset_source_uri}
           />
           <SelectField

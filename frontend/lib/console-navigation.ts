@@ -54,7 +54,7 @@ export const consoleNavSections: ConsoleNavSection[] = [
       { title: "数据集", href: "/dataset", group: "workspace" },
       { title: "湖资产", href: "/lake-assets", group: "workspace" },
       { title: "Files", href: "/files", group: "workspace" },
-      { title: "RustFS", href: "/data", group: "workspace" }
+      { title: "对象存储", href: "/data", group: "workspace" }
     ]
   },
   {
@@ -108,8 +108,8 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
     group: "workspace"
   },
   data: {
-    title: "RustFS",
-    description: "当前项目的 RustFS 浏览器，可直接查看 files、lake 与其他对象前缀的真实目录结构。",
+    title: "对象存储",
+    description: "当前项目的对象存储浏览器，可直接查看 files、lake 与其他对象前缀的真实目录结构。",
     group: "workspace"
   },
   "dataset-create": { title: "创建数据集", description: "创建数据集和版本上传流程。", group: "workspace" },

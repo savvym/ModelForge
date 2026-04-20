@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,30 @@ class Settings(BaseSettings):
     s3_access_key_id: str = "rustfsadmin"
     s3_secret_access_key: SecretStr = SecretStr("ChangeMe123!")
     s3_bucket_main: str = "nta-default"
+    s3_root_prefix: str | None = None
+    s3_direct_upload_mode: Literal["auto", "presigned", "cos-sts"] = "auto"
+    s3_sts_duration_seconds: int = 1800
+
+    @property
+    def s3_resolved_root_prefix(self) -> str:
+        normalized = (self.s3_root_prefix or "").strip().strip("/")
+        if normalized:
+            return normalized
+        if self.app_env == "production":
+            return "nta-prod"
+        return "nta-dev"
+
+    @property
+    def s3_resolved_direct_upload_mode(self) -> Literal["presigned", "cos-sts"]:
+        if self.s3_direct_upload_mode != "auto":
+            return self.s3_direct_upload_mode
+
+        endpoint = self.s3_browser_endpoint_url or self.s3_endpoint_url
+        parsed = urlparse(endpoint if "://" in endpoint else f"https://{endpoint}")
+        host = (parsed.netloc or parsed.path).lower()
+        if host.endswith("myqcloud.com") or host.endswith("tencentcos.cn"):
+            return "cos-sts"
+        return "presigned"
 
     @property
     def s3_bucket_dataset_raw(self) -> str:

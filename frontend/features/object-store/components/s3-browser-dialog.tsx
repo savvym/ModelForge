@@ -38,7 +38,7 @@ const secondaryButtonClassName =
   "h-8 whitespace-nowrap rounded-full border border-[rgb(243,243,247)] bg-transparent px-3.5 text-[13px] font-medium text-[#f3f3f7] shadow-[rgb(243,243,247)_0_0_0_1px_inset] transition-colors hover:bg-[rgba(255,255,255,0.05)]";
 
 export function S3BrowserDialog({
-  description = "浏览 RustFS / S3 对象存储，选择一个对象路径用于导入。",
+  description = "浏览 COS / S3 对象存储，选择一个对象路径用于导入。",
   initialUri,
   onClose,
   onSelect,

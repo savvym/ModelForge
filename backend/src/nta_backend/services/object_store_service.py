@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import UploadFile
 
 from nta_backend.core.config import get_settings
+from nta_backend.core.direct_upload import build_direct_upload_response
 from nta_backend.core.object_store import (
     create_object_prefix,
     delete_object,
@@ -17,7 +18,6 @@ from nta_backend.core.object_store import (
     normalize_object_prefix,
     put_object_bytes,
 )
-from nta_backend.core.s3 import build_presigned_upload
 from nta_backend.core.storage_layout import (
     build_project_files_prefix,
     build_project_prefix,
@@ -34,7 +34,6 @@ from nta_backend.schemas.object_store import (
     ObjectStoreUploadResponse,
 )
 
-DIRECT_UPLOAD_EXPIRES_IN_SECONDS = 900
 PREVIEW_LIMIT_BYTES = 100 * 1024
 TEXT_PREVIEW_EXTENSIONS = {
     "css",
@@ -175,24 +174,13 @@ class ObjectStoreService:
             payload.file_name,
             payload.relative_path,
         )
-        presigned = build_presigned_upload(
-            target_bucket,
-            object_key,
-            expires_in=DIRECT_UPLOAD_EXPIRES_IN_SECONDS,
-            content_type=payload.content_type,
-            browser_endpoint_url=browser_endpoint_url,
-        )
-        return ObjectStoreDirectUploadInitResponse(
+        return build_direct_upload_response(
             bucket=target_bucket,
             object_key=object_key,
-            uri=f"s3://{target_bucket}/{object_key}",
             file_name=PurePosixPath(object_key).name,
-            size_bytes=payload.file_size,
+            file_size=payload.file_size,
             content_type=payload.content_type,
-            expires_in=DIRECT_UPLOAD_EXPIRES_IN_SECONDS,
-            method=str(presigned["method"]),
-            headers=dict(presigned["headers"]),
-            url=str(presigned["url"]),
+            browser_endpoint_url=browser_endpoint_url,
         )
 
     async def upload_project_file(

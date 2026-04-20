@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createDataset } from "@/features/dataset/api";
 import { useDatasetUploadManager } from "@/features/dataset/components/dataset-upload-manager";
 import { S3BrowserDialog } from "@/features/object-store/components/s3-browser-dialog";
+import { buildObjectStoreRootPrefix } from "@/lib/object-store-layout";
 import { cn } from "@/lib/utils";
 
 const datasetTypeOptions = [
@@ -397,7 +398,7 @@ export function DatasetCreateForm() {
                       {isEvaluationDataset ? "支持 JSONL / XLSX / XLS" : "推荐 JSONL"}
                     </span>
                     <span className="rounded-full border border-slate-800/90 bg-[rgba(10,15,22,0.28)] px-2.5 py-1 text-[12px] text-slate-400">
-                      当前环境接入 RustFS
+                      当前环境接入 COS
                     </span>
                   </div>
                 </div>
@@ -436,7 +437,7 @@ export function DatasetCreateForm() {
                     className="h-10 text-[13px]"
                     disabled={isSubmitting}
                     id="source_uri"
-                    placeholder="s3://nta-default/nta/dataset/ds-20260320172136-8cxb7/dsv-20260320172136-vwdpc/SFT_TextEmbedding_Sample.jsonl"
+                    placeholder={`s3://your-bucket/${buildObjectStoreRootPrefix()}projects/<project-id>/datasets/<dataset-code>/versions/<version-code>/source/SFT_TextEmbedding_Sample.jsonl`}
                     {...form.register("source_uri")}
                   />
                   <Button

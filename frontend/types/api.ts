@@ -1223,6 +1223,15 @@ export interface ObjectStoreFolderCreateResponse {
   uri: string;
 }
 
+export interface ObjectStoreDirectUploadStsCredentials {
+  tmp_secret_id: string;
+  tmp_secret_key: string;
+  session_token: string;
+  start_time: number;
+  expired_time: number;
+  scope_limit: boolean;
+}
+
 export interface ObjectStoreDirectUploadInitResponse {
   bucket: string;
   object_key: string;
@@ -1231,9 +1240,14 @@ export interface ObjectStoreDirectUploadInitResponse {
   size_bytes: number;
   content_type?: string | null;
   expires_in: number;
-  method: string;
+  provider: "presigned" | "cos-sts";
+  region?: string | null;
+  domain?: string | null;
+  protocol?: string | null;
+  sts?: ObjectStoreDirectUploadStsCredentials | null;
+  method?: string | null;
   headers: Record<string, string>;
-  url: string;
+  url?: string | null;
 }
 
 export interface EvalJobStatusEvent {

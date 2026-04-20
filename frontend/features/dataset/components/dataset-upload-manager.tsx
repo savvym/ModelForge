@@ -459,18 +459,54 @@ export function DatasetUploadManagerProvider({
       format?: string | null;
       file: File;
     }) => {
-      const prepared = await prepareDatasetVersionDirectUpload(input.datasetId, {
-        description: input.description ?? null,
-        format: input.format ?? null,
-        file_name: input.file.name,
-        file_size: input.file.size,
-        content_type: input.file.type || null
-      });
-
+      const versionItemId = buildPendingUploadTaskId("create-version");
       const now = Date.now();
       const versionNumber = Number.parseInt(input.versionLabel.replace(/^V/i, ""), 10) || 1;
       upsertStoreItem({
-        id: prepared.version_id,
+        id: versionItemId,
+        datasetId: input.datasetId,
+        versionId: null,
+        persisted: false,
+        datasetName: input.datasetName,
+        description: input.description ?? null,
+        purpose: null,
+        format: input.format ?? null,
+        useCase: null,
+        modality: input.format ?? null,
+        recipe: null,
+        scope: "my-datasets",
+        versionLabel: input.versionLabel,
+        versionNumber,
+        fileName: input.file.name,
+        sizeBytes: input.file.size,
+        uploadedBytes: 0,
+        status: "preparing",
+        operation: "create-version",
+        error: null,
+        createdAt: new Date(now).toISOString(),
+        updatedAt: now
+      });
+      setStoreCollapsed(false);
+      let prepared;
+      try {
+        prepared = await prepareDatasetVersionDirectUpload(input.datasetId, {
+          description: input.description ?? null,
+          format: input.format ?? null,
+          file_name: input.file.name,
+          file_size: input.file.size,
+          content_type: input.file.type || null
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "创建数据集版本失败";
+        updateStoreItem(versionItemId, {
+          status: "failed",
+          error: message
+        });
+        throw error;
+      }
+
+      upsertStoreItem({
+        id: versionItemId,
         datasetId: prepared.dataset_id,
         versionId: prepared.version_id,
         persisted: true,
@@ -496,7 +532,7 @@ export function DatasetUploadManagerProvider({
       setStoreCollapsed(false);
       router.refresh();
       void runUploadLifecycle({
-        itemId: prepared.version_id,
+        itemId: versionItemId,
         datasetId: prepared.dataset_id,
         versionId: prepared.version_id,
         file: input.file,

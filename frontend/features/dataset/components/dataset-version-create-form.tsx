@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createDatasetVersion } from "@/features/dataset/api";
 import { useDatasetUploadManager } from "@/features/dataset/components/dataset-upload-manager";
 import { S3BrowserDialog } from "@/features/object-store/components/s3-browser-dialog";
+import { buildObjectStoreRootPrefix } from "@/lib/object-store-layout";
 import { cn } from "@/lib/utils";
 
 const uploadTabs = [
@@ -70,13 +71,17 @@ export function DatasetVersionCreateForm({
     setIsSubmitting(true);
     try {
       if (sourceType === "local-upload" && selectedFile) {
-        await startDatasetVersionUpload({
+        void startDatasetVersionUpload({
           datasetId,
           datasetName,
           versionLabel: `V${nextVersion}`,
           description: description.trim() || null,
           file: selectedFile
+        }).catch((uploadError: unknown) => {
+          console.error("dataset version direct upload init failed", uploadError);
         });
+        router.push(`/dataset/${datasetId}`);
+        return;
       } else {
         await createDatasetVersion(datasetId, {
           description: description.trim() || null,
@@ -266,7 +271,7 @@ export function DatasetVersionCreateForm({
                       {isEvaluationDataset ? "支持 JSONL / XLSX / XLS" : "推荐 JSONL"}
                     </span>
                     <span className="rounded-full border border-slate-800/90 bg-[rgba(10,15,22,0.28)] px-2.5 py-1 text-[12px] text-slate-400">
-                      当前环境接入 RustFS
+                      当前环境接入 COS
                     </span>
                   </div>
                 </div>
@@ -298,7 +303,7 @@ export function DatasetVersionCreateForm({
                       setError(null);
                     }
                   }}
-                  placeholder="s3://nta-default/nta/dataset/ds-20260320172136-8cxb7/dsv-20260320172136-vwdpc/new-version.jsonl"
+                  placeholder={`s3://your-bucket/${buildObjectStoreRootPrefix()}projects/<project-id>/datasets/<dataset-code>/versions/<version-code>/source/new-version.jsonl`}
                   value={sourceUri}
                 />
                 <Button

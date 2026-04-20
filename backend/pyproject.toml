@@ -28,6 +28,7 @@ dependencies = [
   "watchfiles>=1.1.1",
   "xlrd>=2.0.1",
   "evalscope>=1.5.2.post1",
+  "tencentcloud-sdk-python-sts>=3.0.1459",
 ]
 
 [dependency-groups]

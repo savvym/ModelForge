@@ -73,6 +73,7 @@ import {
   initiateDirectUpload,
   updateObjectStoreTextFile
 } from "@/features/object-store/api";
+import { uploadFileWithObjectStoreDirectUpload } from "@/features/object-store/direct-upload";
 import { cn } from "@/lib/utils";
 import type {
   ObjectStoreBrowserResponse,
@@ -1703,9 +1704,7 @@ export function ObjectStoreConsole({
                         "h-8 border-slate-700/80 bg-[rgba(12,18,25,0.72)] text-[13px]"
                       )}
                       onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder={
-                        presentation === "rustfs" ? "Filter current project objects" : "Filter"
-                      }
+                      placeholder={presentation === "rustfs" ? "筛选当前项目对象" : "Filter"}
                       value={searchQuery}
                     />
                   </div>
@@ -1852,7 +1851,7 @@ export function ObjectStoreConsole({
                             ? "Try another filter."
                             : allowMutations
                               ? "Use Actions to upload files or create folders."
-                              : "Browse the current project layout in RustFS from this pane."}
+                              : "在这里浏览当前项目落在 COS 中的真实目录结构。"}
                         </p>
                       </div>
                     ) : null}
@@ -2952,8 +2951,8 @@ function getObjectStoreConsolePresentationConfig(
 ) {
   if (presentation === "rustfs") {
     return {
-      label: "RustFS",
-      locationLabel: "RustFS",
+      label: "对象存储",
+      locationLabel: "对象存储",
       rootNodeLabel: "当前项目",
       routePath: "/data"
     };
@@ -3160,81 +3159,15 @@ async function uploadFileToObjectStore(params: {
     relativePath: params.relativePath ?? null
   });
 
-  params.onProgress({
-    status: "preparing",
-    uploadedBytes: 0,
-    totalBytes: params.file.size
-  });
-
-  await uploadBlobWithProgress({
+  return uploadFileWithObjectStoreDirectUpload({
     file: params.file,
-    headers: initResponse.headers,
-    onProgress: (uploadedBytes, totalBytes) =>
+    initResponse,
+    onProgress: ({ status, uploadedBytes, totalBytes }) =>
       params.onProgress({
-        status: "uploading",
+        status,
         uploadedBytes,
         totalBytes
-      }),
-    url: initResponse.url
-  });
-
-  params.onProgress({
-    status: "finalizing",
-    uploadedBytes: params.file.size,
-    totalBytes: params.file.size
-  });
-
-  return {
-    bucket: initResponse.bucket,
-    object_key: initResponse.object_key,
-    uri: initResponse.uri,
-    file_name: initResponse.file_name,
-    size_bytes: params.file.size,
-    content_type: initResponse.content_type ?? params.file.type ?? null,
-    last_modified: new Date().toISOString()
-  };
-}
-
-function uploadBlobWithProgress(params: {
-  url: string;
-  file: Blob;
-  headers?: Record<string, string>;
-  onProgress?: (uploadedBytes: number, totalBytes: number) => void;
-}) {
-  return new Promise<void>((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("PUT", params.url);
-
-    for (const [key, value] of Object.entries(params.headers ?? {})) {
-      request.setRequestHeader(key, value);
-    }
-
-    request.upload.onprogress = (event) => {
-      if (!params.onProgress) {
-        return;
-      }
-
-      const totalBytes = event.lengthComputable ? event.total : params.file.size;
-      params.onProgress(event.loaded, totalBytes);
-    };
-
-    request.onerror = () => {
-      reject(new Error("对象存储上传失败，请检查直传地址和本地 RustFS 配置"));
-    };
-    request.onabort = () => {
-      reject(new Error("对象存储上传已中止"));
-    };
-    request.onload = () => {
-      if (request.status < 200 || request.status >= 300) {
-        reject(new Error(`对象存储上传失败: ${request.status} ${request.statusText}`));
-        return;
-      }
-
-      params.onProgress?.(params.file.size, params.file.size);
-      resolve();
-    };
-
-    request.send(params.file);
+      })
   });
 }
 

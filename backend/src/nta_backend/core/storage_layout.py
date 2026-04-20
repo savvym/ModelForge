@@ -5,10 +5,34 @@ from pathlib import PurePosixPath
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from nta_backend.core.config import get_settings
+
 PROJECTS_ROOT = "projects"
 SYSTEM_ROOT = "system"
-SYSTEM_SHARED_PREFIX = f"{SYSTEM_ROOT}/shared/"
 RESOURCE_CODE_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _resolved_root_prefix() -> str:
+    return get_settings().s3_resolved_root_prefix
+
+
+def _join_root_path(*parts: str) -> str:
+    normalized_parts = [part.strip("/") for part in parts if part and part.strip("/")]
+    root_prefix = _resolved_root_prefix()
+    if root_prefix:
+        normalized_parts = [root_prefix, *normalized_parts]
+    return "/".join(normalized_parts)
+
+
+def build_projects_root_prefix() -> str:
+    return f"{_join_root_path(PROJECTS_ROOT)}/"
+
+
+def build_system_shared_prefix() -> str:
+    return f"{_join_root_path(SYSTEM_ROOT, 'shared')}/"
+
+
+SYSTEM_SHARED_PREFIX = build_system_shared_prefix()
 
 
 def _normalize_relative_prefix(prefix: str | None) -> str:
@@ -55,9 +79,7 @@ def _base36(value: int) -> str:
 
 def build_resource_code(prefix: str, created_at: datetime, resource_id: UUID) -> str:
     normalized_created_at = (
-        created_at.astimezone(RESOURCE_CODE_TZ)
-        if created_at.tzinfo is not None
-        else created_at
+        created_at.astimezone(RESOURCE_CODE_TZ) if created_at.tzinfo is not None else created_at
     )
     timestamp = normalized_created_at.strftime("%Y%m%d%H%M%S")
     token = _base36(resource_id.int)[-5:].rjust(5, "0")
@@ -85,7 +107,7 @@ def build_lake_asset_code(created_at: datetime, asset_id: UUID) -> str:
 
 
 def build_project_prefix(project_id: UUID) -> str:
-    return f"{PROJECTS_ROOT}/{project_id}/"
+    return f"{build_projects_root_prefix()}{project_id}/"
 
 
 def build_project_domain_prefix(project_id: UUID, domain: str) -> str:
@@ -149,9 +171,7 @@ def build_dataset_source_key(
         version_id,
         version_created_at,
     )
-    return (
-        f"{version_prefix}source/{safe_name}"
-    )
+    return f"{version_prefix}source/{safe_name}"
 
 
 def build_dataset_artifact_key(
@@ -170,9 +190,7 @@ def build_dataset_artifact_key(
         version_id,
         version_created_at,
     )
-    return (
-        f"{version_prefix}artifacts/{safe_name}"
-    )
+    return f"{version_prefix}artifacts/{safe_name}"
 
 
 def build_eval_job_prefix(project_id: UUID, job_id: UUID, job_created_at: datetime) -> str:
@@ -220,10 +238,7 @@ def build_lake_raw_key(project_id: UUID, batch_id: str, asset_id: str, relative_
         relative_path,
         fallback_name="asset.bin",
     )
-    return (
-        f"{build_lake_prefix(project_id, 'raw')}"
-        f"{batch_id}/original/{normalized_relative_path}"
-    )
+    return f"{build_lake_prefix(project_id, 'raw')}{batch_id}/original/{normalized_relative_path}"
 
 
 def build_lake_processed_key(

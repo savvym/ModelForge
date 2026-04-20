@@ -22,6 +22,7 @@ from nta_backend.core.object_store import (
     put_object_bytes,
 )
 from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.core.storage_layout import build_project_domain_prefix
 from nta_backend.evaluation_v2.compiler import (
     CompiledRunContext,
     compile_benchmark_run_request,
@@ -68,7 +69,7 @@ def _build_s3_uri(bucket: str, object_key: str) -> str:
 
 
 def _run_prefix(project_id: UUID, run_id: UUID) -> str:
-    return f"projects/{project_id}/evaluation-runs/{run_id}/"
+    return f"{build_project_domain_prefix(project_id, 'evaluation-runs')}{run_id}/"
 
 
 def _run_item_prefix(project_id: UUID, run_id: UUID, item_id: UUID) -> str:
@@ -262,21 +263,25 @@ async def _force_finalize_run_terminal(
             return
         now = _utc_now()
         item_rows = (
-            await session.execute(
-                select(EvaluationRunItem)
-                .where(EvaluationRunItem.run_id == run_id)
-                .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+            (
+                await session.execute(
+                    select(EvaluationRunItem)
+                    .where(EvaluationRunItem.run_id == run_id)
+                    .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for item in item_rows:
             if item.status in terminal_item_statuses:
                 continue
             item.status = item_status
             item.finished_at = item.finished_at or now
             if item_status == "failed":
-                item.error_message = (item_error_message or run_error_message or "Temporal workflow not found.")[
-                    :500
-                ]
+                item.error_message = (
+                    item_error_message or run_error_message or "Temporal workflow not found."
+                )[:500]
         if item_status == "failed":
             run.error_message = (run_error_message or "Temporal workflow not found.")[:500]
         await session.commit()
@@ -298,7 +303,10 @@ async def _reconcile_non_terminal_run(run_id: UUID) -> None:
             rows = await session.execute(
                 select(EvaluationRunItem.status).where(EvaluationRunItem.run_id == run_id)
             )
-            return any(status not in {"completed", "failed", "cancelled"} for status in rows.scalars().all())
+            return any(
+                status not in {"completed", "failed", "cancelled"}
+                for status in rows.scalars().all()
+            )
 
     if not workflow_id:
         await _force_finalize_run_terminal(
@@ -425,9 +433,15 @@ async def _persist_item_result(
     item.finished_at = _utc_now()
     item.error_code = None
     item.error_message = None
-    await session.execute(delete(EvaluationRunMetric).where(EvaluationRunMetric.run_item_id == item.id))
-    await session.execute(delete(EvaluationRunSample).where(EvaluationRunSample.run_item_id == item.id))
-    await session.execute(delete(EvaluationRunArtifact).where(EvaluationRunArtifact.run_item_id == item.id))
+    await session.execute(
+        delete(EvaluationRunMetric).where(EvaluationRunMetric.run_item_id == item.id)
+    )
+    await session.execute(
+        delete(EvaluationRunSample).where(EvaluationRunSample.run_item_id == item.id)
+    )
+    await session.execute(
+        delete(EvaluationRunArtifact).where(EvaluationRunArtifact.run_item_id == item.id)
+    )
 
     for metric in report_payload.get("metrics") or []:
         session.add(
@@ -491,10 +505,16 @@ async def aggregate_run_summary(*, run_id: str) -> None:
         if run is None:
             return
         items = (
-            await session.execute(
-                select(EvaluationRunItem).where(EvaluationRunItem.run_id == run.id).order_by(EvaluationRunItem.id.asc())
+            (
+                await session.execute(
+                    select(EvaluationRunItem)
+                    .where(EvaluationRunItem.run_id == run.id)
+                    .order_by(EvaluationRunItem.id.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if not items:
             run.status = "failed"
             run.error_message = "Run contains no evaluation items."
@@ -510,13 +530,19 @@ async def aggregate_run_summary(*, run_id: str) -> None:
         )
 
         item_metrics = (
-            await session.execute(
-                select(EvaluationRunMetric).where(EvaluationRunMetric.run_id == run.id)
+            (
+                await session.execute(
+                    select(EvaluationRunMetric).where(EvaluationRunMetric.run_id == run.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         overall_item_metrics = [
-            metric for metric in item_metrics if metric.run_item_id is not None and metric.metric_scope == "overall"
+            metric
+            for metric in item_metrics
+            if metric.run_item_id is not None and metric.metric_scope == "overall"
         ]
         grouped_scores: dict[str, list[tuple[float, float]]] = {}
         overall_scores: list[tuple[float, float]] = []
@@ -539,7 +565,9 @@ async def aggregate_run_summary(*, run_id: str) -> None:
                 continue
             overall_scores.append((metric.metric_value, item.weight))
             if item.group_name:
-                grouped_scores.setdefault(item.group_name, []).append((metric.metric_value, item.weight))
+                grouped_scores.setdefault(item.group_name, []).append(
+                    (metric.metric_value, item.weight)
+                )
 
         terminal_statuses = {"completed", "failed", "cancelled"}
         if any(item.status == "failed" for item in items):
@@ -558,7 +586,9 @@ async def aggregate_run_summary(*, run_id: str) -> None:
         if overall_scores:
             total_weight = sum(weight for _, weight in overall_scores) or 1.0
             overall_score = sum(score * weight for score, weight in overall_scores) / total_weight
-            run_metrics.append({"metric_name": "score", "metric_value": overall_score, "metric_scope": "overall"})
+            run_metrics.append(
+                {"metric_name": "score", "metric_value": overall_score, "metric_scope": "overall"}
+            )
             session.add(
                 EvaluationRunMetric(
                     run_id=run.id,
@@ -673,7 +703,9 @@ async def activity_execute_evaluation_run_item(
 
         def _progress_callback(progress_done: int, progress_total: int) -> None:
             asyncio.run_coroutine_threadsafe(
-                _persist_item_progress(item_uuid, progress_done=progress_done, progress_total=progress_total),
+                _persist_item_progress(
+                    item_uuid, progress_done=progress_done, progress_total=progress_total
+                ),
                 loop,
             )
 
@@ -681,7 +713,9 @@ async def activity_execute_evaluation_run_item(
             engine=item_plan.engine,
             execution_mode=item_plan.execution_mode,
         )
-        with TemporaryDirectory(prefix=f"nta-evalrun-v2-{run_id[:8]}-{item_id[:8]}-") as scratch_dir:
+        with TemporaryDirectory(
+            prefix=f"nta-evalrun-v2-{run_id[:8]}-{item_id[:8]}-"
+        ) as scratch_dir:
             output_dir = Path(scratch_dir)
             result = await asyncio.to_thread(
                 adapter.execute,
@@ -741,7 +775,9 @@ async def _persist_compiled_run(
     run = EvaluationRun(
         project_id=project_id,
         created_by=current_user_id,
-        name=(requested_name or f"{target_display} · {compiled.plan.model_binding.display_name}").strip(),
+        name=(
+            requested_name or f"{target_display} · {compiled.plan.model_binding.display_name}"
+        ).strip(),
         description=description,
         kind=compiled.plan.kind,
         status="queued",
@@ -843,18 +879,21 @@ class EvaluationRunV2Service:
             items_by_run: dict[UUID, list[EvaluationRunItem]] = {}
             if run_ids:
                 item_rows = (
-                    await session.execute(
-                        select(EvaluationRunItem)
-                        .where(EvaluationRunItem.run_id.in_(run_ids))
-                        .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+                    (
+                        await session.execute(
+                            select(EvaluationRunItem)
+                            .where(EvaluationRunItem.run_id.in_(run_ids))
+                            .order_by(
+                                EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc()
+                            )
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 for item in item_rows:
                     items_by_run.setdefault(item.run_id, []).append(item)
-            return [
-                _serialize_run_summary(run, items=items_by_run.get(run.id, []))
-                for run in runs
-            ]
+            return [_serialize_run_summary(run, items=items_by_run.get(run.id, [])) for run in runs]
 
     async def get_run(self, run_id: str) -> EvaluationRunDetail:
         async with SessionLocal() as session:
@@ -864,37 +903,62 @@ class EvaluationRunV2Service:
                 await _reconcile_non_terminal_run(run.id)
                 await session.refresh(run)
             metric_rows = (
-                await session.execute(
-                    select(EvaluationRunMetric)
-                    .where(EvaluationRunMetric.run_id == run.id, EvaluationRunMetric.run_item_id.is_(None))
-                    .order_by(EvaluationRunMetric.created_at.asc(), EvaluationRunMetric.id.asc())
+                (
+                    await session.execute(
+                        select(EvaluationRunMetric)
+                        .where(
+                            EvaluationRunMetric.run_id == run.id,
+                            EvaluationRunMetric.run_item_id.is_(None),
+                        )
+                        .order_by(
+                            EvaluationRunMetric.created_at.asc(), EvaluationRunMetric.id.asc()
+                        )
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             item_rows = (
-                await session.execute(
-                    select(EvaluationRunItem)
-                    .where(EvaluationRunItem.run_id == run.id)
-                    .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+                (
+                    await session.execute(
+                        select(EvaluationRunItem)
+                        .where(EvaluationRunItem.run_id == run.id)
+                        .order_by(EvaluationRunItem.created_at.asc(), EvaluationRunItem.id.asc())
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             item_ids = [item.id for item in item_rows]
             item_metrics_rows = []
             item_samples_rows = []
             if item_ids:
                 item_metrics_rows = (
-                    await session.execute(
-                        select(EvaluationRunMetric)
-                        .where(EvaluationRunMetric.run_item_id.in_(item_ids))
-                        .order_by(EvaluationRunMetric.created_at.asc(), EvaluationRunMetric.id.asc())
+                    (
+                        await session.execute(
+                            select(EvaluationRunMetric)
+                            .where(EvaluationRunMetric.run_item_id.in_(item_ids))
+                            .order_by(
+                                EvaluationRunMetric.created_at.asc(), EvaluationRunMetric.id.asc()
+                            )
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 item_samples_rows = (
-                    await session.execute(
-                        select(EvaluationRunSample)
-                        .where(EvaluationRunSample.run_item_id.in_(item_ids))
-                        .order_by(EvaluationRunSample.created_at.asc(), EvaluationRunSample.id.asc())
+                    (
+                        await session.execute(
+                            select(EvaluationRunSample)
+                            .where(EvaluationRunSample.run_item_id.in_(item_ids))
+                            .order_by(
+                                EvaluationRunSample.created_at.asc(), EvaluationRunSample.id.asc()
+                            )
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
             metrics_by_item: dict[UUID, list[EvaluationRunMetric]] = {}
             for metric in item_metrics_rows:
                 if metric.run_item_id is not None:

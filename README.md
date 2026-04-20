@@ -95,7 +95,9 @@ cp infra/compose/.env.prod.example infra/compose/.env.prod.local
   - `S3_SECRET_ACCESS_KEY`
   - `S3_BUCKET_MAIN`
   - `S3_ADDRESSING_STYLE`
-    配成 COS；新建 COS bucket 推荐把 `S3_ADDRESSING_STYLE` 设为 `virtual`
+  - `S3_ROOT_PREFIX`
+  - `NEXT_PUBLIC_OBJECT_STORE_ROOT_PREFIX`
+    配成 COS；新建 COS bucket 推荐把 `S3_ADDRESSING_STYLE` 设为 `virtual`，并约定本地开发使用 `nta-dev`、线上部署使用 `nta-prod`
 
 注意：当前生产 compose 里的 Temporal 仍然默认依赖本地 `postgres` 服务作为它自己的元数据库；如果你想把这部分也切到托管 PostgreSQL，需要再单独调整 Temporal 的底层数据库连接。
 

@@ -8,6 +8,7 @@ from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal, dispose_engine
 from nta_backend.core.object_store import delete_object, get_object_bytes, put_object_bytes
 from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.core.storage_layout import build_project_domain_prefix
 from nta_backend.models.benchmark_catalog import (
     BenchmarkDefinition as BenchmarkDefinitionRecord,
     BenchmarkVersion as BenchmarkVersionRecord,
@@ -37,7 +38,9 @@ async def test_benchmark_catalog_service_lists_only_custom_benchmarks() -> None:
     benchmark_name = f"custom_benchmark_{uuid4().hex[:8]}"
     template_name = f"template_for_catalog_{uuid4().hex[:8]}"
     bucket = get_settings().s3_bucket_dataset_raw
-    object_key = f"projects/{uuid4()}/files/benchmarks/{benchmark_name}/dataset.jsonl"
+    object_key = (
+        f"{build_project_domain_prefix(uuid4(), 'files')}benchmarks/{benchmark_name}/dataset.jsonl"
+    )
     template_id: str | None = None
     template_uuid = None
     version_id: str | None = None
@@ -54,8 +57,18 @@ async def test_benchmark_catalog_service_lists_only_custom_benchmarks() -> None:
                 output_type="categorical",
                 output_config={
                     "label_groups": [
-                        {"key": "pass", "label": "Pass", "labels": ["Pass"], "score_policy": "pass"},
-                        {"key": "fail", "label": "Fail", "labels": ["Fail"], "score_policy": "fail"},
+                        {
+                            "key": "pass",
+                            "label": "Pass",
+                            "labels": ["Pass"],
+                            "score_policy": "pass",
+                        },
+                        {
+                            "key": "fail",
+                            "label": "Fail",
+                            "labels": ["Fail"],
+                            "score_policy": "fail",
+                        },
                     ]
                 },
                 model="GPT-5.4",
@@ -157,9 +170,7 @@ async def test_benchmark_catalog_service_lists_only_custom_benchmarks() -> None:
                 )
             )
             if template_uuid is not None:
-                await session.execute(
-                    delete(EvalTemplate).where(EvalTemplate.id == template_uuid)
-                )
+                await session.execute(delete(EvalTemplate).where(EvalTemplate.id == template_uuid))
             await session.commit()
         delete_object(bucket, object_key)
 
@@ -183,8 +194,18 @@ async def test_benchmark_definition_can_bind_eval_template() -> None:
                 output_type="categorical",
                 output_config={
                     "label_groups": [
-                        {"key": "pass", "label": "Pass", "labels": ["Pass"], "score_policy": "pass"},
-                        {"key": "fail", "label": "Fail", "labels": ["Fail"], "score_policy": "fail"},
+                        {
+                            "key": "pass",
+                            "label": "Pass",
+                            "labels": ["Pass"],
+                            "score_policy": "pass",
+                        },
+                        {
+                            "key": "fail",
+                            "label": "Fail",
+                            "labels": ["Fail"],
+                            "score_policy": "fail",
+                        },
                     ]
                 },
                 model="GPT-5.4",
@@ -242,9 +263,7 @@ async def test_benchmark_definition_can_bind_eval_template() -> None:
                     )
                 )
             if template_id is not None:
-                await session.execute(
-                    delete(EvalTemplate).where(EvalTemplate.id == template_uuid)
-                )
+                await session.execute(delete(EvalTemplate).where(EvalTemplate.id == template_uuid))
             await session.commit()
 
 
@@ -283,8 +302,18 @@ async def test_benchmark_version_preview_and_download() -> None:
                 output_type="categorical",
                 output_config={
                     "label_groups": [
-                        {"key": "pass", "label": "Pass", "labels": ["Pass"], "score_policy": "pass"},
-                        {"key": "fail", "label": "Fail", "labels": ["Fail"], "score_policy": "fail"},
+                        {
+                            "key": "pass",
+                            "label": "Pass",
+                            "labels": ["Pass"],
+                            "score_policy": "pass",
+                        },
+                        {
+                            "key": "fail",
+                            "label": "Fail",
+                            "labels": ["Fail"],
+                            "score_policy": "fail",
+                        },
                     ]
                 },
                 model="GPT-5.4",
@@ -362,9 +391,7 @@ async def test_benchmark_version_preview_and_download() -> None:
                 )
             )
             if template_uuid is not None:
-                await session.execute(
-                    delete(EvalTemplate).where(EvalTemplate.id == template_uuid)
-                )
+                await session.execute(delete(EvalTemplate).where(EvalTemplate.id == template_uuid))
             await session.commit()
         delete_object(bucket, object_key)
 
@@ -390,8 +417,18 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
                 output_type="categorical",
                 output_config={
                     "label_groups": [
-                        {"key": "pass", "label": "Pass", "labels": ["Pass"], "score_policy": "pass"},
-                        {"key": "fail", "label": "Fail", "labels": ["Fail"], "score_policy": "fail"},
+                        {
+                            "key": "pass",
+                            "label": "Pass",
+                            "labels": ["Pass"],
+                            "score_policy": "pass",
+                        },
+                        {
+                            "key": "fail",
+                            "label": "Fail",
+                            "labels": ["Fail"],
+                            "score_policy": "fail",
+                        },
                     ]
                 },
                 model="GPT-5.4",
@@ -402,9 +439,7 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
             template_uuid = template.id
 
             project_id = await resolve_active_project_id(session)
-            managed_object_key = (
-                f"projects/{project_id}/benchmarks/{benchmark_name}/versions/ver-delete01/dataset.jsonl"
-            )
+            managed_object_key = f"{build_project_domain_prefix(project_id, 'benchmarks')}{benchmark_name}/versions/ver-delete01/dataset.jsonl"
 
         created = await service.create_benchmark_definition(
             BenchmarkDefinitionCreate(
@@ -499,9 +534,7 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
                 )
             )
             if template_uuid is not None:
-                await session.execute(
-                    delete(EvalTemplate).where(EvalTemplate.id == template_uuid)
-                )
+                await session.execute(delete(EvalTemplate).where(EvalTemplate.id == template_uuid))
             await session.commit()
         if managed_object_key is not None:
             try:

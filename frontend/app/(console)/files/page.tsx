@@ -1,5 +1,6 @@
 import { ObjectStoreConsole } from "@/features/object-store/components/object-store-console";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
+import { buildProjectDomainPrefix } from "@/lib/object-store-layout";
 
 export default async function FilesPage({
   searchParams
@@ -8,7 +9,7 @@ export default async function FilesPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const projectId = await getCurrentProjectIdFromCookie();
-  const rootPrefix = projectId ? `projects/${projectId}/files/` : undefined;
+  const rootPrefix = projectId ? buildProjectDomainPrefix(projectId, "files") : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">

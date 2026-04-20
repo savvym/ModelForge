@@ -20,7 +20,11 @@ from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
 from nta_backend.core.object_store import delete_object_prefix, get_object_bytes, put_object_bytes
 from nta_backend.core.project_context import DEFAULT_PROJECT_ID, resolve_active_project_id
-from nta_backend.core.storage_layout import build_project_prefix
+from nta_backend.core.storage_layout import (
+    build_project_prefix,
+    build_projects_root_prefix,
+    build_system_shared_prefix,
+)
 from nta_backend.evaluation.executors.sample_mapping import count_local_dataset_samples
 from nta_backend.evaluation.runtime.api.registry import get_benchmark
 from nta_backend.evaluation.runtime.config import EvalTaskConfig
@@ -317,11 +321,7 @@ def _serialize_builtin_spec(
     benchmark_usage: _BenchmarkUsage,
     version_usage: dict[tuple[str, str], _BenchmarkUsage],
 ) -> BenchmarkDefinitionSummary:
-    builtin_versions = [
-        version
-        for version in spec.versions
-        if version.execution_mode == "builtin"
-    ]
+    builtin_versions = [version for version in spec.versions if version.execution_mode == "builtin"]
     serialized_versions = [
         BenchmarkVersionSummary(
             id=version.version,
@@ -331,8 +331,12 @@ def _serialize_builtin_spec(
             dataset_source_uri=None,
             sample_count=version.sample_count or 0,
             enabled=version.enabled,
-            eval_job_count=version_usage.get((spec.name, version.version), _BenchmarkUsage()).eval_job_count,
-            latest_eval_at=version_usage.get((spec.name, version.version), _BenchmarkUsage()).latest_eval_at,
+            eval_job_count=version_usage.get(
+                (spec.name, version.version), _BenchmarkUsage()
+            ).eval_job_count,
+            latest_eval_at=version_usage.get(
+                (spec.name, version.version), _BenchmarkUsage()
+            ).latest_eval_at,
         )
         for version in builtin_versions
     ]
@@ -412,10 +416,7 @@ def _example_from_schema(schema: dict[str, Any]) -> object:
         properties = schema.get("properties") or {}
         required = schema.get("required") or []
         keys = required or list(properties)[:3]
-        return {
-            key: _example_from_schema(properties.get(key) or {})
-            for key in keys
-        }
+        return {key: _example_from_schema(properties.get(key) or {}) for key in keys}
     if schema_type == "array":
         items = schema.get("items")
         if isinstance(items, dict):
@@ -538,9 +539,7 @@ async def _load_eval_template_refs(
 
     from nta_backend.models.eval_template import EvalTemplate
 
-    rows = await session.execute(
-        select(EvalTemplate).where(EvalTemplate.id.in_(template_ids))
-    )
+    rows = await session.execute(select(EvalTemplate).where(EvalTemplate.id.in_(template_ids)))
     refs: dict[UUID, _EvalTemplateRef] = {}
     for template in rows.scalars().all():
         refs[template.id] = _EvalTemplateRef(
@@ -600,7 +599,9 @@ async def _sync_legacy_local_versions(
     for version in versions:
         if version.dataset_source_uri and version.dataset_source_uri.startswith("s3://"):
             source_bucket, source_object_key = _parse_s3_uri(version.dataset_source_uri)
-            is_internal_legacy_source = source_object_key.startswith("system/shared/benchmarks/")
+            is_internal_legacy_source = source_object_key.startswith(
+                f"{build_system_shared_prefix()}benchmarks/"
+            )
             desired_object_key = _legacy_benchmark_object_key(
                 DEFAULT_PROJECT_ID,
                 benchmark_name,
@@ -872,7 +873,7 @@ def _resolve_managed_version_prefix(
 
     bucket, object_key = _parse_s3_uri(normalized_uri)
     pattern = re.compile(
-        rf"^(projects/[^/]+/benchmarks/{re.escape(benchmark_name)}/versions/{re.escape(version_id)}/)"
+        rf"^({re.escape(build_projects_root_prefix())}[^/]+/benchmarks/{re.escape(benchmark_name)}/versions/{re.escape(version_id)}/)"
     )
     matched = pattern.match(object_key)
     if not matched:
@@ -991,7 +992,9 @@ class BenchmarkCatalogService:
                     record=record,
                     benchmark_usage=benchmark_usage.get(record.name, _BenchmarkUsage()),
                     version_usage=version_usage,
-                    eval_template=eval_templates.get(record.eval_template_id) if record.eval_template_id else None,
+                    eval_template=eval_templates.get(record.eval_template_id)
+                    if record.eval_template_id
+                    else None,
                 )
                 for record in records
             ]
@@ -1005,7 +1008,11 @@ class BenchmarkCatalogService:
             ]
             return sorted(
                 [*builtin_summaries, *custom_summaries],
-                key=lambda item: (item.source_type != "builtin", item.display_name.lower(), item.name.lower()),
+                key=lambda item: (
+                    item.source_type != "builtin",
+                    item.display_name.lower(),
+                    item.name.lower(),
+                ),
             )
 
     async def get_benchmark(self, benchmark_name: str) -> BenchmarkDefinitionDetail:
@@ -1111,7 +1118,8 @@ class BenchmarkCatalogService:
             return payload.file_name, payload.body, payload.content_type
 
     async def create_benchmark_definition(
-        self, payload: BenchmarkDefinitionCreate,
+        self,
+        payload: BenchmarkDefinitionCreate,
     ) -> BenchmarkDefinitionSummary:
         if _normalize_optional_text(payload.eval_template_id) is None:
             raise ValueError("创建自定义 Benchmark 时必须选择一个评测模板。")
@@ -1185,9 +1193,9 @@ class BenchmarkCatalogService:
 
             eval_template = await _resolve_eval_template_for_binding(
                 session,
-                payload.eval_template_id if "eval_template_id" in payload.model_fields_set else (
-                    str(record.eval_template_id) if record.eval_template_id else None
-                ),
+                payload.eval_template_id
+                if "eval_template_id" in payload.model_fields_set
+                else (str(record.eval_template_id) if record.eval_template_id else None),
             )
             if eval_template is None:
                 raise ValueError("自定义 Benchmark 必须绑定一个评测模板。")
@@ -1240,7 +1248,9 @@ class BenchmarkCatalogService:
             definition = await get_benchmark_definition_record(session, benchmark_name)
             if definition is None:
                 raise KeyError(benchmark_name)
-            version_id = _normalize_optional_text(payload.id) or await _generate_benchmark_version_id(
+            version_id = _normalize_optional_text(
+                payload.id
+            ) or await _generate_benchmark_version_id(
                 session,
                 benchmark_id=definition.id,
             )
@@ -1291,9 +1301,7 @@ class BenchmarkCatalogService:
                 raise KeyError(version_id)
 
             _apply_version_update(version, payload)
-            should_reinspect_source = (
-                "dataset_source_uri" in payload.model_fields_set
-            )
+            should_reinspect_source = "dataset_source_uri" in payload.model_fields_set
             if should_reinspect_source:
                 resolved_source = _inspect_dataset_source(
                     benchmark_name=definition.name,
@@ -1313,9 +1321,7 @@ class BenchmarkCatalogService:
             await session.refresh(version)
             return _serialize_version(
                 version,
-                usage=version_usage.get(
-                    (definition.name, version.version_id), _BenchmarkUsage()
-                ),
+                usage=version_usage.get((definition.name, version.version_id), _BenchmarkUsage()),
             )
 
     async def delete_benchmark_version(

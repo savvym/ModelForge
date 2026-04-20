@@ -33,11 +33,11 @@ import {
   failLakeAssetDirectUpload,
   prepareLakeAssetDirectUpload
 } from "@/features/lake/api";
+import { uploadFileWithObjectStoreDirectUpload } from "@/features/object-store/direct-upload";
 import { cn } from "@/lib/utils";
 import type {
   LakeAssetSummary,
   LakeBatchSummary,
-  ObjectStoreUploadResponse
 } from "@/types/api";
 
 type UploadLifecycleStatus = "preparing" | "uploading" | "finalizing";
@@ -241,36 +241,18 @@ export function DataLakePanel({
               assetId: init.asset_id
             }));
 
-            await uploadBlobWithProgress({
+            const uploadPayload = await uploadFileWithObjectStoreDirectUpload({
               file,
-              headers: init.upload.headers,
-              onProgress: (uploadedBytes, totalBytes) => {
+              initResponse: init.upload,
+              onProgress: ({ status, uploadedBytes, totalBytes }) => {
                 updateUploadQueueItem(queueItem.id, (item) => ({
                   ...item,
-                  status: "uploading",
+                  status,
                   uploadedBytes: Math.min(totalBytes, uploadedBytes),
                   error: null
                 }));
-              },
-              url: init.upload.url
+              }
             });
-
-            updateUploadQueueItem(queueItem.id, (item) => ({
-              ...item,
-              status: "finalizing",
-              uploadedBytes: item.sizeBytes,
-              error: null
-            }));
-
-            const uploadPayload: ObjectStoreUploadResponse = {
-              bucket: init.upload.bucket,
-              object_key: init.upload.object_key,
-              uri: init.upload.uri,
-              file_name: init.upload.file_name,
-              size_bytes: file.size,
-              content_type: init.upload.content_type ?? file.type ?? null,
-              last_modified: new Date().toISOString()
-            };
             await completeLakeAssetDirectUpload(assetId, { upload: uploadPayload });
 
             updateUploadQueueItem(queueItem.id, (item) => ({
@@ -870,45 +852,4 @@ function renderStatusLabel(status: string) {
     return "失败";
   }
   return status;
-}
-
-function uploadBlobWithProgress(params: {
-  url: string;
-  file: Blob;
-  headers?: Record<string, string>;
-  onProgress?: (uploadedBytes: number, totalBytes: number) => void;
-}) {
-  return new Promise<void>((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("PUT", params.url);
-
-    for (const [key, value] of Object.entries(params.headers ?? {})) {
-      request.setRequestHeader(key, value);
-    }
-
-    request.upload.onprogress = (event) => {
-      if (!params.onProgress) {
-        return;
-      }
-      const totalBytes = event.lengthComputable ? event.total : params.file.size;
-      params.onProgress(event.loaded, totalBytes);
-    };
-
-    request.onerror = () => {
-      reject(new Error("对象存储上传失败，请检查直传地址和 RustFS 配置"));
-    };
-    request.onabort = () => {
-      reject(new Error("对象存储上传已中止"));
-    };
-    request.onload = () => {
-      if (request.status < 200 || request.status >= 300) {
-        reject(new Error(`对象存储上传失败: ${request.status} ${request.statusText}`));
-        return;
-      }
-      params.onProgress?.(params.file.size, params.file.size);
-      resolve();
-    };
-
-    request.send(params.file);
-  });
 }

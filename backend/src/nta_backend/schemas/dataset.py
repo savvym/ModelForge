@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nta_backend.core.config import get_settings
 from nta_backend.schemas.object_store import (
     ObjectStoreDirectUploadInitResponse,
     ObjectStoreUploadResponse,
@@ -152,7 +153,7 @@ class DatasetDirectUploadFailedRequest(BaseModel):
 class PresignUploadRequest(BaseModel):
     dataset_id: str | None = None
     file_name: str
-    bucket: str = "nta-default"
+    bucket: str = Field(default_factory=lambda: get_settings().s3_bucket_dataset_raw)
 
 
 class PresignUploadResponse(BaseModel):

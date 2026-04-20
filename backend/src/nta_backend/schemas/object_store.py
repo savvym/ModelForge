@@ -76,6 +76,15 @@ class ObjectStoreDirectUploadInitRequest(BaseModel):
     relative_path: str | None = None
 
 
+class ObjectStoreDirectUploadStsCredentials(BaseModel):
+    tmp_secret_id: str
+    tmp_secret_key: str
+    session_token: str
+    start_time: int
+    expired_time: int
+    scope_limit: bool = True
+
+
 class ObjectStoreDirectUploadInitResponse(BaseModel):
     bucket: str
     object_key: str
@@ -84,6 +93,11 @@ class ObjectStoreDirectUploadInitResponse(BaseModel):
     size_bytes: int
     content_type: str | None = None
     expires_in: int
-    method: str = "PUT"
+    provider: Literal["presigned", "cos-sts"] = "presigned"
+    region: str | None = None
+    domain: str | None = None
+    protocol: str | None = None
+    sts: ObjectStoreDirectUploadStsCredentials | None = None
+    method: str | None = "PUT"
     headers: dict[str, str] = Field(default_factory=dict)
-    url: str
+    url: str | None = None
