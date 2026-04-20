@@ -7,7 +7,6 @@ import {
   Bot,
   Boxes,
   ClipboardCheck,
-  CircleHelp,
   Database,
   HardDrive,
   FolderCog,
@@ -19,7 +18,6 @@ import {
   Rocket,
   Search,
   Sparkles,
-  SquareArrowOutUpRight,
   WandSparkles
 } from "lucide-react";
 import { CURRENT_PROJECT_COOKIE } from "@/features/project/constants";
@@ -200,14 +198,18 @@ export function ConsoleShell({
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
-          <HeaderIconButton icon={CircleHelp} label="帮助" />
-          <HeaderIconButton icon={SquareArrowOutUpRight} label="打开新窗口" />
           <ThemeToggle />
-          <HeaderIconButton label="账户">
+          <Button
+            aria-label="账户"
+            className="size-8 rounded-md text-muted-foreground"
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
             <Avatar className="size-4">
               <AvatarFallback className="text-[9px] font-medium">MF</AvatarFallback>
             </Avatar>
-          </HeaderIconButton>
+          </Button>
         </div>
       </div>
 
@@ -284,20 +286,20 @@ export function ConsoleShell({
         </ScrollArea>
       </aside>
 
-      <main className="row-start-2 min-h-0 bg-transparent">
-        <div className="flex h-full min-h-0 flex-col">
+      <main className="row-start-2 min-h-0 min-w-0 bg-transparent">
+        <div className="flex h-full min-h-0 min-w-0 flex-col">
           <div
             className={cn(
-              "min-h-0 flex-1 bg-transparent",
+              "min-h-0 min-w-0 flex-1 bg-transparent",
               isStorageBrowserPage
                 ? "overflow-hidden pb-0 pl-3 pr-0 pt-2.5"
                 : "overflow-hidden pb-0 pl-4 pr-0 pt-3"
             )}
           >
             {isStorageBrowserPage || isCustomWorkbenchPage ? (
-              children
+              <div className="min-h-0 min-w-0">{children}</div>
             ) : (
-              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/70 shadow-sm backdrop-blur">
+              <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/70 shadow-sm backdrop-blur">
                 <ScrollArea className="console-workbench__scroll h-full min-h-0">
                   <div className="px-5 py-4 pb-12">
                     {children}

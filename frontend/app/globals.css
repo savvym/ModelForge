@@ -1,3 +1,5 @@
+@import "@uppy/status-bar/css/style.min.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -162,6 +164,11 @@
     position: relative;
     z-index: 1;
     overscroll-behavior: contain;
+  }
+
+  .console-workbench__scroll [data-radix-scroll-area-viewport] > div {
+    display: block !important;
+    min-width: 100%;
   }
 
   .console-shell .console-workbench__scroll,
@@ -455,5 +462,151 @@
   .light .console-shell [data-streamdown="code-block-actions"] {
     border-color: rgba(203, 213, 225, 0.9);
     background: rgba(248, 250, 252, 0.95);
+  }
+
+  .dataset-upload-uppy {
+    color: hsl(var(--foreground));
+  }
+
+  .dataset-upload-uppy .uppy-reset,
+  .dataset-upload-uppy .uppy-reset * {
+    box-sizing: border-box;
+  }
+
+  .dataset-upload-uppy .uppy-reset {
+    margin: 0;
+    padding: 0;
+    font: inherit;
+  }
+
+  .dataset-upload-uppy .uppy-reset img,
+  .dataset-upload-uppy .uppy-reset video {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] {
+    margin-block: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] > li {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    background: hsl(var(--muted) / 0.45);
+    padding: 0.625rem 0.75rem;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] > li > div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] p {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: hsl(var(--foreground));
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] p:first-of-type {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] p:last-of-type {
+    margin-left: auto;
+    min-width: 4.5rem;
+    flex: none;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] button {
+    display: none;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="thumbnail"] {
+    flex: none;
+    width: 32px !important;
+    height: 32px !important;
+    overflow: hidden;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(var(--secondary));
+  }
+
+  .dataset-upload-uppy [data-uppy-element="thumbnail"] img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="thumbnail"] svg {
+    width: 75%;
+    height: 75%;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] progress {
+    display: block;
+    width: 100%;
+    height: 2px;
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    background: hsl(var(--secondary));
+    margin-block: 0.5rem 0;
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] progress::-webkit-progress-bar {
+    background: hsl(var(--secondary));
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] progress::-webkit-progress-value {
+    background: hsl(var(--primary));
+  }
+
+  .dataset-upload-uppy [data-uppy-element="files-list"] progress::-moz-progress-bar {
+    background: hsl(var(--primary));
+  }
+
+  .dataset-upload-uppy .uppy-StatusBar {
+    margin-top: 0.75rem;
+    border-top: 1px solid hsl(var(--border));
+    background: transparent;
+    color: hsl(var(--foreground));
+  }
+
+  .dataset-upload-uppy .uppy-StatusBar::before {
+    display: none;
+  }
+
+  .dataset-upload-uppy .uppy-StatusBar-content,
+  .dataset-upload-uppy .uppy-StatusBar-status,
+  .dataset-upload-uppy .uppy-StatusBar-statusPrimary,
+  .dataset-upload-uppy .uppy-StatusBar-statusPrimary button,
+  .dataset-upload-uppy .uppy-StatusBar-statusIndicator,
+  .dataset-upload-uppy .uppy-StatusBar-actionBtn--done {
+    color: hsl(var(--foreground));
+  }
+
+  .dataset-upload-uppy .uppy-StatusBar-statusSecondary,
+  .dataset-upload-uppy .uppy-StatusBar-statusSecondaryHint,
+  .dataset-upload-uppy .uppy-StatusBar-serviceMsg {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .dataset-upload-uppy .uppy-StatusBar-actionBtn--retry {
+    color: hsl(var(--destructive));
   }
 }

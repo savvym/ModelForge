@@ -94,18 +94,18 @@ export function DatasetListTable({
       ) : null}
 
       <ConsoleListTableSurface>
-        <Table className="min-w-[1240px] table-fixed">
+        <Table className="w-full table-fixed">
           <TableHeader className="bg-transparent">
             <TableRow className="hover:bg-transparent">
               <TableHead className={stickyHeadClassName}>数据集名称</TableHead>
-              <TableHead className="w-[220px] min-w-[220px]">数据格式</TableHead>
-              <TableHead className="w-[110px] min-w-[110px]">最新版本</TableHead>
-              <TableHead className="w-[120px] min-w-[120px]">状态</TableHead>
-              <TableHead className="w-[110px] min-w-[110px]">数据量</TableHead>
-              <TableHead className="w-[150px] min-w-[150px]">更新时间</TableHead>
-              <TableHead className="w-[150px] min-w-[150px]">创建时间</TableHead>
-              <TableHead className="w-[120px] min-w-[120px]">创建者</TableHead>
-              <TableHead className="w-[170px] min-w-[170px]">操作</TableHead>
+              <TableHead className="w-[180px] min-w-[180px]">数据格式</TableHead>
+              <TableHead className="w-[88px] min-w-[88px]">最新版本</TableHead>
+              <TableHead className="w-[104px] min-w-[104px]">状态</TableHead>
+              <TableHead className="w-[80px] min-w-[80px]">数据量</TableHead>
+              <TableHead className="w-[120px] min-w-[120px]">更新时间</TableHead>
+              <TableHead className="hidden w-[120px] min-w-[120px] 2xl:table-cell">创建时间</TableHead>
+              <TableHead className="hidden w-[88px] min-w-[88px] 2xl:table-cell">创建者</TableHead>
+              <TableHead className="w-[120px] min-w-[120px]">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -150,8 +150,8 @@ export function DatasetListTable({
                     </TableCell>
                     <TableCell>{dataset.record_count?.toLocaleString() ?? "--"}</TableCell>
                     <TableCell>{formatDateTime(dataset.updated_at ?? dataset.created_at)}</TableCell>
-                    <TableCell>{formatDateTime(dataset.created_at)}</TableCell>
-                    <TableCell>{dataset.owner_name ?? "--"}</TableCell>
+                    <TableCell className="hidden 2xl:table-cell">{formatDateTime(dataset.created_at)}</TableCell>
+                    <TableCell className="hidden 2xl:table-cell">{dataset.owner_name ?? "--"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Link href={`/dataset/${dataset.id}/new-version`}>
@@ -235,10 +235,10 @@ function formatDateTime(value: string) {
 }
 
 const stickyHeadClassName =
-  "sticky left-0 z-20 w-[280px] min-w-[280px] bg-card/80 pr-5 backdrop-blur";
+  "sticky left-0 z-20 w-[240px] min-w-[240px] bg-card/80 pr-4 backdrop-blur";
 
 const stickyCellClassName = cn(
-  "sticky left-0 z-10 w-[280px] min-w-[280px] bg-card/80 pr-5 align-top",
+  "sticky left-0 z-10 w-[240px] min-w-[240px] bg-card/80 pr-4 align-top",
   "after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-card/80"
 );
 

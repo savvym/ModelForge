@@ -117,5 +117,5 @@ export function ConsoleListTableSurface({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn("overflow-hidden", className)}>{children}</div>;
+  return <div className={cn("min-w-0 w-full max-w-full", className)}>{children}</div>;
 }

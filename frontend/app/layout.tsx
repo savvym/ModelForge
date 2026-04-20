@@ -4,7 +4,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "NTA Platform",
-  description: "AI asset console built with Next.js and shadcn/ui."
+  description: "AI asset console built with Next.js and shadcn/ui.",
+  icons: {
+    icon: "/favicon.svg"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
