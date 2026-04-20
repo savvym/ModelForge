@@ -59,9 +59,9 @@ function formatDateTime(value?: string | null) {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-[rgba(15,23,32,0.68)] px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-2 text-sm text-slate-100">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-4">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm text-foreground">{value}</div>
     </div>
   );
 }
@@ -200,17 +200,17 @@ export function EvaluationLeaderboardDetailPanel({
   return (
     <div className="space-y-4">
       {actionError ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {actionError}
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2 text-sm text-slate-400">
-        <Link className="transition-colors hover:text-slate-200" href="/model/eval?tab=leaderboards">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Link className="transition-colors hover:text-foreground" href="/model/eval?tab=leaderboards">
           排行榜
         </Link>
-        <span className="text-slate-600">&gt;</span>
-        <span className="text-slate-100">{leaderboard.name}</span>
+        <span className="text-muted-foreground">&gt;</span>
+        <span className="text-foreground">{leaderboard.name}</span>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -223,11 +223,11 @@ export function EvaluationLeaderboardDetailPanel({
         />
       </div>
 
-      <div className="rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)]">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/80 px-4 py-3">
+      <div className="rounded-lg border border-border bg-card/80">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
           <div>
-            <div className="text-sm font-medium text-slate-100">排行榜明细</div>
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="text-sm font-medium text-foreground">排行榜明细</div>
+            <div className="mt-1 text-xs text-muted-foreground">
               当前按得分从高到低排序。同分时，最近完成的运行排在前面。
             </div>
           </div>
@@ -237,7 +237,7 @@ export function EvaluationLeaderboardDetailPanel({
               添加运行
             </Button>
             <Button
-              className="border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => setDeleteConfirmOpen(true)}
               size="sm"
               variant="outline"
@@ -269,19 +269,19 @@ export function EvaluationLeaderboardDetailPanel({
             ) : (
               leaderboard.entries.map((entry) => (
                 <TableRow key={entry.run_id}>
-                  <TableCell className="align-top text-slate-200">{entry.rank}</TableCell>
+                  <TableCell className="align-top text-foreground">{entry.rank}</TableCell>
                   <TableCell className="align-top">
                     <Link href={`/model/eval-detail/${entry.run_id}`}>
-                      <div className="font-medium text-slate-100 transition-colors hover:text-sky-300">
+                      <div className="font-medium text-foreground transition-colors hover:text-primary">
                         {entry.run_name}
                       </div>
                     </Link>
-                    <div className="mt-1 text-xs text-slate-500">{entry.run_id}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{entry.run_id}</div>
                   </TableCell>
-                  <TableCell className="align-top text-slate-300">{entry.model_name}</TableCell>
-                  <TableCell className="align-top text-slate-100">{entry.score.toFixed(4)}</TableCell>
-                  <TableCell className="align-top text-slate-400">{entry.metric_name}</TableCell>
-                  <TableCell className="align-top text-slate-400">{formatDateTime(entry.finished_at)}</TableCell>
+                  <TableCell className="align-top text-foreground">{entry.model_name}</TableCell>
+                  <TableCell className="align-top text-foreground">{entry.score.toFixed(4)}</TableCell>
+                  <TableCell className="align-top text-muted-foreground">{entry.metric_name}</TableCell>
+                  <TableCell className="align-top text-muted-foreground">{formatDateTime(entry.finished_at)}</TableCell>
                   <TableCell className="align-top">
                     <Button
                       disabled={removingRunId === entry.run_id}
@@ -331,7 +331,7 @@ export function EvaluationLeaderboardDetailPanel({
               </Button>
             </div>
 
-            <div className="rounded-xl border border-border">
+            <div className="rounded-lg border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -364,7 +364,7 @@ export function EvaluationLeaderboardDetailPanel({
                           <TableCell>
                             <input
                               checked={checked}
-                              className="h-4 w-4 rounded border-slate-700 bg-transparent text-sky-500"
+                              className="h-4 w-4 rounded border-border bg-transparent text-primary"
                               onChange={(event) => {
                                 setSelectedRunIds((current) => {
                                   if (event.target.checked) {
@@ -379,13 +379,13 @@ export function EvaluationLeaderboardDetailPanel({
                             />
                           </TableCell>
                           <TableCell className="align-top">
-                            <div className="font-medium text-slate-100">{run.run_name}</div>
-                            <div className="mt-1 text-xs text-slate-500">{run.run_id}</div>
+                            <div className="font-medium text-foreground">{run.run_name}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{run.run_id}</div>
                           </TableCell>
-                          <TableCell className="align-top text-slate-300">{run.model_name}</TableCell>
-                          <TableCell className="align-top text-slate-300">{run.score.toFixed(4)}</TableCell>
-                          <TableCell className="align-top text-slate-400">{run.metric_name}</TableCell>
-                          <TableCell className="align-top text-slate-400">{formatDateTime(run.finished_at)}</TableCell>
+                          <TableCell className="align-top text-foreground">{run.model_name}</TableCell>
+                          <TableCell className="align-top text-foreground">{run.score.toFixed(4)}</TableCell>
+                          <TableCell className="align-top text-muted-foreground">{run.metric_name}</TableCell>
+                          <TableCell className="align-top text-muted-foreground">{formatDateTime(run.finished_at)}</TableCell>
                         </TableRow>
                       );
                     })

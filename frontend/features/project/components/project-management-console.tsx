@@ -124,7 +124,7 @@ export function ProjectManagementConsole({
 
       <ConsoleListToolbar className="justify-start">
         <div className="relative min-w-[260px] flex-1 max-w-[420px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             className={consoleListSearchInputClassName}
             onChange={(event) => setKeyword(event.target.value)}
@@ -146,7 +146,7 @@ export function ProjectManagementConsole({
       </ConsoleListToolbar>
 
       {error ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -173,18 +173,18 @@ export function ProjectManagementConsole({
                   const deletable = canDeleteProject(project);
                   return (
                     <TableRow key={project.id}>
-                      <TableCell className="font-medium text-slate-100">
+                      <TableCell className="font-medium text-foreground">
                         <div className="flex items-center gap-2">
                           <span>{project.code}</span>
                           {isCurrent ? (
-                            <span className="rounded-full border border-slate-700 bg-[rgba(31,41,55,0.92)] px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] text-slate-200">
+                            <span className="rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] text-foreground">
                               当前
                             </span>
                           ) : null}
                         </div>
                       </TableCell>
                       <TableCell>{project.name}</TableCell>
-                      <TableCell className="text-slate-500">{project.description || "-"}</TableCell>
+                      <TableCell className="text-muted-foreground">{project.description || "-"}</TableCell>
                       <TableCell>{project.resource_count}</TableCell>
                       <TableCell>{project.member_count}</TableCell>
                       <TableCell>{formatDateTime(project.created_at)}</TableCell>
@@ -193,7 +193,7 @@ export function ProjectManagementConsole({
                         <div className="flex items-center gap-3 text-[13px]">
                           {!isCurrent ? (
                             <button
-                              className="text-slate-300 transition-colors hover:text-white"
+                              className="text-foreground transition-colors hover:text-primary"
                               onClick={() => {
                                 document.cookie = `${CURRENT_PROJECT_COOKIE}=${encodeURIComponent(project.id)}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
                                 router.refresh();
@@ -207,8 +207,8 @@ export function ProjectManagementConsole({
                             className={cn(
                               "inline-flex items-center gap-1 transition-colors",
                               deletable
-                                ? "text-red-600 hover:text-red-700"
-                                : "cursor-not-allowed text-zinc-300"
+                                ? "text-destructive hover:text-destructive"
+                                : "cursor-not-allowed text-foreground"
                             )}
                             disabled={!deletable}
                             onClick={() => setDeleteTarget(project)}
@@ -231,7 +231,7 @@ export function ProjectManagementConsole({
                 })
               ) : (
                 <TableRow>
-                  <TableCell className="py-12 text-center text-sm text-slate-500" colSpan={8}>
+                  <TableCell className="py-12 text-center text-sm text-muted-foreground" colSpan={8}>
                     暂无符合条件的项目。
                   </TableCell>
                 </TableRow>
@@ -242,31 +242,31 @@ export function ProjectManagementConsole({
       </ConsoleListTableSurface>
 
       <Sheet onOpenChange={setCreateOpen} open={createOpen}>
-        <SheetContent className="w-full gap-0 overflow-hidden border-l border-slate-800/85 bg-[linear-gradient(180deg,rgba(10,15,22,0.98),rgba(8,12,19,0.95))] px-0 py-0 text-slate-100 shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-xl [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-slate-500 [&>button]:hover:bg-slate-800/80 [&>button]:hover:text-slate-100">
-          <SheetHeader className="gap-3 border-b border-slate-800/80 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_38%),linear-gradient(180deg,rgba(15,23,34,0.94),rgba(10,15,22,0.92))] px-6 pb-5 pt-6 pr-12 sm:px-7">
-            <div className="inline-flex w-fit items-center rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-sky-200/90">
+        <SheetContent className="w-full gap-0 overflow-hidden border-l border-border bg-card px-0 py-0 text-foreground shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-xl [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-muted-foreground [&>button]:hover:bg-card/80 [&>button]:hover:text-foreground">
+          <SheetHeader className="gap-3 border-b border-border bg-card px-6 pb-5 pt-6 pr-12 sm:px-7">
+            <div className="inline-flex w-fit items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-primary/90">
               Project Scope
             </div>
-            <SheetTitle className="text-[22px] font-semibold tracking-[0.01em] text-slate-50">
+            <SheetTitle className="text-[22px] font-semibold tracking-[0.01em] text-foreground">
               新建项目
             </SheetTitle>
-            <SheetDescription className="max-w-[32rem] text-sm leading-6 text-slate-400">
+            <SheetDescription className="max-w-[32rem] text-sm leading-6 text-muted-foreground">
               创建后，数据集、模型、评测任务和文件资产都会在项目维度隔离。
             </SheetDescription>
           </SheetHeader>
 
           <div className="space-y-5 px-6 py-6 sm:px-7">
-            <div className="grid gap-3 rounded-[22px] border border-slate-800/80 bg-[rgba(15,21,30,0.78)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <div className="text-[12px] uppercase tracking-[0.16em] text-slate-500">
+            <div className="grid gap-3 rounded-[22px] border border-border bg-card/80 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="text-[12px] uppercase tracking-[0.16em] text-muted-foreground">
                 Naming
               </div>
-              <div className="text-sm leading-6 text-slate-300">
+              <div className="text-sm leading-6 text-foreground">
                 项目编码用于系统内识别和路径分组，建议保持简短、稳定、可读。
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-200" htmlFor="project-code">
+              <Label className="text-foreground" htmlFor="project-code">
                 项目名称
               </Label>
               <Input
@@ -277,11 +277,11 @@ export function ProjectManagementConsole({
                 placeholder="例如：team-alpha"
                 value={form.code}
               />
-              <div className="text-xs text-slate-500">仅支持小写字母、数字和连字符。</div>
+              <div className="text-xs text-muted-foreground">仅支持小写字母、数字和连字符。</div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-200" htmlFor="project-name">
+              <Label className="text-foreground" htmlFor="project-name">
                 显示名称
               </Label>
               <Input
@@ -295,7 +295,7 @@ export function ProjectManagementConsole({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-slate-200" htmlFor="project-description">
+              <Label className="text-foreground" htmlFor="project-description">
                 备注
               </Label>
               <Textarea
@@ -309,9 +309,9 @@ export function ProjectManagementConsole({
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-slate-800/80 pt-5">
+            <div className="flex items-center justify-end gap-2 border-t border-border pt-5">
               <Button
-                className="h-9 rounded-full border-slate-700/90 px-4 text-slate-200 hover:border-slate-600 hover:bg-slate-800/70"
+                className="h-9 rounded-full border-border px-4 text-foreground hover:border-border hover:bg-card/80"
                 onClick={() => setCreateOpen(false)}
                 type="button"
                 variant="outline"
@@ -344,7 +344,7 @@ export function ProjectManagementConsole({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteProject}
             >
               删除

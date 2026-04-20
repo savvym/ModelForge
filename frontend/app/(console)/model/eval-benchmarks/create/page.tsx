@@ -16,8 +16,8 @@ export default async function CreateBenchmarkPage() {
           ]}
         />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-50">创建 Benchmark</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">创建 Benchmark</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             创建自定义 Benchmark 时，需要先绑定一个评测维度。后续的 Benchmark Version 就是这个 Benchmark 的数据集版本。
           </p>
         </div>

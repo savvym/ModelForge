@@ -95,7 +95,7 @@ export function ProviderEditorForm({ mode, initialProvider }: ProviderEditorForm
     <div className="space-y-5">
       <div className="space-y-2">
         <ModelRegistryBreadcrumb current={mode === "edit" ? "编辑 Provider" : "增加 Provider"} />
-        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-zinc-950">
+        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-foreground">
           {mode === "edit" ? "编辑 Provider" : "增加 Provider"}
         </h1>
       </div>
@@ -104,14 +104,14 @@ export function ProviderEditorForm({ mode, initialProvider }: ProviderEditorForm
         <div
           className={cn(
             "rounded-md border px-3 py-2 text-sm",
-            "border-zinc-200 bg-zinc-50 text-zinc-700"
+            "border-border bg-card text-muted-foreground"
           )}
         >
           {feedback.text}
         </div>
       ) : null}
 
-      <Card className="rounded-md border-zinc-200 shadow-sm">
+      <Card className="rounded-md border-border shadow-sm">
         <CardHeader className="pb-4">
           <CardTitle className="text-base">
             {mode === "edit" ? "Provider 配置" : "新建 Provider"}

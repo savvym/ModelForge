@@ -34,7 +34,7 @@ export function BenchmarkVersionTable({
       <TableBody>
         {empty ? (
           <TableRow className="hover:bg-transparent">
-            <TableCell className="py-12 text-center text-sm text-slate-500" colSpan={8}>
+            <TableCell className="py-12 text-center text-sm text-muted-foreground" colSpan={8}>
               当前 Benchmark 还没有注册 Version。
             </TableCell>
           </TableRow>
@@ -42,22 +42,22 @@ export function BenchmarkVersionTable({
           benchmark.versions.map((version) => (
             <TableRow key={version.id}>
               <TableCell className="min-w-[240px] align-top">
-                <div className="font-medium text-slate-100">{version.display_name}</div>
-                <div className="mt-1 font-mono text-xs text-slate-500">{version.id}</div>
+                <div className="font-medium text-foreground">{version.display_name}</div>
+                <div className="mt-1 font-mono text-xs text-muted-foreground">{version.id}</div>
               </TableCell>
-              <TableCell className="max-w-[360px] whitespace-pre-wrap text-sm leading-6 text-slate-400">
+              <TableCell className="max-w-[360px] whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
                 {version.description}
               </TableCell>
-              <TableCell className="max-w-[420px] break-all text-xs leading-6 text-slate-400">
+              <TableCell className="max-w-[420px] break-all text-xs leading-6 text-muted-foreground">
                 {version.dataset_source_uri || "--"}
               </TableCell>
-              <TableCell className="align-top text-slate-300">
+              <TableCell className="align-top text-foreground">
                 {version.sample_count.toLocaleString()}
               </TableCell>
-              <TableCell className="align-top text-slate-300">
+              <TableCell className="align-top text-foreground">
                 {version.eval_job_count.toLocaleString()}
               </TableCell>
-              <TableCell className="align-top text-slate-400">
+              <TableCell className="align-top text-muted-foreground">
                 {formatDateTime(version.latest_eval_at)}
               </TableCell>
               <TableCell className="align-top">
@@ -67,7 +67,7 @@ export function BenchmarkVersionTable({
               </TableCell>
               <TableCell className="text-right align-top">
                 <Link
-                  className="text-sm text-sky-300 transition-colors hover:text-sky-200"
+                  className="text-sm text-primary transition-colors hover:text-primary"
                   href={`/model/eval-benchmarks/${benchmark.name}/versions/${version.id}/edit`}
                 >
                   编辑

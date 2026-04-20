@@ -276,7 +276,7 @@ export function EvalTemplateCreateForm() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs text-muted-foreground">已选择评测类型</p>
-            <div className="mt-1 text-sm font-medium text-slate-100">
+            <div className="mt-1 text-sm font-medium text-foreground">
               {getTemplateTypeLabel(selectedTemplateType)}
             </div>
           </div>
@@ -320,7 +320,7 @@ export function EvalTemplateCreateForm() {
         {requiresPresetSelection ? <span>预设：{getPresetLabel(selectedPresetId)}</span> : null}
         <button
           type="button"
-          className="text-sky-400 hover:underline"
+          className="text-primary hover:underline"
           onClick={() => {
             if (requiresPresetSelection) {
               setSelectedPresetId(null);

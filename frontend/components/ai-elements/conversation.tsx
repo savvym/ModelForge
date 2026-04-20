@@ -69,11 +69,11 @@ export function ConversationEmptyState({
     >
       {children ?? (
         <>
-          {icon ? <div className="text-slate-400">{icon}</div> : null}
+          {icon ? <div className="text-muted-foreground">{icon}</div> : null}
           <div className="space-y-2">
-            <h3 className="text-lg font-medium text-slate-100">{title}</h3>
+            <h3 className="text-lg font-medium text-foreground">{title}</h3>
             {description ? (
-              <p className="text-sm leading-6 text-slate-500">{description}</p>
+              <p className="text-sm leading-6 text-muted-foreground">{description}</p>
             ) : null}
           </div>
         </>
@@ -101,7 +101,7 @@ export function ConversationScrollButton({
   return (
     <Button
       className={cn(
-        "absolute bottom-4 left-1/2 h-9 w-9 -translate-x-1/2 rounded-full border border-white/10 bg-[rgba(10,14,21,0.92)] p-0 text-slate-300 shadow-[0_16px_40px_rgba(2,6,23,0.28)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white",
+        "absolute bottom-4 left-1/2 h-9 w-9 -translate-x-1/2 rounded-full border border-border bg-card/90 p-0 text-foreground shadow-lg hover:bg-accent hover:text-accent-foreground",
         className
       )}
       onClick={handleScrollToBottom}

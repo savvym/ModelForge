@@ -65,7 +65,7 @@ export default async function ModelProbePage({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-800/80">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border">
         <div className="flex min-w-0 items-center gap-5">
           {probeTabs.map((tab) => (
             <Link
@@ -74,8 +74,8 @@ export default async function ModelProbePage({
               className={cn(
                 "-mb-px inline-flex h-9 items-center border-b-2 px-0.5 text-[13px] transition-colors",
                 currentTab === tab.key
-                  ? "border-slate-100 font-medium text-slate-50"
-                  : "border-transparent text-slate-500 hover:text-slate-200"
+                  ? "border-primary font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               )}
               href={buildProbeQuery({ tab: tab.key, q: query })}
               prefetch
@@ -104,8 +104,8 @@ export default async function ModelProbePage({
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <h2 className="text-base font-semibold text-slate-100">Probe 节点</h2>
-              <p className="text-sm text-slate-400">
+              <h2 className="text-base font-semibold text-foreground">Probe 节点</h2>
+              <p className="text-sm text-muted-foreground">
                 左侧选择节点，右侧查看该节点的设备信息、最近心跳和当前状态。
               </p>
             </div>
@@ -141,8 +141,8 @@ export default async function ModelProbePage({
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <h2 className="text-base font-semibold text-slate-100">Probe 任务</h2>
-              <p className="text-sm text-slate-400">
+              <h2 className="text-base font-semibold text-foreground">Probe 任务</h2>
+              <p className="text-sm text-muted-foreground">
                 创建后的任务会被目标 Probe 领取执行；过期的 running 任务也会重新进入 claim 流程。
               </p>
             </div>

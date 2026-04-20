@@ -92,7 +92,7 @@ export default async function OverviewPage() {
             </div>
 
             {currentProject ? (
-              <div className="rounded-xl border border-border/60 bg-background/30 p-5">
+              <div className="rounded-lg border border-border/60 bg-background/30 p-5">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="text-lg font-semibold text-foreground">{currentProject.name}</div>
                   <Badge className="uppercase tracking-[0.14em]" variant="outline">

@@ -22,7 +22,7 @@ export function ProbeListTable({ probes }: { probes: ProbeSummary[] }) {
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={6}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={6}>
                 当前还没有 Probe 节点。先启动并注册一个 probe agent，它就会出现在这里。
               </TableCell>
             </TableRow>
@@ -35,9 +35,9 @@ export function ProbeListTable({ probes }: { probes: ProbeSummary[] }) {
               return (
                 <TableRow key={probe.id}>
                   <TableCell className="min-w-[260px] align-top">
-                    <div className="font-medium text-slate-100">{probe.display_name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{probe.name}</div>
-                    <div className="mt-1 text-xs text-slate-600">{probe.id}</div>
+                    <div className="font-medium text-foreground">{probe.display_name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{probe.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{probe.id}</div>
                   </TableCell>
                   <TableCell>
                     <Badge className={statusMeta.className} variant={statusMeta.variant}>
@@ -45,8 +45,8 @@ export function ProbeListTable({ probes }: { probes: ProbeSummary[] }) {
                     </Badge>
                   </TableCell>
                   <TableCell className="min-w-[220px]">
-                    <div className="text-sm text-slate-300">{location}</div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="text-sm text-foreground">{location}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
                       {probe.network_type}
                       {probe.ip_address ? ` · ${probe.ip_address}` : ""}
                     </div>
@@ -58,14 +58,14 @@ export function ProbeListTable({ probes }: { probes: ProbeSummary[] }) {
                       {tags.length ? (
                         tags.map((tag) => (
                           <span
-                            className="rounded-full border border-slate-800/80 bg-slate-900/70 px-2 py-0.5 text-xs text-slate-300"
+                            className="rounded-full border border-border bg-card/80 px-2 py-0.5 text-xs text-foreground"
                             key={`${probe.id}-${tag}`}
                           >
                             {tag}
                           </span>
                         ))
                       ) : (
-                        <span className="text-sm text-slate-500">--</span>
+                        <span className="text-sm text-muted-foreground">--</span>
                       )}
                     </div>
                   </TableCell>
@@ -104,7 +104,7 @@ function getProbeStatusMeta(status: string) {
   return {
     label: status,
     variant: "outline" as const,
-    className: "border-slate-700 bg-slate-900/70 text-slate-300"
+    className: "border-border bg-card/80 text-foreground"
   };
 }
 

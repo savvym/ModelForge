@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator
+} from "@/components/ui/breadcrumb";
 
 type BreadcrumbItem = {
   label: string;
@@ -8,29 +15,27 @@ type BreadcrumbItem = {
 
 export function ConsoleBreadcrumb({ items }: { items: BreadcrumbItem[] }) {
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className="flex flex-wrap items-center gap-1.5 text-[13px] text-slate-500"
-    >
+    <Breadcrumb>
+      <BreadcrumbList className="text-[13px] text-muted-foreground">
       {items.map((item, index) => {
         const isLast = index === items.length - 1;
 
         return (
-          <div className="flex items-center gap-1.5" key={`${item.label}-${index}`}>
+          <BreadcrumbItem key={`${item.label}-${index}`}>
             {item.href && !isLast ? (
-              <Link
-                className="transition-colors hover:text-slate-200"
-                href={item.href}
-              >
-                {item.label}
-              </Link>
+              <BreadcrumbLink asChild className="hover:text-foreground">
+                <Link href={item.href}>{item.label}</Link>
+              </BreadcrumbLink>
             ) : (
-              <span className={isLast ? "text-slate-300" : undefined}>{item.label}</span>
+              <BreadcrumbPage className={isLast ? "text-foreground" : "text-muted-foreground"}>
+                {item.label}
+              </BreadcrumbPage>
             )}
-            {!isLast ? <ChevronRight className="h-3.5 w-3.5 text-slate-600" /> : null}
-          </div>
+            {!isLast ? <BreadcrumbSeparator className="text-muted-foreground" /> : null}
+          </BreadcrumbItem>
         );
       })}
-    </nav>
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }

@@ -77,7 +77,7 @@ export function EvaluationLeaderboardListTable({
   if (items.length === 0) {
     return (
       <ConsoleListTableSurface>
-        <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-slate-500">
+        <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
           <p>当前还没有排行榜。先创建一组 completed runs 的榜单，再持续追加新的评测结果。</p>
           <Link href="/model/eval-leaderboards/create">
             <Button size="sm" variant="outline">
@@ -92,7 +92,7 @@ export function EvaluationLeaderboardListTable({
   return (
     <div className="space-y-3">
       {error ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -116,30 +116,30 @@ export function EvaluationLeaderboardListTable({
               <TableRow key={leaderboard.id}>
                 <TableCell className="min-w-[240px] align-top">
                   <Link href={`/model/eval-leaderboards/${leaderboard.id}`}>
-                    <div className="font-medium text-slate-100 transition-colors hover:text-sky-300">
+                    <div className="font-medium text-foreground transition-colors hover:text-primary">
                       {leaderboard.name}
                     </div>
                   </Link>
                   {leaderboard.description ? (
-                    <div className="mt-1 line-clamp-2 text-xs text-slate-500">{leaderboard.description}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{leaderboard.description}</div>
                   ) : null}
                 </TableCell>
                 <TableCell className="align-top">
-                  <div className="text-slate-200">{leaderboard.target_display_name}</div>
-                  <div className="mt-1 font-mono text-xs text-slate-500">
+                  <div className="text-foreground">{leaderboard.target_display_name}</div>
+                  <div className="mt-1 font-mono text-xs text-muted-foreground">
                     {leaderboard.target_kind} / {leaderboard.target_name}
                   </div>
                 </TableCell>
                 <TableCell className="align-top">
-                  <div className="text-slate-200">{leaderboard.target_version_display_name}</div>
-                  <div className="mt-1 font-mono text-xs text-slate-500">
+                  <div className="text-foreground">{leaderboard.target_version_display_name}</div>
+                  <div className="mt-1 font-mono text-xs text-muted-foreground">
                     {leaderboard.target_version}
                   </div>
                 </TableCell>
-                <TableCell className="align-top text-slate-300">{leaderboard.score_metric_name}</TableCell>
-                <TableCell className="align-top text-slate-300">{leaderboard.run_count.toLocaleString()}</TableCell>
-                <TableCell className="align-top text-slate-400">{formatDateTime(leaderboard.latest_run_at)}</TableCell>
-                <TableCell className="align-top text-slate-400">{formatDateTime(leaderboard.created_at)}</TableCell>
+                <TableCell className="align-top text-foreground">{leaderboard.score_metric_name}</TableCell>
+                <TableCell className="align-top text-foreground">{leaderboard.run_count.toLocaleString()}</TableCell>
+                <TableCell className="align-top text-muted-foreground">{formatDateTime(leaderboard.latest_run_at)}</TableCell>
+                <TableCell className="align-top text-muted-foreground">{formatDateTime(leaderboard.created_at)}</TableCell>
                 <TableCell className="align-top">
                   <div className="flex flex-wrap gap-2">
                     <Link href="/model/eval?tab=runs&create=1">

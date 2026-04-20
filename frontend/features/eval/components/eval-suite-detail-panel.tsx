@@ -24,9 +24,9 @@ type SpecVersionLookup = Record<
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-[rgba(15,23,32,0.68)] px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-2 text-sm text-slate-100">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-4">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm text-foreground">{value}</div>
     </div>
   );
 }
@@ -43,10 +43,10 @@ export function EvalSuiteDetailPanel({
       <section className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-slate-50">{suite.display_name}</h1>
+            <h1 className="text-xl font-semibold text-foreground">{suite.display_name}</h1>
             <Badge variant="outline">{suite.name}</Badge>
           </div>
-          <p className="max-w-3xl text-sm leading-6 text-slate-400">
+          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
             {suite.description || "当前评测套件没有额外描述。"}
           </p>
         </div>
@@ -80,18 +80,18 @@ export function EvalSuiteDetailPanel({
       <div className="space-y-4">
         {suite.versions.map((version) => (
           <Card
-            className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none"
+            className="border-border bg-card/80 shadow-none"
             key={version.id}
           >
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-base text-slate-50">{version.display_name}</CardTitle>
+                    <CardTitle className="text-base text-foreground">{version.display_name}</CardTitle>
                     <Badge variant="outline">{version.version}</Badge>
                     {version.enabled ? <Badge variant="outline">启用中</Badge> : <Badge variant="outline">已停用</Badge>}
                   </div>
-                  <p className="max-w-3xl text-sm leading-6 text-slate-400">
+                  <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
                     {version.description || "当前版本没有额外描述。"}
                   </p>
                 </div>
@@ -99,7 +99,7 @@ export function EvalSuiteDetailPanel({
               </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-2xl border border-slate-800/80">
+              <div className="overflow-hidden rounded-lg border border-border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -116,28 +116,28 @@ export function EvalSuiteDetailPanel({
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="min-w-[220px] align-top">
-                            <div className="font-medium text-slate-100">{item.display_name}</div>
-                            <div className="mt-1 text-xs text-slate-500">{item.item_key}</div>
+                            <div className="font-medium text-foreground">{item.display_name}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{item.item_key}</div>
                           </TableCell>
-                          <TableCell className="text-sm text-slate-300">{item.group_name || "--"}</TableCell>
+                          <TableCell className="text-sm text-foreground">{item.group_name || "--"}</TableCell>
                           <TableCell className="min-w-[240px]">
                             {linkedSpec ? (
                               <div className="space-y-1">
                                 <Link
-                                  className="text-sm text-slate-100 transition-colors hover:text-[#8fffcf]"
+                                  className="text-sm text-foreground transition-colors hover:text-primary"
                                   href={`/model/eval-specs/${encodeURIComponent(linkedSpec.specName)}`}
                                 >
                                   {linkedSpec.specDisplayName}
                                 </Link>
-                                <div className="text-xs text-slate-500">
+                                <div className="text-xs text-muted-foreground">
                                   {linkedSpec.versionDisplayName} · {linkedSpec.version}
                                 </div>
                               </div>
                             ) : (
-                              <div className="text-sm text-slate-500">{item.spec_version_id}</div>
+                              <div className="text-sm text-muted-foreground">{item.spec_version_id}</div>
                             )}
                           </TableCell>
-                          <TableCell className="text-sm text-slate-300">{item.weight}</TableCell>
+                          <TableCell className="text-sm text-foreground">{item.weight}</TableCell>
                           <TableCell>
                             <Badge variant="outline">{item.enabled ? "启用中" : "已停用"}</Badge>
                           </TableCell>

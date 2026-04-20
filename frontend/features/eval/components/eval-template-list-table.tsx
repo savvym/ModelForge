@@ -41,7 +41,7 @@ export function EvalTemplateListTable({
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={8}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={8}>
                 暂无评测模板。点击右上角「创建模板」开始。
               </TableCell>
             </TableRow>
@@ -50,11 +50,11 @@ export function EvalTemplateListTable({
               <TableRow key={template.id}>
                 <TableCell className="min-w-[200px] align-top">
                   <Link className="block" href={`/model/eval-templates/${template.name}`}>
-                    <div className="font-medium text-slate-100 transition-colors hover:text-sky-300">
+                    <div className="font-medium text-foreground transition-colors hover:text-primary">
                       {template.name}
                     </div>
                     {template.description ? (
-                      <div className="mt-1 line-clamp-2 text-xs text-slate-500">
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                         {template.description}
                       </div>
                     ) : null}
@@ -63,13 +63,13 @@ export function EvalTemplateListTable({
                 <TableCell className="align-top">
                   <Badge variant="outline">v{template.version}</Badge>
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {getTemplateTypeLabel(template.template_type)}
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {getPresetLabel(template.preset_id)}
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {OUTPUT_TYPE_LABELS[template.output_type] ?? template.output_type}
                 </TableCell>
                 <TableCell className="align-top">
@@ -81,10 +81,10 @@ export function EvalTemplateListTable({
                     ))}
                   </div>
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {template.model ?? "--"}
                 </TableCell>
-                <TableCell className="align-top text-slate-400">
+                <TableCell className="align-top text-muted-foreground">
                   {formatDateTime(template.created_at)}
                 </TableCell>
               </TableRow>

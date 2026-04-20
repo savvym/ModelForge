@@ -31,14 +31,14 @@ export default async function ModelEvalBenchmarkDetailPage({
             ]}
           />
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-[28px] font-semibold tracking-tight text-slate-50">
+            <h1 className="text-[28px] font-semibold tracking-tight text-foreground">
               {benchmark.display_name}
             </h1>
             <Badge variant={benchmark.source_type === "builtin" ? "outline" : "secondary"}>
               {benchmark.source_type === "builtin" ? "平台预置" : "自定义"}
             </Badge>
           </div>
-          <p className="max-w-4xl text-sm leading-6 text-slate-400">
+          <p className="max-w-4xl text-sm leading-6 text-muted-foreground">
             {benchmark.description || "当前 Benchmark 还没有额外描述。"}
           </p>
         </div>

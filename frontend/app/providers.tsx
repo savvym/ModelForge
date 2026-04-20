@@ -2,8 +2,23 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { DatasetUploadManagerProvider } from "@/features/dataset/components/dataset-upload-manager";
+
+function AppToaster() {
+  const { resolvedTheme } = useTheme();
+
+  return (
+    <Toaster
+      position="top-right"
+      richColors
+      theme={resolvedTheme === "light" ? "light" : "dark"}
+    />
+  );
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -19,11 +34,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <DatasetUploadManagerProvider>
-        {children}
-        <Toaster richColors position="top-right" />
-      </DatasetUploadManagerProvider>
-    </QueryClientProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="dark"
+      disableTransitionOnChange
+      enableSystem={false}
+    >
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider delayDuration={200}>
+          <DatasetUploadManagerProvider>
+            {children}
+            <AppToaster />
+          </DatasetUploadManagerProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

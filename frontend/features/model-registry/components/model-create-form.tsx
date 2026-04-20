@@ -169,7 +169,7 @@ export function ModelCreateForm({
     <div className="space-y-5">
       <div className="space-y-2">
         <ModelRegistryBreadcrumb current={mode === "edit" ? "编辑 Model" : "增加 Model"} />
-        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-zinc-950">
+        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-foreground">
           {mode === "edit" ? "编辑 Model" : "增加 Model"}
         </h1>
       </div>
@@ -178,14 +178,14 @@ export function ModelCreateForm({
         <div
           className={cn(
             "rounded-md border px-3 py-2 text-sm",
-            "border-zinc-200 bg-zinc-50 text-zinc-700"
+            "border-border bg-card text-muted-foreground"
           )}
         >
           {feedback.text}
         </div>
       ) : null}
 
-      <Card className="rounded-md border-zinc-200 shadow-sm">
+      <Card className="rounded-md border-border shadow-sm">
         <CardHeader className="pb-4">
           <CardTitle className="text-base">{mode === "edit" ? "模型配置" : "模型信息"}</CardTitle>
           <CardDescription>
@@ -246,7 +246,7 @@ export function ModelCreateForm({
             />
           </div>
           {mode === "edit" && initialModel?.is_provider_managed ? (
-            <div className="lg:col-span-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
+            <div className="lg:col-span-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
               当前模型由 Provider 同步生成。下次执行“同步模型”后，模型名称、模型 ID、Vendor、
               API 格式等字段可能会被上游配置覆盖。
             </div>

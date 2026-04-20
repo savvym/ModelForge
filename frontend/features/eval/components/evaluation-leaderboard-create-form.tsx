@@ -184,7 +184,7 @@ export function EvaluationLeaderboardCreateForm({
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
       {error ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -298,7 +298,7 @@ export function EvaluationLeaderboardCreateForm({
           </div>
         </div>
 
-        <div className="rounded-xl border border-border">
+        <div className="rounded-lg border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -331,19 +331,19 @@ export function EvaluationLeaderboardCreateForm({
                       <TableCell>
                         <input
                           checked={checked}
-                          className="h-4 w-4 rounded border-slate-700 bg-transparent text-sky-500"
+                          className="h-4 w-4 rounded border-border bg-transparent text-primary"
                           onChange={(event) => toggleRun(run.run_id, event.target.checked)}
                           type="checkbox"
                         />
                       </TableCell>
                       <TableCell className="align-top">
-                        <div className="font-medium text-slate-100">{run.run_name}</div>
-                        <div className="mt-1 font-mono text-xs text-slate-500">{run.run_id}</div>
+                        <div className="font-medium text-foreground">{run.run_name}</div>
+                        <div className="mt-1 font-mono text-xs text-muted-foreground">{run.run_id}</div>
                       </TableCell>
-                      <TableCell className="align-top text-slate-300">{run.model_name}</TableCell>
-                      <TableCell className="align-top text-slate-300">{run.score.toFixed(4)}</TableCell>
-                      <TableCell className="align-top text-slate-400">{run.metric_name}</TableCell>
-                      <TableCell className="align-top text-slate-400">{formatDateTime(run.finished_at)}</TableCell>
+                      <TableCell className="align-top text-foreground">{run.model_name}</TableCell>
+                      <TableCell className="align-top text-foreground">{run.score.toFixed(4)}</TableCell>
+                      <TableCell className="align-top text-muted-foreground">{run.metric_name}</TableCell>
+                      <TableCell className="align-top text-muted-foreground">{formatDateTime(run.finished_at)}</TableCell>
                     </TableRow>
                   );
                 })

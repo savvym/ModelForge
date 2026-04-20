@@ -33,7 +33,7 @@ export function ProbeTaskListTable({
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={7}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={7}>
                 当前还没有 Probe 任务。你可以先创建一个压测任务，让在线 Probe 去拉取执行。
               </TableCell>
             </TableRow>
@@ -46,16 +46,16 @@ export function ProbeTaskListTable({
               return (
                 <TableRow key={task.id}>
                   <TableCell className="min-w-[300px] align-top">
-                    <div className="font-medium text-slate-100">{task.name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{task.task_type}</div>
+                    <div className="font-medium text-foreground">{task.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{task.task_type}</div>
                     {getTaskProviderName(task) ? (
-                      <div className="mt-1 text-xs text-slate-500">
+                      <div className="mt-1 text-xs text-muted-foreground">
                         Provider · {getTaskProviderName(task)}
                       </div>
                     ) : null}
-                    <div className="mt-1 text-xs text-slate-600">{task.id}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{task.id}</div>
                     {task.error_message ? (
-                      <div className="mt-2 line-clamp-2 text-xs text-rose-300">
+                      <div className="mt-2 line-clamp-2 text-xs text-destructive">
                         {task.error_message}
                       </div>
                     ) : null}
@@ -67,9 +67,9 @@ export function ProbeTaskListTable({
                     </Badge>
                   </TableCell>
                   <TableCell className="min-w-[220px]">
-                    <div className="text-sm text-slate-300">{progress.label}</div>
+                    <div className="text-sm text-foreground">{progress.label}</div>
                     {progress.summary ? (
-                      <div className="mt-1 line-clamp-2 text-xs text-slate-500">{progress.summary}</div>
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{progress.summary}</div>
                     ) : null}
                   </TableCell>
                   <TableCell>{task.attempt_count}</TableCell>

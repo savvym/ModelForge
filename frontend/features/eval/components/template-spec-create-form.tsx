@@ -134,7 +134,7 @@ export function TemplateSpecCreateForm() {
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -170,7 +170,7 @@ function parseJsonObject(value: string, label: string) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <Label className="text-sm text-slate-200">{label}</Label>
+      <Label className="text-sm text-foreground">{label}</Label>
       {children}
     </div>
   );

@@ -14,7 +14,7 @@ export function ProbeNodeList({
 }) {
   if (probes.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-10 text-sm text-slate-500">
+      <div className="rounded-lg border border-dashed border-border px-4 py-10 text-sm text-muted-foreground">
         当前还没有 Probe 节点。先启动并注册一个 probe agent，它就会出现在这里。
       </div>
     );
@@ -28,10 +28,10 @@ export function ProbeNodeList({
         return (
           <Link
             className={cn(
-              "block rounded-2xl border px-4 py-3 transition-colors",
+              "block rounded-lg border px-4 py-3 transition-colors",
               active
-                ? "border-sky-400/40 bg-[rgba(17,28,42,0.9)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                : "border-slate-800/80 bg-[rgba(10,15,22,0.72)] hover:border-slate-700/90 hover:bg-[rgba(14,20,29,0.84)]"
+                ? "border-primary/40 bg-muted/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                : "border-border bg-card/80 hover:border-border hover:bg-card/80"
             )}
             href={buildNodeHref({ probeId: probe.id, q: query })}
             key={probe.id}
@@ -39,19 +39,19 @@ export function ProbeNodeList({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate font-medium text-slate-100">{probe.display_name}</div>
-                <div className="mt-1 truncate text-xs text-slate-500">{probe.name}</div>
+                <div className="truncate font-medium text-foreground">{probe.display_name}</div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">{probe.name}</div>
               </div>
               <Badge className={statusMeta.className} variant={statusMeta.variant}>
                 {statusMeta.label}
               </Badge>
             </div>
 
-            <div className="mt-3 space-y-1.5 text-xs text-slate-400">
+            <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
               <div className="truncate">{formatProbeLocation(probe)}</div>
               <div className="truncate">{probe.agent_version ?? "--"} · {probe.network_type}</div>
               <div className="truncate">最近心跳 {formatDateTime(probe.last_heartbeat)}</div>
-              <div className="truncate text-slate-600">{probe.id}</div>
+              <div className="truncate text-muted-foreground">{probe.id}</div>
             </div>
           </Link>
         );
@@ -95,7 +95,7 @@ function getProbeStatusMeta(status: string) {
   return {
     label: status,
     variant: "outline" as const,
-    className: "border-slate-700 bg-slate-900/70 text-slate-300"
+    className: "border-border bg-card/80 text-foreground"
   };
 }
 

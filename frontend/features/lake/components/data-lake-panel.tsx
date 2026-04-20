@@ -366,17 +366,17 @@ export function DataLakePanel({
       />
 
       {uploadQueueSummary ? (
-        <Card className="border-slate-800/80 bg-[rgba(12,18,27,0.78)]">
-          <CardHeader className="space-y-0 border-b border-slate-800/80 pb-3">
+        <Card className="border-border bg-card/80">
+          <CardHeader className="space-y-0 border-b border-border pb-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <CardTitle className="text-sm text-slate-100">当前投递</CardTitle>
-                <div className="mt-1 text-xs text-slate-500">
+                <CardTitle className="text-sm text-foreground">当前投递</CardTitle>
+                <div className="mt-1 text-xs text-muted-foreground">
                   {buildUploadQueueSummaryLabel(uploadQueueSummary)}
                 </div>
               </div>
               <Button
-                className="h-7 w-7 rounded-md p-0 text-slate-400"
+                className="h-7 w-7 rounded-md p-0 text-muted-foreground"
                 onClick={() => setUploadQueueExpanded((value) => !value)}
                 size="sm"
                 type="button"
@@ -393,7 +393,7 @@ export function DataLakePanel({
           <CardContent className="space-y-2">
             {notice ? <div className="text-xs text-emerald-300">{notice}</div> : null}
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span className="truncate">
                   {uploadQueueSummary.activeItem
                     ? `${renderUploadQueueStatusLabel(uploadQueueSummary.activeItem.status)} · ${uploadQueueSummary.activeItem.label}`
@@ -406,7 +406,7 @@ export function DataLakePanel({
                   )}
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-slate-900">
+              <div className="h-1.5 rounded-full bg-card/80">
                 <div
                   className="h-full rounded-full bg-emerald-300 transition-[width] duration-200"
                   style={{
@@ -417,7 +417,7 @@ export function DataLakePanel({
                   }}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span>
                   {uploadQueueSummary.completedFiles}/{uploadQueueSummary.totalFiles} 个文件
                   {uploadQueueSummary.failedFiles
@@ -435,21 +435,21 @@ export function DataLakePanel({
                 {uploadQueue.map((item) => (
                   <div
                     key={item.id}
-                    className="rounded-xl border border-slate-800/80 bg-slate-950/60 px-3 py-2"
+                    className="rounded-lg border border-border bg-card/80 px-3 py-2"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm text-slate-100">{item.label}</div>
-                        <div className="text-xs text-slate-500">
+                        <div className="truncate text-sm text-foreground">{item.label}</div>
+                        <div className="text-xs text-muted-foreground">
                           {renderUploadQueueStatusLabel(item.status)}
                           {item.error ? ` · ${item.error}` : ""}
                         </div>
                       </div>
-                      <div className="text-xs text-slate-400">
+                      <div className="text-xs text-muted-foreground">
                         {formatUploadPercent(item.uploadedBytes, item.sizeBytes)}
                       </div>
                     </div>
-                    <div className="mt-2 h-1.5 rounded-full bg-slate-900">
+                    <div className="mt-2 h-1.5 rounded-full bg-card/80">
                       <div
                         className={cn(
                           "h-full rounded-full transition-[width] duration-200",
@@ -462,7 +462,7 @@ export function DataLakePanel({
                 ))}
               </div>
             ) : (
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-muted-foreground">
                 大批量文件默认折叠显示，展开可查看每个文件的上传进度。
               </div>
             )}
@@ -470,14 +470,14 @@ export function DataLakePanel({
         </Card>
       ) : null}
 
-      <Card className="border-slate-800/80 bg-[rgba(12,18,27,0.78)]">
+      <Card className="border-border bg-card/80">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-slate-100">最近批次</CardTitle>
+          <CardTitle className="text-sm text-foreground">最近批次</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           <Table>
             <TableHeader className="bg-transparent">
-              <TableRow className="border-slate-800/80 hover:bg-transparent">
+              <TableRow className="border-border hover:bg-transparent">
                 <TableHead>批次</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>文件数</TableHead>
@@ -490,22 +490,22 @@ export function DataLakePanel({
                 <EmptyRow colSpan={5} message="还没有数据湖投递记录" />
               ) : (
                 initialBatches.slice(0, 8).map((batch) => (
-                  <TableRow key={batch.id} className="border-slate-800/70">
+                  <TableRow key={batch.id} className="border-border">
                     <TableCell className="align-top">
                       <div className="space-y-0.5">
-                        <div className="font-medium text-slate-100">{batch.name}</div>
-                        <div className="text-xs text-slate-500">{batch.id}</div>
+                        <div className="font-medium text-foreground">{batch.name}</div>
+                        <div className="text-xs text-muted-foreground">{batch.id}</div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-slate-300">{renderStatusLabel(batch.status)}</TableCell>
-                    <TableCell className="text-slate-300">
+                    <TableCell className="text-foreground">{renderStatusLabel(batch.status)}</TableCell>
+                    <TableCell className="text-foreground">
                       {batch.completed_file_count}/{batch.planned_file_count}
                       {batch.failed_file_count ? `，失败 ${batch.failed_file_count}` : ""}
                     </TableCell>
-                    <TableCell className="text-slate-300">
+                    <TableCell className="text-foreground">
                       {batch.resource_type || "document"} · {batch.source_type}
                     </TableCell>
-                    <TableCell className="text-slate-400">
+                    <TableCell className="text-muted-foreground">
                       {formatDateTime(batch.created_at)}
                     </TableCell>
                   </TableRow>
@@ -516,14 +516,14 @@ export function DataLakePanel({
         </CardContent>
       </Card>
 
-      <Card className="border-slate-800/80 bg-[rgba(12,18,27,0.78)]">
+      <Card className="border-border bg-card/80">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-slate-100">最近资产</CardTitle>
+          <CardTitle className="text-sm text-foreground">最近资产</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           <Table>
             <TableHeader className="bg-transparent">
-              <TableRow className="border-slate-800/80 hover:bg-transparent">
+              <TableRow className="border-border hover:bg-transparent">
                 <TableHead>文件</TableHead>
                 <TableHead>批次</TableHead>
                 <TableHead>类型</TableHead>
@@ -538,30 +538,30 @@ export function DataLakePanel({
                 <EmptyRow colSpan={7} message="导入文件或文件夹后，这里会显示 raw 层资产。" />
               ) : (
                 initialAssets.slice(0, 12).map((asset) => (
-                  <TableRow key={asset.id} className="border-slate-800/70">
+                  <TableRow key={asset.id} className="border-border">
                     <TableCell className="align-top">
                       <div className="space-y-0.5">
-                        <div className="font-medium text-slate-100">{asset.name}</div>
+                        <div className="font-medium text-foreground">{asset.name}</div>
                         {asset.relative_path ? (
-                          <div className="truncate text-xs text-slate-500">
+                          <div className="truncate text-xs text-muted-foreground">
                             {asset.relative_path}
                           </div>
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell className="text-slate-300">{asset.batch_name}</TableCell>
-                    <TableCell className="text-slate-300">
+                    <TableCell className="text-foreground">{asset.batch_name}</TableCell>
+                    <TableCell className="text-foreground">
                       {asset.resource_type === "folder"
                         ? "目录"
                         : `${asset.resource_type || "document"} · ${asset.format || "bin"}`}
                     </TableCell>
-                    <TableCell className="text-slate-300">
+                    <TableCell className="text-foreground">
                       {asset.resource_type === "folder"
                         ? "目录"
                         : formatFileSize(asset.size_bytes ?? 0)}
                     </TableCell>
-                    <TableCell className="text-slate-300">{renderStatusLabel(asset.status)}</TableCell>
-                    <TableCell className="text-slate-400">{formatDateTime(asset.created_at)}</TableCell>
+                    <TableCell className="text-foreground">{renderStatusLabel(asset.status)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDateTime(asset.created_at)}</TableCell>
                     <TableCell className="whitespace-nowrap text-right">
                       <Button
                         className="h-7 min-w-[72px] gap-1.5 whitespace-nowrap"
@@ -595,25 +595,25 @@ export function DataLakePanel({
         }}
         open={confirmTarget !== null}
       >
-        <AlertDialogContent className="max-w-md border-slate-800 bg-[rgba(10,15,23,0.96)] text-slate-100">
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmTarget?.resource_type === "folder" ? "删除文件夹资产" : "删除资产"}
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3 text-sm text-slate-400">
+            <AlertDialogDescription className="space-y-3 text-sm text-muted-foreground">
               <span className="block">
                 {confirmTarget?.resource_type === "folder"
                   ? `删除后将移除文件夹「${confirmTarget?.name ?? ""}」及其全部内容，该操作不可恢复。`
                   : `删除后将移除资产「${confirmTarget?.name ?? ""}」，该操作不可恢复。`}
               </span>
-              <span className="block rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
-                <span className="block font-medium text-slate-100">
+              <span className="block rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-foreground">
+                <span className="block font-medium text-foreground">
                   {confirmTarget?.resource_type === "folder" ? "删除范围" : "目标资产"}
                 </span>
                 <span className="mt-1 block truncate">
                   {confirmTarget?.relative_path || confirmTarget?.name || ""}
                 </span>
-                <span className="mt-1 block text-slate-500">
+                <span className="mt-1 block text-muted-foreground">
                   批次：{confirmTarget?.batch_name ?? ""}
                 </span>
               </span>
@@ -622,7 +622,7 @@ export function DataLakePanel({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingAssetId !== null}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="min-w-[96px] bg-rose-600 text-white hover:bg-rose-500"
+              className="min-w-[96px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deletingAssetId !== null}
               onClick={() => {
                 if (confirmTarget) {
@@ -660,14 +660,14 @@ function SummaryCard({
   value: number | string;
 }) {
   return (
-    <Card className="border-slate-800/80 bg-[rgba(12,18,27,0.78)]">
+    <Card className="border-border bg-card/80">
       <CardContent className="flex items-start justify-between gap-3 p-4">
         <div className="space-y-1">
-          <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">{label}</div>
-          <div className="text-2xl font-semibold text-slate-50">{value}</div>
-          <div className="text-xs text-slate-500">{hint}</div>
+          <div className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+          <div className="text-2xl font-semibold text-foreground">{value}</div>
+          <div className="text-xs text-muted-foreground">{hint}</div>
         </div>
-        <div className="rounded-full border border-slate-800 bg-slate-950/80 p-2 text-slate-300">
+        <div className="rounded-full border border-border bg-card/80 p-2 text-foreground">
           <Icon className="h-4 w-4" />
         </div>
       </CardContent>
@@ -677,8 +677,8 @@ function SummaryCard({
 
 function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
   return (
-    <TableRow className="border-slate-800/70">
-      <TableCell className="py-10 text-center text-sm text-slate-500" colSpan={colSpan}>
+    <TableRow className="border-border">
+      <TableCell className="py-10 text-center text-sm text-muted-foreground" colSpan={colSpan}>
         {message}
       </TableCell>
     </TableRow>

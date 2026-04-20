@@ -36,8 +36,8 @@ export default async function EditBenchmarkPage({
           ]}
         />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-50">编辑 Benchmark</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">编辑 Benchmark</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             调整 Benchmark 的基础信息和绑定的评测维度。已存在的数据集版本不会被自动改写。
           </p>
         </div>

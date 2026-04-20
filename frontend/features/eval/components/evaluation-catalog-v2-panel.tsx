@@ -38,8 +38,8 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
     <div className="space-y-6">
       <section className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-slate-100">评测套件</h2>
-          <p className="text-sm text-slate-400">
+          <h2 className="text-base font-semibold text-foreground">评测套件</h2>
+          <p className="text-sm text-muted-foreground">
             套件是一等公民，负责承接百炼式基线评测和多基准组合评测。
           </p>
         </div>
@@ -47,14 +47,14 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
           {catalog.suites.map((suite) => {
             const activeVersion = suite.versions.find((version) => version.enabled) ?? suite.versions[0] ?? null;
             return (
-              <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none" key={suite.id}>
+              <Card className="border-border bg-card/80 shadow-none" key={suite.id}>
                 <CardHeader className="space-y-2">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <CardTitle className="text-base text-slate-50">
+                        <CardTitle className="text-base text-foreground">
                           <Link
-                            className="transition-colors hover:text-[#8fffcf]"
+                            className="transition-colors hover:text-primary"
                             href={`/model/eval-suites/${encodeURIComponent(suite.name)}`}
                           >
                             {suite.display_name}
@@ -62,7 +62,7 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                         </CardTitle>
                         <Badge variant="outline">{suite.name}</Badge>
                       </div>
-                      <p className="text-sm leading-6 text-slate-400">
+                      <p className="text-sm leading-6 text-muted-foreground">
                         {suite.description || "当前套件没有额外描述。"}
                       </p>
                     </div>
@@ -90,7 +90,7 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                         .filter((item) => item.enabled)
                         .map((item) => (
                           <span
-                            className="rounded-full border border-slate-800/80 bg-[rgba(14,20,29,0.84)] px-3 py-1 text-xs text-slate-300"
+                            className="rounded-full border border-border bg-card/80 px-3 py-1 text-xs text-foreground"
                             key={item.id}
                           >
                             {item.group_name ? `${item.group_name} · ` : ""}
@@ -99,7 +99,7 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                         ))}
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-6 text-sm text-slate-500">
+                    <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
                       当前套件还没有启用的评测项。
                     </div>
                   )}
@@ -112,12 +112,12 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
 
       <section className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-slate-100">评测类型、版本与数据集</h2>
-          <p className="text-sm text-slate-400">
+          <h2 className="text-base font-semibold text-foreground">评测类型、版本与数据集</h2>
+          <p className="text-sm text-muted-foreground">
             每个评测类型可以挂多个可运行版本，而每个版本都对应一组显式的数据集文件与执行配置。
           </p>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)]">
+        <div className="overflow-hidden rounded-lg border border-border bg-card/80">
           <Table>
             <TableHeader>
               <TableRow>
@@ -138,17 +138,17 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                 return (
                   <TableRow key={spec.id}>
                     <TableCell className="min-w-[240px] align-top">
-                      <div className="font-medium text-slate-100">
+                      <div className="font-medium text-foreground">
                         <Link
-                          className="transition-colors hover:text-[#8fffcf]"
+                          className="transition-colors hover:text-primary"
                           href={`/model/eval-specs/${encodeURIComponent(spec.name)}`}
                         >
                           {spec.display_name}
                         </Link>
                       </div>
-                      <div className="mt-1 text-xs text-slate-500">{spec.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{spec.name}</div>
                       {spec.description ? (
-                        <div className="mt-2 max-w-[440px] text-sm leading-6 text-slate-400">
+                        <div className="mt-2 max-w-[440px] text-sm leading-6 text-muted-foreground">
                           {spec.description}
                         </div>
                       ) : null}
@@ -159,8 +159,8 @@ export function EvaluationCatalogV2Panel({ catalog }: { catalog: EvaluationCatal
                     <TableCell>
                       {recommendedVersion ? (
                         <div className="space-y-2">
-                          <div className="text-sm text-slate-200">{recommendedVersion.display_name}</div>
-                          <div className="text-xs text-slate-500">{recommendedVersion.version}</div>
+                          <div className="text-sm text-foreground">{recommendedVersion.display_name}</div>
+                          <div className="text-xs text-muted-foreground">{recommendedVersion.version}</div>
                           <VersionDatasetFiles spec={spec} version={recommendedVersion} />
                         </div>
                       ) : (
@@ -262,7 +262,7 @@ function CatalogActions({
             <AlertDialogTitle>删除 {title}</AlertDialogTitle>
             <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
             {error ? (
-              <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+              <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}
               </div>
             ) : null}
@@ -270,7 +270,7 @@ function CatalogActions({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-rose-500 text-white hover:bg-rose-400"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pending}
               onClick={(event) => {
                 event.preventDefault();
@@ -319,7 +319,7 @@ function SyncDatasetsAction({
       <Button onClick={() => void handleSync()} size="sm" variant="outline">
         {pending ? "拉取中..." : "拉取数据集"}
       </Button>
-      {error ? <div className="max-w-[220px] text-xs text-rose-300">{error}</div> : null}
+      {error ? <div className="max-w-[220px] text-xs text-destructive">{error}</div> : null}
     </div>
   );
 }
@@ -336,13 +336,13 @@ function VersionDatasetFiles({
   }
   return (
     <div className="space-y-2">
-      <div className="text-xs text-slate-400">
+      <div className="text-xs text-muted-foreground">
         {spec.name} · {summarizeDatasetFiles(version.dataset_files)}
       </div>
       <div className="flex flex-wrap gap-2">
         {version.dataset_files.map((datasetFile) => (
           <span
-            className="rounded-full border border-slate-800/80 bg-[rgba(14,20,29,0.84)] px-3 py-1 text-[11px] text-slate-300"
+            className="rounded-full border border-border bg-card/80 px-3 py-1 text-[11px] text-foreground"
             key={datasetFile.id}
             title={datasetFile.source_uri ?? datasetFile.file_name ?? datasetFile.file_key}
           >
@@ -380,9 +380,9 @@ function humanizeDatasetStatus(status: string) {
 
 function MetaCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] px-4 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <div className="mt-2 text-sm font-medium text-slate-200">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-3">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm font-medium text-foreground">{value}</div>
     </div>
   );
 }

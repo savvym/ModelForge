@@ -34,7 +34,7 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
 
   if (!probe) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-800/80 px-6 py-14 text-sm text-slate-500">
+      <div className="rounded-lg border border-dashed border-border px-6 py-14 text-sm text-muted-foreground">
         当前没有可展示的 Probe 节点详情。
       </div>
     );
@@ -61,17 +61,17 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
 
   return (
     <div className="space-y-5">
-      <section className="space-y-2 rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)] px-5 py-5">
+      <section className="space-y-2 rounded-lg border border-border bg-card/80 px-5 py-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-50">{currentProbe.display_name}</h2>
+            <h2 className="text-lg font-semibold text-foreground">{currentProbe.display_name}</h2>
             <Badge className={statusMeta.className} variant={statusMeta.variant}>
               {statusMeta.label}
             </Badge>
             <Badge variant="outline">{currentProbe.name}</Badge>
           </div>
           <Button
-            className="border border-rose-500/35 bg-rose-950/20 text-rose-100 hover:bg-rose-950/40"
+            className="border border-rose-500/35 bg-destructive/10 text-rose-100 hover:bg-rose-950/40"
             disabled={!canDelete || pendingDelete}
             onClick={() => {
               setActionError(null);
@@ -83,9 +83,9 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
             删除节点
           </Button>
         </div>
-        <div className="text-sm text-slate-400">{currentProbe.id}</div>
+        <div className="text-sm text-muted-foreground">{currentProbe.id}</div>
         {actionError ? (
-          <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {actionError}
           </div>
         ) : null}
@@ -99,18 +99,18 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none">
+        <Card className="border-border bg-card/80 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base text-slate-50">设备信息</CardTitle>
+            <CardTitle className="text-base text-foreground">设备信息</CardTitle>
           </CardHeader>
           <CardContent>
             <JsonBlock value={currentProbe.device_info_json} />
           </CardContent>
         </Card>
 
-        <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none">
+        <Card className="border-border bg-card/80 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base text-slate-50">节点元数据</CardTitle>
+            <CardTitle className="text-base text-foreground">节点元数据</CardTitle>
           </CardHeader>
           <CardContent>
             <JsonBlock value={currentProbe.metadata_json} />
@@ -119,18 +119,18 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none">
+        <Card className="border-border bg-card/80 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base text-slate-50">最新网络指标</CardTitle>
+            <CardTitle className="text-base text-foreground">最新网络指标</CardTitle>
           </CardHeader>
           <CardContent>
             <JsonBlock value={(latestHeartbeat?.network_metrics_json as Record<string, unknown>) ?? {}} />
           </CardContent>
         </Card>
 
-        <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none">
+        <Card className="border-border bg-card/80 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base text-slate-50">最新 Agent 状态</CardTitle>
+            <CardTitle className="text-base text-foreground">最新 Agent 状态</CardTitle>
           </CardHeader>
           <CardContent>
             <JsonBlock value={(latestHeartbeat?.agent_status_json as Record<string, unknown>) ?? {}} />
@@ -138,15 +138,15 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
         </Card>
       </section>
 
-      <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none">
+      <Card className="border-border bg-card/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base text-slate-50">最近心跳</CardTitle>
+          <CardTitle className="text-base text-foreground">最近心跳</CardTitle>
         </CardHeader>
         <CardContent>
           {currentProbe.heartbeats.length === 0 ? (
-            <div className="text-sm text-slate-500">当前还没有心跳记录。</div>
+            <div className="text-sm text-muted-foreground">当前还没有心跳记录。</div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-slate-800/80">
+            <div className="overflow-hidden rounded-lg border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -202,7 +202,7 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pendingDelete}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500/90 text-white hover:bg-red-500"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pendingDelete}
               onClick={() => void handleDelete()}
             >
@@ -217,20 +217,20 @@ export function ProbeDetailPanel({ probe }: { probe: ProbeDetail | null }) {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-[rgba(15,23,32,0.68)] px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-2 text-sm text-slate-100">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-4">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm text-foreground">{value}</div>
     </div>
   );
 }
 
 function JsonBlock({ value }: { value: Record<string, unknown> }) {
   if (Object.keys(value).length === 0) {
-    return <div className="text-sm text-slate-500">当前为空。</div>;
+    return <div className="text-sm text-muted-foreground">当前为空。</div>;
   }
 
   return (
-    <pre className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[rgba(8,13,20,0.92)] p-4 text-xs leading-6 text-slate-300">
+    <pre className="overflow-x-auto rounded-lg border border-border bg-card/80 p-4 text-xs leading-6 text-foreground">
       {JSON.stringify(value, null, 2)}
     </pre>
   );
@@ -261,7 +261,7 @@ function getProbeStatusMeta(status: string) {
   return {
     label: status,
     variant: "outline" as const,
-    className: "border-slate-700 bg-slate-900/70 text-slate-300"
+    className: "border-border bg-card/80 text-foreground"
   };
 }
 

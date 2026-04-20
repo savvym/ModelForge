@@ -198,14 +198,14 @@ export function EvalJobCreateForm({
   return (
     <div className="flex w-full max-w-4xl flex-col gap-5">
       {!availableBenchmarks.length ? (
-        <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-8 text-sm text-slate-400">
+        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
           当前还没有可用的 Benchmark Version。请先到评测管理页创建 Benchmark，并上传至少一个启用中的
           Version 数据集。
         </div>
       ) : null}
 
       {!activeModels.length ? (
-        <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-8 text-sm text-slate-400">
+        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
           当前项目没有可用模型。请先在模型接入中同步可用模型。
         </div>
       ) : null}
@@ -366,10 +366,10 @@ function FieldBlock({
 }) {
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium text-slate-200">{label}</Label>
+      <Label className="text-sm font-medium text-foreground">{label}</Label>
       {children}
       {error || description ? (
-        <p className="text-xs leading-5 text-slate-500">{error ?? description}</p>
+        <p className="text-xs leading-5 text-muted-foreground">{error ?? description}</p>
       ) : null}
     </div>
   );
@@ -377,9 +377,9 @@ function FieldBlock({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-[rgba(15,23,32,0.72)] px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 break-all text-sm text-slate-100">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-3">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 break-all text-sm text-foreground">{value}</div>
     </div>
   );
 }

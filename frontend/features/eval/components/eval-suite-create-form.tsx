@@ -223,11 +223,11 @@ export function EvalSuiteCreateForm({
         </Field>
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)] p-4">
+      <div className="space-y-4 rounded-lg border border-border bg-card/80 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium text-slate-100">评测项</div>
-            <div className="mt-1 text-sm text-slate-400">
+            <div className="text-sm font-medium text-foreground">评测项</div>
+            <div className="mt-1 text-sm text-muted-foreground">
               先选择评测类型，再选择对应版本，并按分组组织套件结构。
             </div>
           </div>
@@ -238,7 +238,7 @@ export function EvalSuiteCreateForm({
         </div>
 
         {!specOptions.length ? (
-          <div className="rounded-xl border border-dashed border-slate-800/80 px-4 py-6 text-sm text-slate-500">
+          <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
             当前没有可选的评测类型版本，请先创建 Eval Spec。
           </div>
         ) : null}
@@ -249,7 +249,7 @@ export function EvalSuiteCreateForm({
             const selectedVersions = selectedSpec?.versions ?? [];
             return (
               <div
-                className="grid gap-4 rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] p-4 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]"
+                className="grid gap-4 rounded-lg border border-border bg-card/80 p-4 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]"
                 key={item.id}
               >
                 <Field label={`评测类型 #${index + 1}`}>
@@ -316,7 +316,7 @@ export function EvalSuiteCreateForm({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -333,7 +333,7 @@ export function EvalSuiteCreateForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <Label className="text-sm text-slate-200">{label}</Label>
+      <Label className="text-sm text-foreground">{label}</Label>
       {children}
     </div>
   );

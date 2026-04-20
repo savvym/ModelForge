@@ -10,12 +10,12 @@ const DATASET_STATUS_META: Record<string, DatasetStatusMeta> = {
   uploading: {
     label: "上传中",
     variant: "secondary",
-    className: "border-sky-500/35 bg-sky-500/10 text-sky-200"
+    className: "border-primary/35 bg-primary/10 text-primary"
   },
   ready: {
     label: "导入完成",
     variant: "outline",
-    className: "border-zinc-300 bg-zinc-50 text-zinc-700"
+    className: "border-border bg-card text-muted-foreground"
   },
   processing: {
     label: "导入中",
@@ -25,12 +25,12 @@ const DATASET_STATUS_META: Record<string, DatasetStatusMeta> = {
   failed: {
     label: "上传失败",
     variant: "outline",
-    className: "border-rose-500/35 bg-rose-500/10 text-rose-200"
+    className: "border-destructive/30 bg-destructive/10 text-destructive"
   },
   awaiting_upload: {
     label: "待上传",
     variant: "outline",
-    className: "border-zinc-300 bg-zinc-50 text-zinc-700"
+    className: "border-border bg-card text-muted-foreground"
   }
 };
 

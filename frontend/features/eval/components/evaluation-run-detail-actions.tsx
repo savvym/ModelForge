@@ -86,7 +86,7 @@ export function EvaluationRunDetailActions({
           {pendingCancel ? "取消中..." : "取消任务"}
         </Button>
         <Button
-          className="border border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+          className="border border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
           disabled={!canDeleteEvaluationRun(status) || pendingDelete}
           onClick={() => {
             setActionError(null);
@@ -100,7 +100,7 @@ export function EvaluationRunDetailActions({
       </div>
 
       {actionError ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
         </div>
       ) : null}
@@ -123,7 +123,7 @@ export function EvaluationRunDetailActions({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pendingDelete}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500/90 text-white hover:bg-red-500"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pendingDelete}
               onClick={() => void handleDelete()}
             >

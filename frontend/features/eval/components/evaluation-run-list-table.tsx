@@ -95,7 +95,7 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
   return (
     <div className="space-y-3">
       {actionError ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
         </div>
       ) : null}
@@ -116,7 +116,7 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
           <TableBody>
             {empty ? (
               <TableRow className="hover:bg-transparent">
-                <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={7}>
+                <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={7}>
                   当前筛选条件下没有评测任务。
                 </TableCell>
               </TableRow>
@@ -134,12 +134,12 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
                   <TableRow key={run.id}>
                     <TableCell className="min-w-[260px] align-top">
                       <Link className="block" href={`/model/eval-detail/${run.id}`}>
-                        <div className="font-medium text-slate-100 transition-colors hover:text-sky-300">
+                        <div className="font-medium text-foreground transition-colors hover:text-primary">
                           {run.name}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{run.id}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{run.id}</div>
                         {run.error_message ? (
-                          <div className="mt-2 line-clamp-2 text-xs text-rose-300">
+                          <div className="mt-2 line-clamp-2 text-xs text-destructive">
                             {run.error_message}
                           </div>
                         ) : null}
@@ -154,13 +154,13 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
                     <TableCell>{run.model_name ?? "--"}</TableCell>
                     <TableCell className="min-w-[180px]">
                       <div className="space-y-2">
-                        <div className="h-2 rounded-full bg-[rgba(255,255,255,0.06)]">
+                        <div className="h-2 rounded-full bg-muted/40">
                           <div
-                            className="h-2 rounded-full bg-[#8fffcf]"
+                            className="h-2 rounded-full bg-primary"
                             style={{ width: `${progressPercent}%` }}
                           />
                         </div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs text-muted-foreground">
                           {progressPercent}%
                           {typeof progress.done === "number" &&
                           typeof progress.total === "number" &&
@@ -244,7 +244,7 @@ export function EvaluationRunListTable({ initialRuns }: { initialRuns: Evaluatio
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pendingDeleteId !== null}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500/90 text-white hover:bg-red-500"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pendingDeleteId !== null}
               onClick={() => void handleConfirmDelete()}
             >

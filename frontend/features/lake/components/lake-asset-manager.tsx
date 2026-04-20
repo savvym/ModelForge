@@ -165,7 +165,7 @@ export function LakeAssetManager({ assets, batches }: LakeAssetManagerProps) {
       <ConsoleListToolbar className="gap-y-2">
         <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
           <div className="relative min-w-[300px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               className={cn(consoleListSearchInputClassName, "w-full")}
               onChange={(event) => setQuery(event.target.value)}
@@ -241,12 +241,12 @@ export function LakeAssetManager({ assets, batches }: LakeAssetManagerProps) {
               <TableRow className="bg-transparent hover:bg-transparent">
                 <TableCell className={stickyCellClassName} colSpan={7}>
                   <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 py-10 text-center">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-800/70 bg-[rgba(10,15,22,0.44)] text-slate-500">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground">
                       <Database className="h-5 w-5" />
                     </div>
                     <div className="space-y-1">
-                      <div className="text-sm font-medium text-slate-200">没有匹配的资产</div>
-                      <div className="text-xs text-slate-500">调整搜索词或筛选条件后再试</div>
+                      <div className="text-sm font-medium text-foreground">没有匹配的资产</div>
+                      <div className="text-xs text-muted-foreground">调整搜索词或筛选条件后再试</div>
                     </div>
                   </div>
                 </TableCell>
@@ -260,30 +260,30 @@ export function LakeAssetManager({ assets, batches }: LakeAssetManagerProps) {
                   <TableRow key={asset.id} className="bg-transparent">
                     <TableCell className={stickyCellClassName}>
                       <div className="min-w-0">
-                        <div className="truncate font-medium text-slate-100">{asset.name}</div>
-                        <div className="mt-1 truncate text-xs text-slate-500">
+                        <div className="truncate font-medium text-foreground">{asset.name}</div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
                           {asset.relative_path || asset.id}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="min-w-0">
-                        <div className="truncate text-sm text-slate-200">{asset.batch_name}</div>
-                        <div className="mt-1 truncate text-xs text-slate-500">{asset.batch_id}</div>
+                        <div className="truncate text-sm text-foreground">{asset.batch_name}</div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">{asset.batch_id}</div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-slate-300">
+                    <TableCell className="text-sm text-foreground">
                       {asset.resource_type === "folder"
                         ? "目录"
                         : `${formatResourceTypeLabel(asset.resource_type)} · ${asset.format || "bin"}`}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-300">
+                    <TableCell className="text-sm text-foreground">
                       {asset.resource_type === "folder" ? "目录" : formatFileSize(asset.size_bytes ?? 0)}
                     </TableCell>
                     <TableCell>
                       <Badge className={statusMeta.className}>{statusMeta.label}</Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-slate-400">
+                    <TableCell className="text-sm text-muted-foreground">
                       {formatDateTime(asset.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -319,25 +319,25 @@ export function LakeAssetManager({ assets, batches }: LakeAssetManagerProps) {
         }}
         open={confirmTarget !== null}
       >
-        <AlertDialogContent className="max-w-md border-slate-800 bg-[rgba(10,15,23,0.96)] text-slate-100">
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmTarget?.resource_type === "folder" ? "删除文件夹资产" : "删除资产"}
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3 text-sm text-slate-400">
+            <AlertDialogDescription className="space-y-3 text-sm text-muted-foreground">
               <span className="block">
                 {confirmTarget?.resource_type === "folder"
                   ? `删除后将移除文件夹「${confirmTarget?.name ?? ""}」及其全部内容，该操作不可恢复。`
                   : `删除后将移除资产「${confirmTarget?.name ?? ""}」，该操作不可恢复。`}
               </span>
-              <span className="block rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
-                <span className="block font-medium text-slate-100">
+              <span className="block rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-foreground">
+                <span className="block font-medium text-foreground">
                   {confirmTarget?.resource_type === "folder" ? "删除范围" : "目标资产"}
                 </span>
                 <span className="mt-1 block truncate">
                   {confirmTarget?.relative_path || confirmTarget?.name || ""}
                 </span>
-                <span className="mt-1 block text-slate-500">
+                <span className="mt-1 block text-muted-foreground">
                   批次：{confirmTarget?.batch_name ?? ""}
                 </span>
               </span>
@@ -346,7 +346,7 @@ export function LakeAssetManager({ assets, batches }: LakeAssetManagerProps) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pendingDeleteId !== null}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="min-w-[96px] bg-rose-600 text-white hover:bg-rose-500"
+              className="min-w-[96px] bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pendingDeleteId !== null}
               onClick={() => void handleConfirmDelete()}
             >
@@ -380,14 +380,14 @@ function SummaryStatCard({
   value: number | string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-[rgba(12,18,27,0.78)] p-4">
+    <div className="rounded-lg border border-border bg-card/80 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <div className="text-[12px] uppercase tracking-[0.18em] text-slate-500">{label}</div>
-          <div className="text-2xl font-semibold text-slate-50">{value}</div>
-          <div className="text-xs text-slate-500">{hint}</div>
+          <div className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+          <div className="text-2xl font-semibold text-foreground">{value}</div>
+          <div className="text-xs text-muted-foreground">{hint}</div>
         </div>
-        <div className="rounded-full border border-slate-800 bg-slate-950/80 p-2 text-slate-300">
+        <div className="rounded-full border border-border bg-card/80 p-2 text-foreground">
           <Icon className="h-4 w-4" />
         </div>
       </div>
@@ -473,15 +473,15 @@ function getLakeStatusMeta(status: string) {
   return (
     metaByStatus[status] ?? {
       label: status,
-      className: "border-slate-500/25 bg-slate-500/10 text-slate-200"
+      className: "border-border bg-muted/40 text-foreground"
     }
   );
 }
 
 const stickyHeadClassName =
-  "sticky left-0 z-20 w-[360px] min-w-[360px] bg-[rgba(13,18,25,0.92)] pr-5 backdrop-blur";
+  "sticky left-0 z-20 w-[360px] min-w-[360px] bg-card/80 pr-5 backdrop-blur";
 
 const stickyCellClassName = cn(
-  "sticky left-0 z-10 w-[360px] min-w-[360px] bg-[rgba(13,18,25,0.84)] pr-5 align-top",
-  "after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-slate-800/70"
+  "sticky left-0 z-10 w-[360px] min-w-[360px] bg-card/80 pr-5 align-top",
+  "after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-card/80"
 );

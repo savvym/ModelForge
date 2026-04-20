@@ -36,7 +36,7 @@ export function BenchmarkCatalogTable({
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={6}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={6}>
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -45,12 +45,12 @@ export function BenchmarkCatalogTable({
               <TableRow key={benchmark.name}>
                 <TableCell className="min-w-[280px] align-top">
                   <Link className="block" href={`/model/eval-benchmarks/${benchmark.name}`}>
-                    <div className="font-medium text-slate-100 transition-colors hover:text-sky-300">
+                    <div className="font-medium text-foreground transition-colors hover:text-primary">
                       {benchmark.display_name}
                     </div>
-                    <div className="mt-1 font-mono text-xs text-slate-500">{benchmark.name}</div>
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">{benchmark.name}</div>
                     {benchmark.description ? (
-                      <div className="mt-2 max-w-[520px] text-sm leading-6 text-slate-400">
+                      <div className="mt-2 max-w-[520px] text-sm leading-6 text-muted-foreground">
                         {benchmark.description}
                       </div>
                     ) : null}
@@ -71,30 +71,30 @@ export function BenchmarkCatalogTable({
                     {benchmark.source_type === "builtin" ? "平台预置" : "自定义"}
                   </Badge>
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {benchmark.enabled_version_count}/{benchmark.version_count}
                 </TableCell>
                 <TableCell className="min-w-[220px] align-top">
                   {benchmark.eval_template_name ? (
                     <div className="space-y-1">
-                      <div className="text-slate-200">
+                      <div className="text-foreground">
                         {benchmark.eval_template_name}
                         {benchmark.eval_template_version != null
                           ? ` · v${benchmark.eval_template_version}`
                           : ""}
                       </div>
-                      <div className="text-xs text-slate-500">绑定评测维度</div>
+                      <div className="text-xs text-muted-foreground">绑定评测维度</div>
                     </div>
                   ) : benchmark.source_type === "builtin" ? (
-                    <span className="text-slate-400">平台预置规则</span>
+                    <span className="text-muted-foreground">平台预置规则</span>
                   ) : (
-                    <span className="text-slate-500">未绑定</span>
+                    <span className="text-muted-foreground">未绑定</span>
                   )}
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {benchmark.eval_job_count.toLocaleString()}
                 </TableCell>
-                <TableCell className="align-top text-slate-400">
+                <TableCell className="align-top text-muted-foreground">
                   {formatDateTime(benchmark.latest_eval_at)}
                 </TableCell>
               </TableRow>

@@ -119,13 +119,13 @@ export function ProbeTaskCreateForm({
   return (
     <form className="flex w-full max-w-4xl flex-col gap-6" onSubmit={handleSubmit}>
       {probes.length === 0 ? (
-        <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+        <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-sm text-muted-foreground">
           当前项目还没有已注册的 Probe。先启动一个 probe agent，它注册成功后就能在这里创建任务。
         </div>
       ) : null}
 
       {providers.length === 0 ? (
-        <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+        <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-sm text-muted-foreground">
           当前项目还没有可用于 Probe 压测的 Provider。先到模型广场里创建一个处于 active 状态、API 格式为 chat-completions 的 Provider。
         </div>
       ) : null}
@@ -251,7 +251,7 @@ export function ProbeTaskCreateForm({
         </FieldBlock>
       </div>
 
-      <div className="flex items-center justify-end gap-3 border-t border-slate-800/80 pt-4">
+      <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
         <Button disabled={disabled} type="submit">
           {submitting ? "创建中..." : "创建 Probe 任务"}
         </Button>
@@ -272,8 +272,8 @@ function FieldBlock({
   return (
     <div className="space-y-2.5">
       <div className="space-y-1">
-        <Label className="text-[13px] font-medium text-slate-200">{label}</Label>
-        <p className="text-xs leading-5 text-slate-500">{description}</p>
+        <Label className="text-[13px] font-medium text-foreground">{label}</Label>
+        <p className="text-xs leading-5 text-muted-foreground">{description}</p>
       </div>
       {children}
     </div>

@@ -95,7 +95,7 @@ export function EvalJobListTable({ initialJobs }: { initialJobs: EvalJobSummary[
   return (
     <div className="space-y-3">
       {actionError ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {actionError}
         </div>
       ) : null}
@@ -118,7 +118,7 @@ export function EvalJobListTable({ initialJobs }: { initialJobs: EvalJobSummary[
           <TableBody>
             {empty ? (
               <TableRow className="hover:bg-transparent">
-                <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={9}>
+                <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={9}>
                   当前筛选条件下没有评测任务。
                 </TableCell>
               </TableRow>
@@ -134,16 +134,16 @@ export function EvalJobListTable({ initialJobs }: { initialJobs: EvalJobSummary[
                   <TableRow key={job.id}>
                     <TableCell className="min-w-[220px] align-top">
                       <Link className="block" href={`/model/eval-detail/${job.id}`}>
-                        <div className="font-medium text-slate-100 transition-colors hover:text-sky-300">
+                        <div className="font-medium text-foreground transition-colors hover:text-primary">
                           {job.name}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{job.id}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{job.id}</div>
                       </Link>
                     </TableCell>
-                    <TableCell className="max-w-[220px] text-sm text-slate-400">
+                    <TableCell className="max-w-[220px] text-sm text-muted-foreground">
                       <div>{job.description || "-"}</div>
                       {job.error_message ? (
-                        <div className="mt-1 line-clamp-2 text-xs text-rose-300">
+                        <div className="mt-1 line-clamp-2 text-xs text-destructive">
                           {job.error_message}
                         </div>
                       ) : null}
@@ -157,13 +157,13 @@ export function EvalJobListTable({ initialJobs }: { initialJobs: EvalJobSummary[
                     <TableCell>{formatInferenceMode(job.inference_mode)}</TableCell>
                     <TableCell className="min-w-[180px]">
                       <div className="space-y-2">
-                        <div className="h-2 rounded-full bg-[rgba(255,255,255,0.06)]">
+                        <div className="h-2 rounded-full bg-muted/40">
                           <div
-                            className="h-2 rounded-full bg-[#8fffcf]"
+                            className="h-2 rounded-full bg-primary"
                             style={{ width: `${job.progress_percent}%` }}
                           />
                         </div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-xs text-muted-foreground">
                           {job.progress_percent}%
                           {typeof job.progress_done === "number" &&
                           typeof job.progress_total === "number" &&
@@ -248,7 +248,7 @@ export function EvalJobListTable({ initialJobs }: { initialJobs: EvalJobSummary[
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pendingDeleteId !== null}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500/90 text-white hover:bg-red-500"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pendingDeleteId !== null}
               onClick={() => void handleConfirmDelete()}
             >

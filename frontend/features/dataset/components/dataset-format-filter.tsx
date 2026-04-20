@@ -90,7 +90,7 @@ export function DatasetFormatFilter({
             aria-label={hasSelections ? `数据格式筛选，${filterSummary}` : "数据格式筛选"}
             className={cn(
               "h-7 w-7 rounded-sm px-0",
-              hasSelections && "border-zinc-300 bg-zinc-100 text-zinc-900 hover:bg-zinc-200"
+              hasSelections && "border-border bg-card text-foreground hover:bg-accent"
             )}
             title={hasSelections ? `数据格式：${filterSummary}` : "数据格式筛选"}
             type="button"
@@ -108,15 +108,15 @@ export function DatasetFormatFilter({
             variant="ghost"
           >
             <span className="truncate">{currentLabel}</span>
-            <ChevronDown className="ml-2 h-3 w-3 shrink-0 text-slate-500" />
+            <ChevronDown className="ml-2 h-3 w-3 shrink-0 text-muted-foreground" />
           </Button>
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[148px] min-w-[148px] rounded-lg border-slate-800/85 p-1">
+      <DropdownMenuContent align="start" className="w-[148px] min-w-[148px] rounded-lg border-border p-1">
         <DropdownMenuItem
           className={cn(
             "min-h-7 justify-between rounded-md px-2 py-1.5 text-[12.5px]",
-            !hasSelections && "bg-slate-800/85 font-medium text-slate-50"
+            !hasSelections && "bg-card/80 font-medium text-foreground"
           )}
           onSelect={() => navigate([])}
         >
@@ -127,7 +127,7 @@ export function DatasetFormatFilter({
         {formatOptions.map((group, groupIndex) => (
           <div key={group.label}>
             {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuLabel className="px-2 py-1 text-[10px] tracking-[0.08em] text-slate-500">
+            <DropdownMenuLabel className="px-2 py-1 text-[10px] tracking-[0.08em] text-muted-foreground">
               {group.label}
             </DropdownMenuLabel>
             {group.items.map((item) => (

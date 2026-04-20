@@ -319,7 +319,7 @@ export function PromptInputSelectTrigger({
   return (
     <SelectTrigger
       className={cn(
-        "h-8 min-w-0 rounded-full border-white/10 bg-[rgba(255,255,255,0.03)] px-3 text-sm text-slate-100 shadow-none hover:bg-[rgba(255,255,255,0.05)] focus:bg-[rgba(255,255,255,0.06)]",
+        "h-8 min-w-0 rounded-full border-border bg-muted/40 px-3 text-sm text-foreground shadow-none hover:bg-muted/40 focus:bg-muted/40",
         className
       )}
       {...props}

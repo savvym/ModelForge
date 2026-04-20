@@ -13,7 +13,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-[#05080d]/72 backdrop-blur-[4px]", className)}
+    className={cn("fixed inset-0 z-50 bg-background/80 backdrop-blur-sm", className)}
     {...props}
   />
 ));
@@ -29,7 +29,7 @@ const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-slate-800 bg-[#111923]/98 p-6 text-slate-100 shadow-[0_24px_80px_rgba(2,6,23,0.52)] backdrop-blur-xl",
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg",
         className
       )}
       {...props}
@@ -59,7 +59,7 @@ const AlertDialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold tracking-tight text-slate-50", className)}
+    className={cn("text-lg font-semibold tracking-tight text-card-foreground", className)}
     {...props}
   />
 ));
@@ -72,7 +72,7 @@ const AlertDialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm leading-6 text-slate-400", className)}
+    className={cn("text-sm leading-6 text-muted-foreground", className)}
     {...props}
   />
 ));
@@ -102,8 +102,7 @@ const AlertDialogCancel = React.forwardRef<
   <AlertDialogPrimitive.Cancel
     ref={ref}
     className={cn(
-      buttonVariants({ variant: "secondary", size: "default" }),
-      "border border-slate-700 bg-[rgba(255,255,255,0.03)] text-slate-100 hover:bg-slate-800/70 hover:text-white",
+      buttonVariants({ variant: "outline", size: "default" }),
       className
     )}
     {...props}

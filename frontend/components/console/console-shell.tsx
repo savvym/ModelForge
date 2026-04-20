@@ -20,21 +20,24 @@ import {
   Search,
   Sparkles,
   SquareArrowOutUpRight,
-  UserCircle2,
   WandSparkles
 } from "lucide-react";
 import { CURRENT_PROJECT_COOKIE } from "@/features/project/constants";
 import type { ProjectSummary } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { consoleNavSections } from "@/lib/console-navigation";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function ConsoleShell({
   children,
@@ -188,7 +191,7 @@ export function ConsoleShell({
           <div className="relative mx-auto max-w-3xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-8 rounded-full bg-background/70 pl-9 text-sm shadow-none"
+              className="h-8 rounded-md bg-background/70 pl-9 text-sm shadow-none"
               placeholder="Search data, files, and models..."
               readOnly
               value=""
@@ -199,84 +202,86 @@ export function ConsoleShell({
         <div className="ml-auto flex items-center gap-1.5">
           <HeaderIconButton icon={CircleHelp} label="帮助" />
           <HeaderIconButton icon={SquareArrowOutUpRight} label="打开新窗口" />
-          <HeaderIconButton icon={UserCircle2} label="账户" />
+          <ThemeToggle />
+          <HeaderIconButton label="账户">
+            <Avatar className="size-4">
+              <AvatarFallback className="text-[9px] font-medium">MF</AvatarFallback>
+            </Avatar>
+          </HeaderIconButton>
         </div>
       </div>
 
       <aside className="row-start-2 flex min-h-0 flex-col overflow-hidden bg-transparent">
-        <div
-          className={cn(
-            "min-h-0 flex-1 overflow-x-visible overflow-y-auto px-2",
-            isNavCollapsed ? "py-2" : "py-3"
-          )}
-        >
-          {isNavCollapsed ? (
-            <nav className="flex flex-col gap-3 py-1">
-              {consoleNavSections.map((section, index) => (
-                <div
-                  className={cn("flex flex-col gap-1", index > 0 && "border-t border-border/60 pt-3")}
-                  key={section.id}
-                >
-                  {section.items.map((item) => {
-                    const active = isNavItemActive(pathname, item.href);
-                    const Icon = iconByHref[item.href] ?? LayoutDashboard;
-
-                    return (
-                      <ConsoleNavLink
-                        aria-label={item.title}
-                        className={cn(
-                          buttonVariants({ size: "icon", variant: active ? "secondary" : "ghost" }),
-                          "group relative size-8 rounded-md text-muted-foreground",
-                          active && "text-foreground"
-                        )}
-                        href={item.href}
-                        key={item.href}
-                        title={item.title}
-                      >
-                        <Icon className={cn(active && "text-primary")} />
-                        <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md group-hover:block">
-                          {item.title}
-                        </span>
-                      </ConsoleNavLink>
-                    );
-                  })}
-                </div>
-              ))}
-            </nav>
-          ) : (
-            <nav className="flex flex-col gap-4">
-              {consoleNavSections.map((section) => (
-                <div className="flex flex-col gap-1" key={section.id}>
-                  <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {section.title}
-                  </div>
-
-                  <div className="flex flex-col gap-0.5">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className={cn("px-2", isNavCollapsed ? "py-2" : "py-3")}>
+            {isNavCollapsed ? (
+              <nav className="flex flex-col gap-3 py-1">
+                {consoleNavSections.map((section, index) => (
+                  <div
+                    className={cn("flex flex-col gap-1", index > 0 && "border-t border-border/60 pt-3")}
+                    key={section.id}
+                  >
                     {section.items.map((item) => {
                       const active = isNavItemActive(pathname, item.href);
                       const Icon = iconByHref[item.href] ?? LayoutDashboard;
 
                       return (
-                        <ConsoleNavLink
-                          key={item.href}
-                          href={item.href}
-                          className={cn(
-                            buttonVariants({ size: "sm", variant: active ? "secondary" : "ghost" }),
-                            "h-9 justify-start rounded-lg px-2.5 text-sm",
-                            active && "text-foreground"
-                          )}
-                        >
-                          <Icon className={cn("text-muted-foreground", active && "text-primary")} />
-                          <span className="truncate">{item.title}</span>
-                        </ConsoleNavLink>
+                        <Tooltip key={item.href}>
+                          <TooltipTrigger asChild>
+                            <ConsoleNavLink
+                              aria-label={item.title}
+                              className={cn(
+                                buttonVariants({ size: "icon", variant: active ? "secondary" : "ghost" }),
+                                "size-8 rounded-md text-muted-foreground",
+                                active && "text-foreground"
+                              )}
+                              href={item.href}
+                            >
+                              <Icon className={cn(active && "text-primary")} />
+                            </ConsoleNavLink>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{item.title}</TooltipContent>
+                        </Tooltip>
                       );
                     })}
                   </div>
-                </div>
-              ))}
-            </nav>
-          )}
-        </div>
+                ))}
+              </nav>
+            ) : (
+              <nav className="flex flex-col gap-4">
+                {consoleNavSections.map((section) => (
+                  <div className="flex flex-col gap-1" key={section.id}>
+                    <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      {section.title}
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                      {section.items.map((item) => {
+                        const active = isNavItemActive(pathname, item.href);
+                        const Icon = iconByHref[item.href] ?? LayoutDashboard;
+
+                        return (
+                          <ConsoleNavLink
+                            key={item.href}
+                            href={item.href}
+                            className={cn(
+                              buttonVariants({ size: "sm", variant: active ? "secondary" : "ghost" }),
+                              "h-9 justify-start rounded-md px-2.5 text-sm",
+                              active && "text-foreground"
+                            )}
+                          >
+                            <Icon className={cn("text-muted-foreground", active && "text-primary")} />
+                            <span className="truncate">{item.title}</span>
+                          </ConsoleNavLink>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </nav>
+            )}
+          </div>
+        </ScrollArea>
       </aside>
 
       <main className="row-start-2 min-h-0 bg-transparent">
@@ -292,10 +297,12 @@ export function ConsoleShell({
             {isStorageBrowserPage || isCustomWorkbenchPage ? (
               children
             ) : (
-              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-border/70 bg-card/70 shadow-sm backdrop-blur">
-                <div className="console-workbench__scroll h-full min-h-0 overflow-y-auto px-5 py-4 pb-12">
-                  {children}
-                </div>
+              <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/70 shadow-sm backdrop-blur">
+                <ScrollArea className="console-workbench__scroll h-full min-h-0">
+                  <div className="px-5 py-4 pb-12">
+                    {children}
+                  </div>
+                </ScrollArea>
               </div>
             )}
           </div>
@@ -328,22 +335,28 @@ const navPrefetchTargets = Array.from(
 
 function HeaderIconButton({
   icon: Icon,
-  label
+  label,
+  children
 }: {
-  icon: LucideIcon;
+  icon?: LucideIcon;
   label: string;
+  children?: React.ReactNode;
 }) {
   return (
-    <Button
-      aria-label={label}
-      className="size-8 rounded-md text-muted-foreground"
-      size="icon"
-      title={label}
-      type="button"
-      variant="ghost"
-    >
-      <Icon />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          className="size-8 rounded-md text-muted-foreground"
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          {children ?? (Icon ? <Icon /> : null)}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

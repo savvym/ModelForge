@@ -4,6 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle
+} from "@/components/ui/empty";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -233,7 +240,7 @@ export function BenchmarkEvaluationRunCreateForm({
           }
           label="评测维度"
         >
-          <div className="rounded-2xl border border-slate-800/80 bg-[rgba(8,12,18,0.72)] px-4 py-3 text-sm text-slate-300">
+          <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-sm text-foreground">
             {selectedBenchmark?.eval_template_name
               ? `${selectedBenchmark.eval_template_name}${selectedBenchmark.eval_template_version != null ? ` · v${selectedBenchmark.eval_template_version}` : ""}`
               : mode === "builtin"
@@ -243,23 +250,23 @@ export function BenchmarkEvaluationRunCreateForm({
         </FieldBlock>
       </div>
 
-      <div className="rounded-2xl border border-slate-800/80 bg-[rgba(12,18,26,0.72)] p-5">
+      <div className="rounded-lg border border-border bg-card/80 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Execution Plan</div>
-            <div className="mt-2 text-lg font-semibold text-slate-50">
+            <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Execution Plan</div>
+            <div className="mt-2 text-lg font-semibold text-foreground">
               {selectedBenchmark?.display_name ?? "未选择 Benchmark"}
             </div>
-            <div className="mt-1 text-sm text-slate-400">
+            <div className="mt-1 text-sm text-muted-foreground">
               {selectedBenchmark?.description || "当前 Benchmark 没有额外描述。"}
             </div>
           </div>
-          <div className="rounded-xl border border-slate-800/80 bg-[rgba(8,12,18,0.72)] px-4 py-3 text-right">
-            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Model Binding</div>
-            <div className="mt-2 text-sm font-medium text-slate-100">
+          <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-right">
+            <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Model Binding</div>
+            <div className="mt-2 text-sm font-medium text-foreground">
               {selectedModel?.name ?? "未选择模型"}
             </div>
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               {mode === "builtin" ? "Benchmark 类型 · 基线评测" : "Benchmark 类型 · 自定义评测"}
             </div>
           </div>
@@ -357,9 +364,16 @@ function formatVersionLabel(version: BenchmarkVersionSummary) {
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-8 text-sm text-slate-400">
-      {children}
-    </div>
+    <Empty className="border border-dashed border-border bg-card/80 px-4 py-8">
+      <EmptyContent className="max-w-2xl">
+        <EmptyHeader>
+          <EmptyTitle className="text-base text-foreground">当前不可创建评测任务</EmptyTitle>
+          <EmptyDescription className="text-sm text-muted-foreground">
+            {children}
+          </EmptyDescription>
+        </EmptyHeader>
+      </EmptyContent>
+    </Empty>
   );
 }
 
@@ -378,17 +392,17 @@ function ModeCard({
 }) {
   return (
     <button
-      className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+      className={`rounded-lg border px-4 py-4 text-left transition-colors ${
         active
-          ? "border-[#8fffcf]/60 bg-[rgba(16,30,34,0.84)]"
-          : "border-slate-800/80 bg-[rgba(10,15,22,0.72)]"
-      } ${disabled ? "cursor-not-allowed opacity-50" : "hover:border-slate-700 hover:bg-[rgba(14,20,29,0.76)]"}`}
+          ? "border-primary/60 bg-primary/10"
+          : "border-border bg-card/80"
+      } ${disabled ? "cursor-not-allowed opacity-50" : "hover:border-border hover:bg-card/80"}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <div className="text-sm font-semibold text-slate-100">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-slate-400">{description}</div>
+      <div className="text-sm font-semibold text-foreground">{title}</div>
+      <div className="mt-2 text-sm leading-6 text-muted-foreground">{description}</div>
     </button>
   );
 }
@@ -406,16 +420,16 @@ function FieldBlock({
     <div className="space-y-2">
       <Label>{label}</Label>
       {children}
-      {description ? <p className="text-xs leading-5 text-slate-500">{description}</p> : null}
+      {description ? <p className="text-xs leading-5 text-muted-foreground">{description}</p> : null}
     </div>
   );
 }
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-800/80 bg-[rgba(8,12,18,0.72)] px-4 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <div className="mt-2 text-sm text-slate-100">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-3">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm text-foreground">{value}</div>
     </div>
   );
 }

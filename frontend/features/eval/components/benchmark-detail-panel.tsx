@@ -188,17 +188,17 @@ export function BenchmarkDetailPanel({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
       {actionError ? (
-        <div className="mx-4 mb-3 rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+        <div className="mx-4 mb-3 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {actionError}
         </div>
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <Card className="flex min-h-0 w-[320px] flex-col overflow-hidden rounded-none border-0 border-r border-slate-800/70 bg-transparent shadow-none">
-        <CardHeader className="border-b border-slate-800/70 bg-transparent px-3 py-2.5">
+        <Card className="flex min-h-0 w-[320px] flex-col overflow-hidden rounded-none border-0 border-r border-border bg-transparent shadow-none">
+        <CardHeader className="border-b border-border bg-transparent px-3 py-2.5">
           <div className="space-y-1">
-            <div className="text-[13px] font-medium text-zinc-100">Benchmark Versions</div>
-            <div className="text-xs text-zinc-500">{versions.length} 个版本</div>
+            <div className="text-[13px] font-medium text-foreground">Benchmark Versions</div>
+            <div className="text-xs text-muted-foreground">{versions.length} 个版本</div>
           </div>
         </CardHeader>
         <CardContent className="min-h-0 flex-1 p-0">
@@ -211,10 +211,10 @@ export function BenchmarkDetailPanel({
                   return (
                     <button
                       className={cn(
-                        "w-full rounded-2xl border px-3 py-3 text-left transition-colors",
+                        "w-full rounded-lg border px-3 py-3 text-left transition-colors",
                         isActive
-                          ? "border-slate-600 bg-[rgba(29,41,58,0.72)]"
-                          : "border-slate-800/70 bg-[rgba(12,18,28,0.42)] hover:border-slate-700 hover:bg-[rgba(14,20,29,0.62)]"
+                          ? "border-border bg-muted/60"
+                          : "border-border bg-card/60 hover:border-border hover:bg-muted/60"
                       )}
                       key={version.id}
                       onClick={() => {
@@ -225,21 +225,21 @@ export function BenchmarkDetailPanel({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-zinc-100">
+                          <div className="truncate text-sm font-medium text-foreground">
                             {version.display_name}
                           </div>
-                          <div className="mt-1 font-mono text-[11px] text-zinc-500">{version.id}</div>
+                          <div className="mt-1 font-mono text-[11px] text-muted-foreground">{version.id}</div>
                         </div>
                         <Badge variant={version.enabled ? "outline" : "secondary"}>
                           {version.enabled ? "Enabled" : "Disabled"}
                         </Badge>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                         <span>{formatNumber(version.sample_count)} samples</span>
                         <span>{formatNumber(version.eval_job_count)} jobs</span>
                       </div>
                       {version.latest_eval_at ? (
-                        <div className="mt-1 text-[11px] text-zinc-500">
+                        <div className="mt-1 text-[11px] text-muted-foreground">
                           最近运行 {formatDateTime(version.latest_eval_at)}
                         </div>
                       ) : null}
@@ -248,14 +248,14 @@ export function BenchmarkDetailPanel({
                 })}
               </div>
             ) : (
-              <div className="px-4 py-6 text-sm text-zinc-500">当前 Benchmark 还没有可展示的版本。</div>
+              <div className="px-4 py-6 text-sm text-muted-foreground">当前 Benchmark 还没有可展示的版本。</div>
             )}
           </div>
         </CardContent>
         </Card>
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
-          <CardHeader className="border-b border-slate-800/70 bg-transparent px-4 py-3">
+          <CardHeader className="border-b border-border bg-transparent px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <PrimaryTabButton
@@ -297,7 +297,7 @@ export function BenchmarkDetailPanel({
                     ) : null}
                     {selectedVersion ? (
                       <Button
-                        className="border border-red-500/40 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         disabled={deletePending}
                         onClick={() => {
                           setActionError(null);
@@ -339,7 +339,7 @@ export function BenchmarkDetailPanel({
                 />
               )
             ) : (
-              <div className="flex min-h-[480px] items-center justify-center p-10 text-sm text-zinc-500">
+              <div className="flex min-h-[480px] items-center justify-center p-10 text-sm text-muted-foreground">
                 当前 Benchmark 还没有可展示的版本。
               </div>
             )}
@@ -366,7 +366,7 @@ export function BenchmarkDetailPanel({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletePending}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-500/90 text-white hover:bg-red-500"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deletePending}
               onClick={() => void handleDeleteSelectedVersion()}
             >
@@ -394,14 +394,14 @@ function BenchmarkVersionDetailTab({
     <div className="min-h-0 overflow-y-auto p-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+          <Card className="border-border bg-card/80 shadow-none">
             <CardHeader className="pb-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-3">
-                  <div className="inline-flex rounded-full border border-slate-700 bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-xs font-medium text-zinc-200">
+                  <div className="inline-flex rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground">
                     {version.id}
                   </div>
-                  <CardTitle className="text-lg text-zinc-100">{version.display_name}</CardTitle>
+                  <CardTitle className="text-lg text-foreground">{version.display_name}</CardTitle>
                 </div>
                 <Badge variant={version.enabled ? "outline" : "secondary"}>
                   {version.enabled ? "Enabled" : "Disabled"}
@@ -416,11 +416,11 @@ function BenchmarkVersionDetailTab({
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+          <Card className="border-border bg-card/80 shadow-none">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-zinc-100">Version 信息</CardTitle>
+              <CardTitle className="text-sm text-foreground">Version 信息</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm leading-6 text-zinc-300">
+            <CardContent className="space-y-4 text-sm leading-6 text-foreground">
               <DetailRow label="Benchmark" value={`${benchmarkDisplayName} (${benchmarkName})`} />
               <DetailRow label="展示名称" value={version.display_name} />
               <DetailRow label="说明" value={version.description || "--"} />
@@ -433,13 +433,13 @@ function BenchmarkVersionDetailTab({
           </Card>
         </div>
 
-        <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+        <Card className="border-border bg-card/80 shadow-none">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-zinc-100">
+            <CardTitle className="text-sm text-foreground">
               {isBuiltin ? "使用提示" : "预览提示"}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm leading-6 text-zinc-400">
+          <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
             {isBuiltin ? (
               <>
                 <p>基线 Benchmark 由平台统一维护，当前页面只展示可用版本信息，不提供版本编辑或数据文件预览。</p>
@@ -492,13 +492,13 @@ function BenchmarkVersionPreviewTab({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="border-b border-slate-800/70 px-4 py-3">
+      <div className="border-b border-border px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-zinc-100">
+            <div className="truncate text-sm font-medium text-foreground">
               {preview?.file_name ?? version.dataset_source_uri ?? version.display_name}
             </div>
-            <div className="mt-1 text-xs text-zinc-500">{previewLineLabel}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{previewLineLabel}</div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -564,12 +564,12 @@ function JsonlTableView({
         <Table className="min-w-[980px] table-fixed">
           <TableHeader className="bg-transparent">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-[rgba(13,18,25,0.92)]">
+              <TableHead className="sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-card/80">
                 行
               </TableHead>
               {columns.map((column) => (
                 <TableHead
-                  className="sticky top-0 z-10 min-w-[180px] bg-[rgba(13,18,25,0.92)]"
+                  className="sticky top-0 z-10 min-w-[180px] bg-card/80"
                   key={column}
                 >
                   {column}
@@ -580,12 +580,12 @@ function JsonlTableView({
           <TableBody>
             {rows.map((row) => (
               <TableRow className="bg-transparent" key={row.lineNumber}>
-                <TableCell className="sticky left-0 z-10 w-[96px] min-w-[96px] bg-[rgba(13,18,25,0.84)] align-top font-medium text-slate-400">
+                <TableCell className="sticky left-0 z-10 w-[96px] min-w-[96px] bg-card/80 align-top font-medium text-muted-foreground">
                   {row.lineNumber}
                 </TableCell>
                 {columns.map((column) => (
                   <TableCell
-                    className="max-w-[320px] align-top text-[13px] leading-6 text-zinc-300"
+                    className="max-w-[320px] align-top text-[13px] leading-6 text-foreground"
                     key={`${row.lineNumber}-${column}`}
                   >
                     <div className="line-clamp-3 break-words">
@@ -619,35 +619,35 @@ function JsonlRawView({
   return (
     <div className="grid min-h-0 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-h-0 overflow-y-auto p-4">
-        <pre className="min-h-full overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-[rgba(5,8,13,0.58)] p-4 font-mono text-[12px] leading-7 text-zinc-300">
+        <pre className="min-h-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-4 font-mono text-[12px] leading-7 text-foreground">
           {content || "当前版本暂无可预览的文件内容。"}
         </pre>
       </div>
 
-      <aside className="min-h-0 overflow-y-auto border-l border-slate-800/70 bg-[rgba(8,12,19,0.34)] px-4 py-4">
+      <aside className="min-h-0 overflow-y-auto border-l border-border bg-card/80 px-4 py-4">
         <div className="space-y-4">
           <InspectorCard label="样本条数" value={String(rows.length)} />
           <InspectorCard label="解析异常" value={`${parseErrors.length} 行`} />
 
-          <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+          <Card className="border-border bg-card/80 shadow-none">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-zinc-100">使用建议</CardTitle>
+              <CardTitle className="text-sm text-foreground">使用建议</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm leading-6 text-zinc-400">
+            <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
               <p>Raw 视图更适合检查转义、空行和非法 JSON。</p>
               <p>如果结构稳定，优先使用“表格预览”做样本抽查。</p>
             </CardContent>
           </Card>
 
           {parseErrors.length > 0 ? (
-            <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+            <Card className="border-border bg-card/80 shadow-none">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-zinc-100">异常行</CardTitle>
+                <CardTitle className="text-sm text-foreground">异常行</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-xs text-zinc-400">
+              <CardContent className="space-y-2 text-xs text-muted-foreground">
                 {parseErrors.slice(0, 5).map((error) => (
                   <div
-                    className="rounded-xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-3 py-2"
+                    className="rounded-lg border border-border bg-muted/40 px-3 py-2"
                     key={`${error.lineNumber}-${error.message}`}
                   >
                     第 {error.lineNumber} 行: {error.message}
@@ -676,8 +676,8 @@ function PrimaryTabButton({
       className={cn(
         "inline-flex h-8 items-center rounded-full border px-3 text-sm transition-colors",
         active
-          ? "border-slate-200 bg-slate-100 text-slate-950"
-          : "border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400 hover:bg-slate-800/70 hover:text-zinc-100"
+          ? "border-border bg-accent text-accent-foreground"
+          : "border-border bg-muted/40 text-muted-foreground hover:bg-card/80 hover:text-foreground"
       )}
       onClick={onClick}
       type="button"
@@ -701,8 +701,8 @@ function PreviewModeButton({
       className={cn(
         "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
         active
-          ? "border-sky-200 bg-sky-100 text-sky-950"
-          : "border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400 hover:bg-slate-800/70 hover:text-zinc-100"
+          ? "border-border bg-accent text-accent-foreground"
+          : "border-border bg-muted/40 text-muted-foreground hover:bg-card/80 hover:text-foreground"
       )}
       onClick={onClick}
       type="button"
@@ -714,9 +714,9 @@ function PreviewModeButton({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-4 py-4">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</div>
-      <div className="mt-3 text-lg font-medium text-zinc-100">{value}</div>
+    <div className="rounded-lg border border-border bg-muted/40 px-4 py-4">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-3 text-lg font-medium text-foreground">{value}</div>
     </div>
   );
 }
@@ -724,17 +724,17 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</div>
-      <div className="break-all text-sm text-zinc-200">{value}</div>
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="break-all text-sm text-foreground">{value}</div>
     </div>
   );
 }
 
 function InspectorCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-3 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</div>
-      <div className="mt-2 text-base font-medium text-zinc-100">{value}</div>
+    <div className="rounded-lg border border-border bg-muted/40 px-3 py-3">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-base font-medium text-foreground">{value}</div>
     </div>
   );
 }
@@ -750,10 +750,10 @@ function PreviewState({
     <div className="flex min-h-full items-center justify-center p-10">
       <div
         className={cn(
-          "rounded-2xl border px-4 py-3 text-sm",
+          "rounded-lg border px-4 py-3 text-sm",
           intent === "error"
-            ? "border-rose-900/40 bg-rose-950/20 text-rose-300"
-            : "border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400"
+            ? "border-rose-900/40 bg-destructive/10 text-destructive"
+            : "border-border bg-muted/40 text-muted-foreground"
         )}
       >
         {message}
@@ -772,8 +772,8 @@ function EmptyPreviewPanel({
   return (
     <div className="flex min-h-full items-center justify-center p-10">
       <div className="max-w-md space-y-2 text-center">
-        <div className="text-base font-medium text-zinc-100">{title}</div>
-        <div className="text-sm leading-6 text-zinc-500">{description}</div>
+        <div className="text-base font-medium text-foreground">{title}</div>
+        <div className="text-sm leading-6 text-muted-foreground">{description}</div>
       </div>
     </div>
   );

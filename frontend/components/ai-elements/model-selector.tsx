@@ -43,8 +43,8 @@ export const ModelSelectorContent = ({
   <DialogContent
     aria-describedby={undefined}
     className={cn(
-      "overflow-hidden border-white/10 bg-[rgba(10,14,21,0.98)] p-0 text-slate-100 shadow-[0_32px_90px_rgba(2,6,23,0.5)]",
-      "[&>button]:text-slate-500 [&>button:hover]:bg-white/6 [&>button:hover]:text-slate-100",
+      "overflow-hidden border-border bg-popover p-0 text-popover-foreground shadow-xl",
+      "[&>button]:text-muted-foreground [&>button:hover]:bg-accent [&>button:hover]:text-accent-foreground",
       className
     )}
     {...props}

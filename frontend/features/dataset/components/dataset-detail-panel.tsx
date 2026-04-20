@@ -103,10 +103,10 @@ const PREFERRED_JSONL_COLUMNS = [
 ];
 const ROOT_JSON_PATH = "$";
 const previewStickyHeadClassName =
-  "sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-[rgba(13,18,25,0.92)]";
+  "sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-card/80";
 const previewStickyCellClassName = cn(
   "sticky left-0 z-10 w-[96px] min-w-[96px] align-top font-medium",
-  "after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-slate-800/70"
+  "after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-card/80"
 );
 
 export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
@@ -345,17 +345,17 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
       {actionError ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {actionError}
         </div>
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <Card className="flex min-h-0 w-[300px] flex-col overflow-hidden rounded-none border-0 border-r border-slate-800/70 bg-transparent shadow-none">
-          <CardHeader className="border-b border-slate-800/70 bg-transparent px-3 py-2.5">
+        <Card className="flex min-h-0 w-[300px] flex-col overflow-hidden rounded-none border-0 border-r border-border bg-transparent shadow-none">
+          <CardHeader className="border-b border-border bg-transparent px-3 py-2.5">
             <div className="space-y-1">
-              <div className="text-[13px] font-medium text-zinc-100">版本与文件</div>
-              <div className="text-xs text-zinc-500">{versions.length} 个版本</div>
+              <div className="text-[13px] font-medium text-foreground">版本与文件</div>
+              <div className="text-xs text-muted-foreground">{versions.length} 个版本</div>
             </div>
           </CardHeader>
 
@@ -372,15 +372,15 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
                       <div
                         className={cn(
                           "px-2 py-1.5 transition-colors",
-                          !isLast ? "border-b border-slate-800/70" : null,
-                          "bg-transparent hover:bg-[rgba(14,20,29,0.56)]"
+                          !isLast ? "border-b border-border" : null,
+                          "bg-transparent hover:bg-card/80"
                         )}
                         key={version.id}
                       >
                         <div className="flex items-center gap-2">
                           <button
                             aria-label={isExpanded ? `收起 V${version.version}` : `展开 V${version.version}`}
-                            className="min-w-0 flex flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+                            className="min-w-0 flex flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted/40"
                             onClick={() => {
                               toggleVersionExpanded(version.id);
                               setSelectedVersionId(version.id);
@@ -388,23 +388,23 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
                             }}
                             type="button"
                           >
-                            <span className="flex h-6 w-6 items-center justify-center text-zinc-500">
+                            <span className="flex h-6 w-6 items-center justify-center text-muted-foreground">
                               {isExpanded ? (
                                 <ChevronDown className="h-3.5 w-3.5" />
                               ) : (
                                 <ChevronRight className="h-3.5 w-3.5" />
                               )}
                             </span>
-                            <span className="text-sm font-medium text-zinc-100">
+                            <span className="text-sm font-medium text-foreground">
                               V{version.version}
                             </span>
-                            <span className="text-xs text-zinc-500">
+                            <span className="text-xs text-muted-foreground">
                               {formatNumber(version.record_count)} 条
                             </span>
-                            <span className="text-xs text-zinc-500">
+                            <span className="text-xs text-muted-foreground">
                               {version.file_count || fileEntries.length} 文件
                             </span>
-                            <span className="rounded-full border border-slate-800/90 bg-[rgba(12,18,28,0.82)] px-2 py-0.5 text-[11px] text-slate-300">
+                            <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-foreground">
                               {getDatasetStatusMeta(version.status).label}
                             </span>
                           </button>
@@ -432,7 +432,7 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
                         </div>
 
                         {isExpanded ? (
-                          <div className="ml-7 mt-1 space-y-0.5 border-l border-slate-800/70 pl-3">
+                          <div className="ml-7 mt-1 space-y-0.5 border-l border-border pl-3">
                             {fileEntries.map((file) => {
                               const isActiveFile =
                                 activeTab === "preview" &&
@@ -444,8 +444,8 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
                                   className={cn(
                                     "flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
                                     isActiveFile
-                                      ? "bg-[rgba(29,41,58,0.82)] text-zinc-100"
-                                      : "text-zinc-400 hover:bg-[rgba(255,255,255,0.04)] hover:text-zinc-200"
+                                      ? "bg-muted/60 text-foreground"
+                                      : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                                   )}
                                   key={file.id}
                                   onClick={() => {
@@ -470,14 +470,14 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
                   })}
                 </div>
               ) : (
-                <div className="px-4 py-6 text-sm text-zinc-500">当前数据集还没有可展示的版本。</div>
+                <div className="px-4 py-6 text-sm text-muted-foreground">当前数据集还没有可展示的版本。</div>
               )}
             </div>
           </CardContent>
         </Card>
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
-          <CardHeader className="border-b border-slate-800/70 bg-transparent px-4 py-3">
+          <CardHeader className="border-b border-border bg-transparent px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <PrimaryTabButton
@@ -535,7 +535,7 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
                 />
               )
             ) : (
-              <div className="flex min-h-[480px] items-center justify-center p-10 text-sm text-zinc-500">
+              <div className="flex min-h-[480px] items-center justify-center p-10 text-sm text-muted-foreground">
                 当前数据集还没有可展示的版本。
               </div>
             )}
@@ -630,11 +630,11 @@ function DatasetPreviewTab({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="border-b border-slate-800/70 px-4 py-3">
+      <div className="border-b border-border px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-zinc-100">{fileName}</div>
-            <div className="mt-1 text-xs text-zinc-500">{previewLineLabel}</div>
+            <div className="truncate text-sm font-medium text-foreground">{fileName}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{previewLineLabel}</div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -703,9 +703,9 @@ function DatasetPreviewTab({
         }}
         open={inspectorOpen && selectedRow !== null}
       >
-        <SheetContent className="min-h-0 w-full overflow-hidden gap-0 border-l border-slate-800/85 bg-[linear-gradient(180deg,rgba(10,15,22,0.98),rgba(8,12,19,0.95))] p-0 text-slate-100 shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[620px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-slate-500 [&>button]:hover:bg-slate-800/80 [&>button]:hover:text-slate-100">
+        <SheetContent className="min-h-0 w-full overflow-hidden gap-0 border-l border-border bg-card p-0 text-foreground shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[620px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-muted-foreground [&>button]:hover:bg-card/80 [&>button]:hover:text-foreground">
           <SheetHeader className="px-5 pb-1 pt-4 pr-16 text-left">
-            <SheetTitle className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
+            <SheetTitle className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               line:{selectedRow?.lineNumber ?? "--"}
             </SheetTitle>
           </SheetHeader>
@@ -757,7 +757,7 @@ function JsonlTableView({
                   <TableHead className={previewStickyHeadClassName}>行</TableHead>
                   {columns.map((column) => (
                     <TableHead
-                      className="sticky top-0 z-10 min-w-[180px] bg-[rgba(13,18,25,0.92)]"
+                      className="sticky top-0 z-10 min-w-[180px] bg-card/80"
                       key={column}
                     >
                       {column}
@@ -773,7 +773,7 @@ function JsonlTableView({
                     <TableRow
                       className={cn(
                         "cursor-pointer bg-transparent",
-                        isActive ? "bg-[rgba(29,41,58,0.48)] hover:bg-[rgba(29,41,58,0.58)]" : null
+                        isActive ? "bg-muted/60 hover:bg-muted/60" : null
                       )}
                       key={row.lineNumber}
                       onClick={() => onSelectRow(row)}
@@ -790,15 +790,15 @@ function JsonlTableView({
                         className={cn(
                           previewStickyCellClassName,
                           isActive
-                            ? "bg-[rgba(29,41,58,0.82)] text-slate-100"
-                            : "bg-[rgba(13,18,25,0.84)] text-slate-400"
+                            ? "bg-muted/60 text-foreground"
+                            : "bg-card/80 text-muted-foreground"
                         )}
                       >
                         {row.lineNumber}
                       </TableCell>
                       {columns.map((column) => (
                         <TableCell
-                          className="max-w-[320px] align-top text-[13px] leading-6 text-zinc-300"
+                          className="max-w-[320px] align-top text-[13px] leading-6 text-foreground"
                           key={`${row.lineNumber}-${column}`}
                         >
                           <div className="line-clamp-3 break-words">
@@ -835,35 +835,35 @@ function JsonlRawView({
   return (
     <div className="grid min-h-0 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-h-0 overflow-y-auto p-4">
-        <pre className="min-h-full overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-slate-800 bg-[rgba(5,8,13,0.58)] p-4 font-mono text-[12px] leading-7 text-zinc-300">
+        <pre className="min-h-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-4 font-mono text-[12px] leading-7 text-foreground">
           {content || "当前版本暂无可预览的文件内容。"}
         </pre>
       </div>
 
-      <aside className="min-h-0 overflow-y-auto border-l border-slate-800/70 bg-[rgba(8,12,19,0.34)] px-4 py-4">
+      <aside className="min-h-0 overflow-y-auto border-l border-border bg-card/80 px-4 py-4">
         <div className="space-y-4">
           <InspectorCard label="样本条数" value={String(rows.length)} />
           <InspectorCard label="解析异常" value={`${parseErrors.length} 行`} />
 
-          <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+          <Card className="border-border bg-card/80 shadow-none">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-zinc-100">使用建议</CardTitle>
+              <CardTitle className="text-sm text-foreground">使用建议</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm leading-6 text-zinc-400">
+            <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
               <p>Raw 视图适合精确检查转义、空行、非法 JSON 以及多行内容。</p>
               <p>如果结构稳定，优先使用“表格预览”来做质量检查。</p>
             </CardContent>
           </Card>
 
           {parseErrors.length > 0 ? (
-            <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+            <Card className="border-border bg-card/80 shadow-none">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-zinc-100">异常行</CardTitle>
+                <CardTitle className="text-sm text-foreground">异常行</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-xs text-zinc-400">
+              <CardContent className="space-y-2 text-xs text-muted-foreground">
                 {parseErrors.slice(0, 5).map((error) => (
                   <div
-                    className="rounded-xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-3 py-2"
+                    className="rounded-lg border border-border bg-muted/40 px-3 py-2"
                     key={`${error.lineNumber}-${error.message}`}
                   >
                     第 {error.lineNumber} 行: {error.message}
@@ -893,7 +893,7 @@ function JsonStructureTree({
 }) {
   if (!isJsonContainer(value)) {
     return (
-      <div className="font-mono text-[12px] leading-7 text-slate-200">
+      <div className="font-mono text-[12px] leading-7 text-foreground">
         {renderJsonNodeValue(value)}
       </div>
     );
@@ -925,14 +925,14 @@ function DatasetVersionDetailTab({
     <div className="min-h-0 overflow-y-auto p-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+          <Card className="border-border bg-card/80 shadow-none">
             <CardHeader className="pb-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-3">
-                  <div className="inline-flex rounded-full border border-slate-700 bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-xs font-medium text-zinc-200">
+                  <div className="inline-flex rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground">
                     V{version.version}
                   </div>
-                  <CardTitle className="text-lg text-zinc-100">
+                  <CardTitle className="text-lg text-foreground">
                     {getVersionDescription(dataset, version)}
                   </CardTitle>
                 </div>
@@ -949,11 +949,11 @@ function DatasetVersionDetailTab({
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+          <Card className="border-border bg-card/80 shadow-none">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-zinc-100">版本说明</CardTitle>
+              <CardTitle className="text-sm text-foreground">版本说明</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm leading-6 text-zinc-300">
+            <CardContent className="space-y-4 text-sm leading-6 text-foreground">
               <DetailRow label="描述" value={version.description || dataset.description || "--"} />
               <DetailRow label="来源类型" value={version.source_type || "--"} />
               <DetailRow label="来源路径" value={version.source_uri || "--"} />
@@ -962,21 +962,21 @@ function DatasetVersionDetailTab({
           </Card>
         </div>
 
-        <Card className="border-slate-800/70 bg-[rgba(10,15,22,0.74)] shadow-none">
+        <Card className="border-border bg-card/80 shadow-none">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-zinc-100">文件清单</CardTitle>
+            <CardTitle className="text-sm text-foreground">文件清单</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {getVersionFileEntries(version).map((file) => (
                 <div
-                  className="rounded-2xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-3 py-3"
+                  className="rounded-lg border border-border bg-muted/40 px-3 py-3"
                   key={file.id}
                 >
                   <div className="flex items-start gap-3">
-                    <FileJson2 className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+                    <FileJson2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-zinc-100">{file.file_name}</div>
+                      <div className="truncate text-sm font-medium text-foreground">{file.file_name}</div>
                     </div>
                   </div>
                 </div>
@@ -1003,8 +1003,8 @@ function PrimaryTabButton({
       className={cn(
         "inline-flex h-8 items-center rounded-full border px-3 text-sm transition-colors",
         active
-          ? "border-slate-200 bg-slate-100 text-slate-950"
-          : "border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400 hover:bg-slate-800/70 hover:text-zinc-100"
+          ? "border-border bg-accent text-accent-foreground"
+          : "border-border bg-muted/40 text-muted-foreground hover:bg-card/80 hover:text-foreground"
       )}
       onClick={onClick}
       type="button"
@@ -1028,8 +1028,8 @@ function PreviewModeButton({
       className={cn(
         "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
         active
-          ? "border-sky-200 bg-sky-100 text-sky-950"
-          : "border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400 hover:bg-slate-800/70 hover:text-zinc-100"
+          ? "border-border bg-accent text-accent-foreground"
+          : "border-border bg-muted/40 text-muted-foreground hover:bg-card/80 hover:text-foreground"
       )}
       onClick={onClick}
       type="button"
@@ -1041,18 +1041,18 @@ function PreviewModeButton({
 
 function InspectorCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-3 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</div>
-      <div className="mt-2 text-base font-medium text-zinc-100">{value}</div>
+    <div className="rounded-lg border border-border bg-muted/40 px-3 py-3">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-base font-medium text-foreground">{value}</div>
     </div>
   );
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-[rgba(255,255,255,0.03)] px-4 py-4">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</div>
-      <div className="mt-3 text-lg font-medium text-zinc-100">{value}</div>
+    <div className="rounded-lg border border-border bg-muted/40 px-4 py-4">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-3 text-lg font-medium text-foreground">{value}</div>
     </div>
   );
 }
@@ -1060,8 +1060,8 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">{label}</div>
-      <div className="break-all text-sm text-zinc-200">{value}</div>
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="break-all text-sm text-foreground">{value}</div>
     </div>
   );
 }
@@ -1077,10 +1077,10 @@ function PreviewState({
     <div className="flex min-h-full items-center justify-center p-10">
       <div
         className={cn(
-          "rounded-2xl border px-4 py-3 text-sm",
+          "rounded-lg border px-4 py-3 text-sm",
           intent === "error"
-            ? "border-rose-900/40 bg-rose-950/20 text-rose-300"
-            : "border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400"
+            ? "border-rose-900/40 bg-destructive/10 text-destructive"
+            : "border-border bg-muted/40 text-muted-foreground"
         )}
       >
         {message}
@@ -1099,8 +1099,8 @@ function EmptyPreviewPanel({
   return (
     <div className="flex min-h-full items-center justify-center p-10">
       <div className="max-w-md space-y-2 text-center">
-        <div className="text-base font-medium text-zinc-100">{title}</div>
-        <div className="text-sm leading-6 text-zinc-500">{description}</div>
+        <div className="text-base font-medium text-foreground">{title}</div>
+        <div className="text-sm leading-6 text-muted-foreground">{description}</div>
       </div>
     </div>
   );
@@ -1129,10 +1129,10 @@ function ActionMenu({
           className={cn(
             "px-0",
             size === "icon-sm"
-              ? "h-8 w-8 rounded-md border-transparent bg-transparent text-zinc-500 shadow-none hover:bg-[rgba(255,255,255,0.04)] hover:text-zinc-100"
+              ? "h-8 w-8 rounded-md border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
               : chrome === "plain"
-                ? "h-9 w-9 rounded-md border-transparent bg-transparent text-zinc-400 shadow-none hover:bg-[rgba(255,255,255,0.04)] hover:text-zinc-100"
-                : "h-9 w-9 border-slate-800 bg-[rgba(255,255,255,0.03)] text-zinc-400 hover:bg-slate-800/70 hover:text-zinc-100"
+                ? "h-9 w-9 rounded-md border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
+                : "h-9 w-9 border-border bg-muted/40 text-muted-foreground hover:bg-card/80 hover:text-foreground"
           )}
           disabled={disabled}
           size="sm"
@@ -1184,7 +1184,7 @@ function DeleteConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
           <AlertDialogAction
-            className="bg-red-500/90 text-white hover:bg-red-500"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             disabled={pending}
             onClick={onConfirm}
           >
@@ -1427,7 +1427,7 @@ function renderJsonTreeChildren({
         >
           {container ? (
             <button
-              className="mt-[3px] flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800/70 hover:text-slate-100"
+              className="mt-[3px] flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
               onClick={() => onTogglePath(path)}
               type="button"
             >
@@ -1445,16 +1445,16 @@ function renderJsonTreeChildren({
             className={cn(
               "flex min-w-0 flex-1 items-start gap-2 rounded-lg px-2 py-1.5 text-left font-mono text-[12px] leading-6 transition-colors",
               active
-                ? "bg-[rgba(36,54,78,0.72)] text-slate-100"
-                : "text-slate-300 hover:bg-[rgba(255,255,255,0.03)] hover:text-slate-100"
+                ? "bg-primary/10 text-foreground"
+                : "text-foreground hover:bg-muted/40 hover:text-foreground"
             )}
             onClick={() => onSelectPath(path)}
             type="button"
           >
-            <span className="shrink-0 text-sky-300">{label}</span>
-            <span className="shrink-0 text-slate-500">:</span>
+            <span className="shrink-0 text-primary">{label}</span>
+            <span className="shrink-0 text-muted-foreground">:</span>
             {container ? (
-              <span className="truncate text-slate-500">{summarizeJsonContainer(child)}</span>
+              <span className="truncate text-muted-foreground">{summarizeJsonContainer(child)}</span>
             ) : (
               renderJsonNodeValue(child)
             )}
@@ -1497,7 +1497,7 @@ function summarizeJsonContainer(value: Record<string, unknown> | unknown[]) {
 
 function renderJsonNodeValue(value: unknown) {
   if (value === null) {
-    return <span className="text-slate-500">null</span>;
+    return <span className="text-muted-foreground">null</span>;
   }
 
   if (typeof value === "string") {
@@ -1509,14 +1509,14 @@ function renderJsonNodeValue(value: unknown) {
   }
 
   if (typeof value === "boolean") {
-    return <span className="text-sky-300">{String(value)}</span>;
+    return <span className="text-primary">{String(value)}</span>;
   }
 
   if (value === undefined) {
-    return <span className="text-slate-500">undefined</span>;
+    return <span className="text-muted-foreground">undefined</span>;
   }
 
-  return <span className="break-words text-slate-300">{String(value)}</span>;
+  return <span className="break-words text-foreground">{String(value)}</span>;
 }
 
 function getVersionDescription(dataset: DatasetDetail, version: DatasetVersionSummary) {

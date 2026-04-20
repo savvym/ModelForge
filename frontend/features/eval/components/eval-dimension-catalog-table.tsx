@@ -33,7 +33,7 @@ export function EvalDimensionCatalogTable({
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-slate-500" colSpan={5}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={5}>
                 当前还没有评测维度。请先创建一个可复用的评测维度，再用于自定义 Benchmark。
               </TableCell>
             </TableRow>
@@ -41,15 +41,15 @@ export function EvalDimensionCatalogTable({
             dimensions.map((dimension) => (
               <TableRow key={dimension.id}>
                 <TableCell className="min-w-[260px] align-top">
-                  <div className="font-medium text-slate-100">{dimension.name}</div>
-                  <div className="mt-1 text-xs text-slate-500">v{dimension.version}</div>
+                  <div className="font-medium text-foreground">{dimension.name}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">v{dimension.version}</div>
                   {dimension.description ? (
-                    <div className="mt-2 max-w-[480px] text-sm leading-6 text-slate-400">
+                    <div className="mt-2 max-w-[480px] text-sm leading-6 text-muted-foreground">
                       {dimension.description}
                     </div>
                   ) : null}
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {getTemplateTypeLabel(dimension.template_type)}
                 </TableCell>
                 <TableCell className="align-top">
@@ -58,10 +58,10 @@ export function EvalDimensionCatalogTable({
                     <Badge variant="secondary">{dimension.output_type}</Badge>
                   </div>
                 </TableCell>
-                <TableCell className="align-top text-slate-300">
+                <TableCell className="align-top text-foreground">
                   {dimension.model || "跟随任务配置"}
                 </TableCell>
-                <TableCell className="align-top text-slate-400">
+                <TableCell className="align-top text-muted-foreground">
                   {formatDateTime(dimension.created_at)}
                 </TableCell>
               </TableRow>

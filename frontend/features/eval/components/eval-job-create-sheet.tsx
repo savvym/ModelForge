@@ -51,9 +51,9 @@ export function EvalJobCreateSheet({
       </Button>
 
       <Sheet onOpenChange={handleOpenChange} open={open}>
-        <SheetContent className="w-full gap-0 overflow-hidden border-l border-slate-800/85 bg-[linear-gradient(180deg,rgba(10,15,22,0.98),rgba(8,12,19,0.95))] px-0 py-0 text-slate-100 shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[760px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-slate-500 [&>button]:hover:bg-slate-800/80 [&>button]:hover:text-slate-100">
-          <SheetHeader className="border-b border-slate-800/80 px-6 pb-5 pt-6 pr-12 text-left sm:px-7">
-            <SheetTitle className="text-[22px] font-semibold tracking-[0.01em] text-slate-50">
+        <SheetContent className="w-full gap-0 overflow-hidden border-l border-border bg-card px-0 py-0 text-foreground shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[760px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-muted-foreground [&>button]:hover:bg-card/80 [&>button]:hover:text-foreground">
+          <SheetHeader className="border-b border-border px-6 pb-5 pt-6 pr-12 text-left sm:px-7">
+            <SheetTitle className="text-[22px] font-semibold tracking-[0.01em] text-foreground">
               创建评测任务
             </SheetTitle>
           </SheetHeader>

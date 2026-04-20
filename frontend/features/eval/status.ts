@@ -15,22 +15,22 @@ const STATUS_META: Record<string, EvalStatusMeta> = {
   scoring: {
     label: "评分中",
     variant: "outline",
-    className: "border-zinc-300 bg-zinc-50 text-zinc-700"
+    className: "border-border bg-card text-muted-foreground"
   },
   completed: {
     label: "已完成",
     variant: "outline",
-    className: "border-zinc-300 bg-zinc-50 text-zinc-700"
+    className: "border-border bg-card text-muted-foreground"
   },
   cancelled: {
     label: "已停止",
     variant: "outline",
-    className: "border-zinc-300 bg-zinc-50 text-zinc-700"
+    className: "border-border bg-card text-muted-foreground"
   },
   failed: {
     label: "失败",
     variant: "outline",
-    className: "border-zinc-300 bg-zinc-50 text-zinc-700"
+    className: "border-border bg-card text-muted-foreground"
   }
 };
 

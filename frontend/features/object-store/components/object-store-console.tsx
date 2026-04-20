@@ -1113,14 +1113,14 @@ export function ObjectStoreConsole({
         <DropdownMenuTrigger asChild>
           <button
             aria-label="目录操作"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
             title="目录操作"
             type="button"
           >
             <MoreVertical className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[200px] rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100">
+        <DropdownMenuContent align="end" className="min-w-[200px] rounded-lg border-border bg-card/80 p-1.5 text-foreground">
           <DropdownMenuItem
             className="rounded-lg"
             onSelect={() =>
@@ -1132,14 +1132,14 @@ export function ObjectStoreConsole({
               )
             }
           >
-            <Copy className="h-4 w-4 text-zinc-500" />
+            <Copy className="h-4 w-4 text-muted-foreground" />
             Copy link
           </DropdownMenuItem>
           <DropdownMenuItem
             className="rounded-lg"
             onSelect={() => void loadBrowser(browser.bucket, normalizedPrefix, "")}
           >
-            <RefreshCw className="h-4 w-4 text-zinc-500" />
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
             Refresh
           </DropdownMenuItem>
           {allowMutations ? (
@@ -1148,21 +1148,21 @@ export function ObjectStoreConsole({
                 className="rounded-lg"
                 onSelect={() => openCreateFolderDialog(normalizedPrefix)}
               >
-                <Plus className="h-4 w-4 text-zinc-500" />
+                <Plus className="h-4 w-4 text-muted-foreground" />
                 Create folder
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="rounded-lg"
                 onSelect={() => openUploadPicker(normalizedPrefix)}
               >
-                <UploadCloud className="h-4 w-4 text-zinc-500" />
+                <UploadCloud className="h-4 w-4 text-muted-foreground" />
                 Upload files
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="rounded-lg"
                 onSelect={() => openFolderUploadPicker(normalizedPrefix)}
               >
-                <FolderOpen className="h-4 w-4 text-zinc-500" />
+                <FolderOpen className="h-4 w-4 text-muted-foreground" />
                 Upload folder
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -1170,7 +1170,7 @@ export function ObjectStoreConsole({
                 disabled={!canDeleteDirectory}
                 onSelect={() => void handleDeletePrefix(normalizedPrefix, labelForPrefix(normalizedPrefix))}
               >
-                <Trash2 className="h-4 w-4 text-zinc-500" />
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
                 Delete
               </DropdownMenuItem>
             </>
@@ -1229,7 +1229,7 @@ export function ObjectStoreConsole({
             cacheEntry.prefixes.length === 0 &&
             cacheEntry.objects.length === 0 ? (
               <div
-                className="px-2 py-1.5 text-sm text-zinc-500"
+                className="px-2 py-1.5 text-sm text-muted-foreground"
                 style={{ paddingLeft: `${43 + depth * 17}px` }}
               >
                 No data
@@ -1251,7 +1251,7 @@ export function ObjectStoreConsole({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              className="h-8 rounded-full border-zinc-700 bg-transparent px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:text-white"
+              className="h-8 rounded-full border-border bg-transparent px-3 text-xs text-foreground hover:bg-card/80 hover:text-foreground"
               type="button"
               variant="outline"
             >
@@ -1259,7 +1259,7 @@ export function ObjectStoreConsole({
               <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[200px] rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100">
+          <DropdownMenuContent align="end" className="min-w-[200px] rounded-lg border-border bg-card/80 p-1.5 text-foreground">
             <DropdownMenuItem
               className="rounded-lg"
               onSelect={() =>
@@ -1274,7 +1274,7 @@ export function ObjectStoreConsole({
                 )
               }
             >
-              <ExternalLink className="h-4 w-4 text-zinc-500" />
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
               Open raw
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -1288,7 +1288,7 @@ export function ObjectStoreConsole({
                 )
               }
             >
-              <Download className="h-4 w-4 text-zinc-500" />
+              <Download className="h-4 w-4 text-muted-foreground" />
               Download
             </DropdownMenuItem>
             {allowMutations ? (
@@ -1296,7 +1296,7 @@ export function ObjectStoreConsole({
                 className="rounded-lg"
                 onSelect={() => void handleDelete(activePreviewEntry)}
               >
-                <Trash2 className="h-4 w-4 text-zinc-500" />
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
                 Delete
               </DropdownMenuItem>
             ) : null}
@@ -1309,7 +1309,7 @@ export function ObjectStoreConsole({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            className="h-8 rounded-full border-zinc-700 bg-transparent px-3 text-xs text-zinc-200 hover:bg-zinc-800 hover:text-white"
+            className="h-8 rounded-full border-border bg-transparent px-3 text-xs text-foreground hover:bg-card/80 hover:text-foreground"
             type="button"
             variant="outline"
           >
@@ -1317,26 +1317,26 @@ export function ObjectStoreConsole({
             <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[220px] rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100">
+        <DropdownMenuContent align="end" className="min-w-[220px] rounded-lg border-border bg-card/80 p-1.5 text-foreground">
           <DropdownMenuItem
             className="rounded-lg"
             onSelect={() => browser && void loadBrowser(browser.bucket, browser.prefix, selectedKey)}
           >
-            <RefreshCw className="h-4 w-4 text-zinc-500" />
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
             Refresh
           </DropdownMenuItem>
           {allowMutations ? (
             <>
               <DropdownMenuItem className="rounded-lg" onSelect={() => openCreateFolderDialog()}>
-                <Plus className="h-4 w-4 text-zinc-500" />
+                <Plus className="h-4 w-4 text-muted-foreground" />
                 New folder
               </DropdownMenuItem>
               <DropdownMenuItem className="rounded-lg" onSelect={() => openUploadPicker()}>
-                <UploadCloud className="h-4 w-4 text-zinc-500" />
+                <UploadCloud className="h-4 w-4 text-muted-foreground" />
                 Upload file
               </DropdownMenuItem>
               <DropdownMenuItem className="rounded-lg" onSelect={() => openFolderUploadPicker()}>
-                <FolderOpen className="h-4 w-4 text-zinc-500" />
+                <FolderOpen className="h-4 w-4 text-muted-foreground" />
                 Upload folder
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -1348,7 +1348,7 @@ export function ObjectStoreConsole({
                   }
                 }}
               >
-                <Trash2 className="h-4 w-4 text-zinc-500" />
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
                 Delete
               </DropdownMenuItem>
             </>
@@ -1372,7 +1372,7 @@ export function ObjectStoreConsole({
         <DropdownMenuTrigger asChild>
           <button
             aria-label={`${entry.name} 操作`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
             type="button"
           >
             <MoreVertical className="h-4 w-4" />
@@ -1380,10 +1380,10 @@ export function ObjectStoreConsole({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="min-w-[180px] rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+          className="min-w-[180px] rounded-lg border-border bg-card/80 p-1.5 text-foreground"
         >
           <DropdownMenuItem className="rounded-lg" onSelect={() => openDirectory(entry.prefix)}>
-            <FolderOpen className="h-4 w-4 text-zinc-500" />
+            <FolderOpen className="h-4 w-4 text-muted-foreground" />
             Open
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -1397,7 +1397,7 @@ export function ObjectStoreConsole({
               )
             }
           >
-            <Copy className="h-4 w-4 text-zinc-500" />
+            <Copy className="h-4 w-4 text-muted-foreground" />
             Copy link
           </DropdownMenuItem>
           {allowMutations ? (
@@ -1405,7 +1405,7 @@ export function ObjectStoreConsole({
               className="rounded-lg"
               onSelect={() => void handleDeletePrefix(entry.prefix, entry.name)}
             >
-              <Trash2 className="h-4 w-4 text-zinc-500" />
+              <Trash2 className="h-4 w-4 text-muted-foreground" />
               Delete
             </DropdownMenuItem>
           ) : null}
@@ -1424,7 +1424,7 @@ export function ObjectStoreConsole({
         <DropdownMenuTrigger asChild>
           <button
             aria-label={`${entry.name} 操作`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
             type="button"
           >
             <MoreVertical className="h-4 w-4" />
@@ -1432,7 +1432,7 @@ export function ObjectStoreConsole({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="min-w-[200px] rounded-xl border-zinc-800 bg-zinc-950 p-1.5 text-zinc-100"
+          className="min-w-[200px] rounded-lg border-border bg-card/80 p-1.5 text-foreground"
         >
           <DropdownMenuItem
             className="rounded-lg"
@@ -1448,7 +1448,7 @@ export function ObjectStoreConsole({
               )
             }
           >
-            <ExternalLink className="h-4 w-4 text-zinc-500" />
+            <ExternalLink className="h-4 w-4 text-muted-foreground" />
             Open raw
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -1462,7 +1462,7 @@ export function ObjectStoreConsole({
               )
             }
           >
-            <Download className="h-4 w-4 text-zinc-500" />
+            <Download className="h-4 w-4 text-muted-foreground" />
             Download
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -1478,12 +1478,12 @@ export function ObjectStoreConsole({
               )
             }
           >
-            <Copy className="h-4 w-4 text-zinc-500" />
+            <Copy className="h-4 w-4 text-muted-foreground" />
             Copy link
           </DropdownMenuItem>
           {allowMutations ? (
             <DropdownMenuItem className="rounded-lg" onSelect={() => void handleDelete(entry)}>
-              <Trash2 className="h-4 w-4 text-zinc-500" />
+              <Trash2 className="h-4 w-4 text-muted-foreground" />
               Delete
             </DropdownMenuItem>
           ) : null}
@@ -1502,7 +1502,7 @@ export function ObjectStoreConsole({
         ) : null}
 
         {error ? (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         ) : null}
@@ -1512,16 +1512,16 @@ export function ObjectStoreConsole({
           style={{ borderTopRightRadius: 0 }}
         >
           <Card
-            className="flex min-h-0 flex-col overflow-hidden rounded-none border-0 border-r border-slate-800/70 bg-transparent shadow-none"
+            className="flex min-h-0 flex-col overflow-hidden rounded-none border-0 border-r border-border bg-transparent shadow-none"
             style={{ width: explorerPaneWidth }}
           >
-            <CardHeader className="border-b border-slate-800/70 bg-transparent px-3 py-2.5">
+            <CardHeader className="border-b border-border bg-transparent px-3 py-2.5">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[13px] font-medium text-zinc-100">{presentationConfig.label}</div>
+                <div className="text-[13px] font-medium text-foreground">{presentationConfig.label}</div>
                 <div className="flex gap-2">
                   <button
                     aria-label="Refresh tree"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
                     disabled={loading || !browser}
                     onClick={() => void handleRefreshExplorer()}
                     title="Refresh tree"
@@ -1531,7 +1531,7 @@ export function ObjectStoreConsole({
                   </button>
                   <button
                     aria-label="Collapse tree"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
                     disabled={!browser}
                     onClick={handleCollapseExplorerTree}
                     title="Collapse tree"
@@ -1551,7 +1551,7 @@ export function ObjectStoreConsole({
           </Card>
 
           <div
-            className="relative w-2 shrink-0 cursor-col-resize bg-transparent before:absolute before:bottom-0 before:left-1/2 before:top-0 before:w-px before:-translate-x-1/2 before:bg-slate-800/80"
+            className="relative w-2 shrink-0 cursor-col-resize bg-transparent before:absolute before:bottom-0 before:left-1/2 before:top-0 before:w-px before:-translate-x-1/2 before:bg-card/80"
             onMouseDown={startExplorerResize}
             role="presentation"
           />
@@ -1605,12 +1605,12 @@ export function ObjectStoreConsole({
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-1 text-xs font-medium text-zinc-400">
+                  <div className="flex flex-wrap items-center gap-1 text-xs font-medium text-muted-foreground">
                     {panePathSegments.map((segment, index) => (
                       <React.Fragment key={segment.kind === "file" ? `file:${segment.key}` : `dir:${segment.prefix}`}>
-                        {index > 0 ? <ChevronRight className="h-3.5 w-3.5 text-zinc-600" /> : null}
+                        {index > 0 ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : null}
                         <button
-                          className="rounded-md px-1.5 py-0.5 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                          className="rounded-md px-1.5 py-0.5 transition-colors hover:bg-card/80 hover:text-foreground"
                           onClick={() => handlePanePathNavigate(segment)}
                           type="button"
                         >
@@ -1619,7 +1619,7 @@ export function ObjectStoreConsole({
                       </React.Fragment>
                     ))}
                   </div>
-                  <CardTitle className="text-base text-zinc-100">
+                  <CardTitle className="text-base text-foreground">
                     {showPreviewPane && activePreviewEntry ? activePreviewEntry.name : currentDirectoryTitle}
                   </CardTitle>
                 </div>
@@ -1628,8 +1628,8 @@ export function ObjectStoreConsole({
                   <button
                     aria-label="View details"
                     className={cn(
-                      "inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white",
-                      showInspector && "bg-zinc-800 text-white"
+                      "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground",
+                      showInspector && "bg-card/80 text-foreground"
                     )}
                     onClick={() => setShowInspector((value) => !value)}
                     type="button"
@@ -1638,7 +1638,7 @@ export function ObjectStoreConsole({
                   </button>
                   <button
                     aria-label="Copy link"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
                     onClick={() =>
                       void handleCopy(
                         showPreviewPane && activePreviewEntry
@@ -1660,13 +1660,13 @@ export function ObjectStoreConsole({
                   {renderPaneActionsMenu()}
                   {allowMutations && showPreviewPane && activePreviewEntry ? (
                     <>
-                      <div className="inline-flex items-center rounded-full border border-zinc-800 bg-[rgba(15,20,28,0.86)] p-1">
+                      <div className="inline-flex items-center rounded-full border border-border bg-card/80 p-1">
                         <Button
                           className={cn(
                             "h-7 rounded-full border-0 px-3 text-xs shadow-none",
                             fileViewMode === "read"
-                              ? "bg-zinc-100 text-zinc-950 hover:bg-zinc-200"
-                              : "bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                              ? "bg-card text-foreground hover:bg-accent"
+                              : "bg-transparent text-foreground hover:bg-card/80 hover:text-foreground"
                           )}
                           onClick={handleSwitchToReadMode}
                           type="button"
@@ -1678,8 +1678,8 @@ export function ObjectStoreConsole({
                           className={cn(
                             "h-7 rounded-full border-0 px-3 text-xs shadow-none",
                             fileViewMode === "edit"
-                              ? "bg-zinc-100 text-zinc-950 hover:bg-zinc-200"
-                              : "bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                              ? "bg-card text-foreground hover:bg-accent"
+                              : "bg-transparent text-foreground hover:bg-card/80 hover:text-foreground"
                           )}
                           disabled={!canEditActiveTextFile || savingDraft}
                           onClick={() => setFileViewMode("edit")}
@@ -1697,11 +1697,11 @@ export function ObjectStoreConsole({
               {!showPreviewPane ? (
                 <div className="mt-2.5">
                   <div className="relative min-w-[260px] max-w-full">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       className={cn(
                         consoleListSearchInputClassName,
-                        "h-8 border-slate-700/80 bg-[rgba(12,18,25,0.72)] text-[13px]"
+                        "h-8 border-border bg-card/80 text-[13px]"
                       )}
                       onChange={(event) => setSearchQuery(event.target.value)}
                       placeholder={presentation === "rustfs" ? "筛选当前项目对象" : "Filter"}
@@ -1712,24 +1712,24 @@ export function ObjectStoreConsole({
               ) : null}
 
               {showInspector ? (
-                <div className="mt-3 grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/40 px-4 py-3 text-sm text-zinc-300 md:grid-cols-3">
+                <div className="mt-3 grid gap-3 rounded-lg border border-border bg-card/80/40 px-4 py-3 text-sm text-foreground md:grid-cols-3">
                   {showPreviewPane && activePreviewEntry && browser ? (
                     <>
                       <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">对象路径</div>
-                        <div className="break-all text-sm leading-6 text-zinc-100">
+                        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">对象路径</div>
+                        <div className="break-all text-sm leading-6 text-foreground">
                           {`s3://${browser.bucket}/${activePreviewEntry.key}`}
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">文件大小</div>
-                        <div className="text-sm leading-6 text-zinc-100">
+                        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">文件大小</div>
+                        <div className="text-sm leading-6 text-foreground">
                           {formatFileSize(activePreviewEntry.size_bytes)}
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">更新时间</div>
-                        <div className="text-sm leading-6 text-zinc-100">
+                        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">更新时间</div>
+                        <div className="text-sm leading-6 text-foreground">
                           {formatTimestamp(activePreviewEntry.last_modified)}
                         </div>
                       </div>
@@ -1737,16 +1737,16 @@ export function ObjectStoreConsole({
                   ) : (
                     <>
                       <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">当前位置</div>
-                        <div className="text-sm leading-6 text-zinc-100">{filesDirectoryLocation}</div>
+                        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">当前位置</div>
+                        <div className="text-sm leading-6 text-foreground">{filesDirectoryLocation}</div>
                       </div>
                       <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">当前条目</div>
-                        <div className="text-sm leading-6 text-zinc-100">{totalEntries}</div>
+                        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">当前条目</div>
+                        <div className="text-sm leading-6 text-foreground">{totalEntries}</div>
                       </div>
                       <div className="space-y-1">
-                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">可见大小</div>
-                        <div className="text-sm leading-6 text-zinc-100">{formatFileSize(visibleObjectSize)}</div>
+                        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">可见大小</div>
+                        <div className="text-sm leading-6 text-foreground">{formatFileSize(visibleObjectSize)}</div>
                       </div>
                     </>
                   )}
@@ -1804,10 +1804,10 @@ export function ObjectStoreConsole({
                 />
               ) : (
                 <>
-                  <div className="grid grid-cols-[minmax(0,1.8fr)_120px_120px_180px_44px] border-b border-slate-800/70 bg-transparent px-5 py-2.5 text-xs font-medium text-zinc-500">
+                  <div className="grid grid-cols-[minmax(0,1.8fr)_120px_120px_180px_44px] border-b border-border bg-transparent px-5 py-2.5 text-xs font-medium text-muted-foreground">
                     <div className="flex items-center gap-1">
                       Name
-                      <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                     </div>
                     <div>Type</div>
                     <div>Size</div>
@@ -1820,7 +1820,7 @@ export function ObjectStoreConsole({
                       entry.kind === "prefix" ? (
                         <FileTableRow
                           actions={renderDirectoryRowActions(entry)}
-                          icon={<Folder className="h-4 w-4 text-zinc-600" />}
+                          icon={<Folder className="h-4 w-4 text-muted-foreground" />}
                           key={entry.id}
                           name={entry.name}
                           onClick={() => openDirectory(entry.prefix)}
@@ -1843,10 +1843,10 @@ export function ObjectStoreConsole({
 
                     {!loading && !error && totalEntries === 0 ? (
                       <div className="flex min-h-full min-h-[240px] flex-col items-center justify-center px-6 py-10 text-center">
-                        <div className="text-sm font-medium text-zinc-100">
+                        <div className="text-sm font-medium text-foreground">
                           {deferredSearchQuery ? "No matching objects" : "No objects"}
                         </div>
-                        <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
+                        <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
                           {deferredSearchQuery
                             ? "Try another filter."
                             : allowMutations
@@ -1857,7 +1857,7 @@ export function ObjectStoreConsole({
                     ) : null}
 
                     {loading ? (
-                      <div className="flex min-h-full min-h-[320px] items-center justify-center gap-2 px-6 py-10 text-sm text-zinc-500">
+                      <div className="flex min-h-full min-h-[320px] items-center justify-center gap-2 px-6 py-10 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         正在加载对象列表...
                       </div>
@@ -1865,12 +1865,12 @@ export function ObjectStoreConsole({
                   </div>
 
                   {totalEntries > 0 ? (
-                    <div className="flex flex-wrap items-center justify-end gap-5 bg-transparent px-5 pb-3 pt-2 text-xs text-zinc-500">
+                    <div className="flex flex-wrap items-center justify-end gap-5 bg-transparent px-5 pb-3 pt-2 text-xs text-muted-foreground">
                       <div className="flex items-center gap-3">
                         <span>Rows per page:</span>
-                        <span className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-zinc-200">
+                        <span className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-foreground">
                           {pageSize}
-                          <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                         </span>
                         <span>
                           {pageStart}–{pageEnd} of {totalEntries}
@@ -1880,7 +1880,7 @@ export function ObjectStoreConsole({
                       <div className="flex items-center gap-2">
                         <button
                           aria-label="Go to previous page"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                           disabled={currentPage <= 1}
                           onClick={() => setPage((value) => Math.max(1, value - 1))}
                           type="button"
@@ -1889,7 +1889,7 @@ export function ObjectStoreConsole({
                         </button>
                         <button
                           aria-label="Go to next page"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                           disabled={currentPage >= totalPages}
                           onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                           type="button"
@@ -1907,18 +1907,18 @@ export function ObjectStoreConsole({
 
         {allowMutations && uploadQueueSummary ? (
           <div className="pointer-events-none fixed bottom-4 right-4 z-50 w-[min(28rem,calc(100vw-1.5rem))] sm:bottom-6 sm:right-6 sm:w-[24rem]">
-            <Card className="pointer-events-auto overflow-hidden border-zinc-200 bg-white/96 shadow-[0_24px_80px_rgba(24,24,27,0.18)] backdrop-blur">
-              <CardHeader className="space-y-0 border-b border-zinc-200 bg-zinc-50/80 px-4 py-3">
+            <Card className="pointer-events-auto overflow-hidden border-border bg-card shadow-[0_24px_80px_rgba(24,24,27,0.18)] backdrop-blur">
+              <CardHeader className="space-y-0 border-b border-border bg-card/80 px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <CardTitle className="text-sm font-semibold text-zinc-950">上传</CardTitle>
-                    <CardDescription className="mt-1 text-xs leading-5 text-zinc-600">
+                    <CardTitle className="text-sm font-semibold text-foreground">上传</CardTitle>
+                    <CardDescription className="mt-1 text-xs leading-5 text-muted-foreground">
                       {buildUploadQueueSummaryLabel(uploadQueueSummary)}
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
-                      className="h-7 w-7 rounded-md p-0 text-zinc-500"
+                      className="h-7 w-7 rounded-md p-0 text-muted-foreground"
                       onClick={() => setUploadPanelCollapsed((value) => !value)}
                       type="button"
                       variant="ghost"
@@ -1927,7 +1927,7 @@ export function ObjectStoreConsole({
                     </Button>
                     {!uploading ? (
                       <Button
-                        className="h-7 w-7 rounded-md p-0 text-zinc-500"
+                        className="h-7 w-7 rounded-md p-0 text-muted-foreground"
                         onClick={() => setUploadQueue([])}
                         type="button"
                         variant="ghost"
@@ -1939,23 +1939,23 @@ export function ObjectStoreConsole({
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between gap-3 text-xs text-zinc-600">
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                     <span className="truncate">
                       {uploadQueueSummary.activeItem
                         ? `${renderUploadQueueStatusLabel(uploadQueueSummary.activeItem.status)} · ${uploadQueueSummary.activeItem.label}`
                         : "等待上传"}
                     </span>
-                    <span className="shrink-0 font-medium text-zinc-900">
+                    <span className="shrink-0 font-medium text-foreground">
                       {formatUploadPercent(uploadQueueSummary.uploadedBytes, uploadQueueSummary.totalBytes)}
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+                  <div className="h-2 overflow-hidden rounded-full bg-card">
                     <div
-                      className="h-full rounded-full bg-sky-600 transition-[width] duration-150"
+                      className="h-full rounded-full bg-primary transition-[width] duration-150"
                       style={{ width: `${calculateUploadPercent(uploadQueueSummary.uploadedBytes, uploadQueueSummary.totalBytes)}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                     <span>
                       {uploadQueueSummary.completedFiles}/{uploadQueueSummary.totalFiles} 个文件
                     </span>
@@ -1989,8 +1989,8 @@ export function ObjectStoreConsole({
             open={createFolderOpen}
           >
             <DialogContent className="max-w-[460px] gap-0 overflow-hidden p-0">
-              <div className="border-b border-zinc-200 bg-[linear-gradient(180deg,rgba(244,244,245,0.95),rgba(255,255,255,1))] px-5 py-4">
-                <div className="mb-2 inline-flex items-center rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              <div className="border-b border-border bg-card/90 px-5 py-4">
+                <div className="mb-2 inline-flex items-center rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   {presentationConfig.label}
                 </div>
                 <DialogHeader className="space-y-1">
@@ -2009,31 +2009,31 @@ export function ObjectStoreConsole({
                 }}
               >
                 <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-zinc-700" htmlFor="new-folder-name">
+                  <Label className="text-[13px] font-medium text-muted-foreground" htmlFor="new-folder-name">
                     Folder name
                   </Label>
                   <Input
                     autoFocus
-                    className="h-11 rounded-lg border-zinc-200 bg-white text-sm"
+                    className="h-11 rounded-lg border-border bg-card text-sm"
                     id="new-folder-name"
                     onChange={(event) => setFolderDraft(event.target.value)}
                     placeholder="例如：raw-html、reports、2026-03"
                     value={folderDraft}
                   />
-                  <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                     <span>仅支持单层目录名称，不支持 `/`。</span>
-                    <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-600">
+                    <span className="rounded-md bg-card px-2 py-1 text-muted-foreground">
                       {normalizedFolderDraft || "未命名"}
                     </span>
                   </div>
                   {folderDialogError ? (
-                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-destructive">
                       {folderDialogError}
                     </div>
                   ) : null}
                 </div>
 
-                <DialogFooter className="border-t border-zinc-100 pt-4">
+                <DialogFooter className="border-t border-border pt-4">
                   <Button
                     onClick={() => {
                       setCreateFolderOpen(false);
@@ -2046,7 +2046,7 @@ export function ObjectStoreConsole({
                     取消
                   </Button>
                   <Button
-                    className="rounded-md bg-zinc-950 text-white hover:bg-zinc-800"
+                    className="rounded-md bg-card/80 text-foreground hover:bg-card/80"
                     disabled={creatingFolder || !normalizedFolderDraft}
                     type="submit"
                   >
@@ -2066,7 +2066,7 @@ export function ObjectStoreConsole({
     <div className="space-y-4">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="overflow-hidden">
-          <CardHeader className="border-b border-zinc-200 bg-zinc-50/50">
+          <CardHeader className="border-b border-border bg-card/50">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1">
                 <CardTitle className="text-base">Data 对象存储浏览器</CardTitle>
@@ -2079,7 +2079,7 @@ export function ObjectStoreConsole({
                 <div className="flex flex-wrap gap-2">
                   {rootPrefix ? (
                     <Link
-                      className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+                      className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground transition-colors hover:bg-card"
                       href={buildConsoleHref("/files", {
                         bucket: browser.bucket,
                         prefix: browser.prefix
@@ -2125,7 +2125,7 @@ export function ObjectStoreConsole({
               </Select>
 
               <div className="relative min-w-[220px] flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className={cn(consoleListSearchInputClassName, "h-8 pl-9")}
                   onChange={(event) => setSearchQuery(event.target.value)}
@@ -2142,7 +2142,7 @@ export function ObjectStoreConsole({
             </div>
 
             {browser ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <BreadcrumbButton
                   label={browser.bucket}
                   onClick={() => void loadBrowser(browser.bucket, "", "")}
@@ -2168,12 +2168,12 @@ export function ObjectStoreConsole({
             ) : null}
 
             {error ? (
-              <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-700">
+              <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-destructive">
                 {error}
               </div>
             ) : null}
 
-            <div className="grid grid-cols-[minmax(0,1.6fr)_110px_120px_150px_148px] border-b border-zinc-200 bg-zinc-50 px-5 py-3 text-xs font-medium text-zinc-500">
+            <div className="grid grid-cols-[minmax(0,1.6fr)_110px_120px_150px_148px] border-b border-border bg-card px-5 py-3 text-xs font-medium text-muted-foreground">
               <div>名称</div>
               <div>类型</div>
               <div>大小</div>
@@ -2184,8 +2184,8 @@ export function ObjectStoreConsole({
             <div className="max-h-[720px] overflow-y-auto">
               {browser?.parent_prefix ? (
                 <ObjectRow
-                  actions={<span className="text-xs text-zinc-400">导航</span>}
-                  icon={<ArrowUp className="h-4 w-4 text-zinc-500" />}
+                  actions={<span className="text-xs text-muted-foreground">导航</span>}
+                  icon={<ArrowUp className="h-4 w-4 text-muted-foreground" />}
                   name="返回上一级"
                   onClick={() => void loadBrowser(browser.bucket, browser.parent_prefix ?? "", "")}
                   typeLabel="目录"
@@ -2194,8 +2194,8 @@ export function ObjectStoreConsole({
 
               {filteredPrefixes.map((entry) => (
                 <ObjectRow
-                  actions={<span className="text-xs text-zinc-400">打开</span>}
-                  icon={<Folder className="h-4 w-4 text-zinc-700" />}
+                  actions={<span className="text-xs text-muted-foreground">打开</span>}
+                  icon={<Folder className="h-4 w-4 text-muted-foreground" />}
                   key={entry.prefix}
                   name={entry.name}
                   onClick={() => void loadBrowser(browser!.bucket, entry.prefix, "")}
@@ -2251,17 +2251,17 @@ export function ObjectStoreConsole({
 
               {!loading && !error && filteredPrefixes.length === 0 && filteredObjects.length === 0 ? (
                 <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
-                  <div className="text-sm font-medium text-zinc-950">
+                  <div className="text-sm font-medium text-foreground">
                     {deferredSearchQuery ? "没有匹配的目录或对象" : "当前目录为空"}
                   </div>
-                  <p className="mt-2 max-w-md text-sm leading-6 text-zinc-500">
+                  <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
                     当前 prefix 下没有对象，可以切换 bucket、修改路径，或前往 Files 页面上传业务文件。
                   </p>
                 </div>
               ) : null}
 
               {loading ? (
-                <div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-zinc-500">
+                <div className="flex min-h-[260px] items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   正在加载对象列表...
                 </div>
@@ -2331,7 +2331,7 @@ export function ObjectStoreConsole({
                   </div>
                 </>
               ) : (
-                <div className="rounded-md border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-sm leading-6 text-zinc-500">
+                <div className="rounded-md border border-dashed border-border bg-card px-4 py-5 text-sm leading-6 text-muted-foreground">
                   暂未选中对象。左侧点击任意文件后，这里会显示完整 S3 URI 和快捷操作。
                 </div>
               )}
@@ -2369,10 +2369,10 @@ function ExplorerNode({
       className={cn(
         "group flex w-full items-center gap-1 rounded-md pr-1 text-sm transition-colors",
         active
-          ? "bg-zinc-800 text-white"
+          ? "bg-card/80 text-foreground"
           : expanded
-            ? "text-zinc-100 hover:bg-zinc-900 hover:text-white"
-            : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+            ? "text-foreground hover:bg-card/80 hover:text-foreground"
+            : "text-foreground hover:bg-card/80 hover:text-foreground"
       )}
     >
       <button
@@ -2384,21 +2384,21 @@ function ExplorerNode({
         {caret ? (
           <span
             aria-hidden="true"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-zinc-500"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground"
           >
             {loading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : expanded ? (
-              <ChevronDown className={cn("h-3.5 w-3.5", active && "text-zinc-300")} />
+              <ChevronDown className={cn("h-3.5 w-3.5", active && "text-foreground")} />
             ) : (
-              <ChevronRight className={cn("h-3.5 w-3.5", active && "text-zinc-300")} />
+              <ChevronRight className={cn("h-3.5 w-3.5", active && "text-foreground")} />
             )}
           </span>
         ) : (
           <span aria-hidden className="h-7 w-7 shrink-0" />
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5">
-        <span className={cn("shrink-0 text-zinc-400", (active || expanded) && "text-zinc-300")}>{icon}</span>
+        <span className={cn("shrink-0 text-muted-foreground", (active || expanded) && "text-foreground")}>{icon}</span>
         <span className="min-w-0 flex-1 truncate">{label}</span>
         </div>
       </button>
@@ -2469,7 +2469,7 @@ function FilePreviewPane({
 
   if (loading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center gap-2 px-6 py-10 text-sm text-zinc-500">
+      <div className="flex min-h-0 flex-1 items-center justify-center gap-2 px-6 py-10 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
         正在加载文件预览...
       </div>
@@ -2479,7 +2479,7 @@ function FilePreviewPane({
   if (previewError) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-        <div className="max-w-lg rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-700">
+        <div className="max-w-lg rounded-lg border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-6 text-destructive">
           {previewError}
         </div>
       </div>
@@ -2489,7 +2489,7 @@ function FilePreviewPane({
   if (!preview) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-        <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-4 text-sm text-zinc-500">
+        <div className="rounded-lg border border-dashed border-border bg-card px-5 py-4 text-sm text-muted-foreground">
           预览信息尚未准备完成。
         </div>
       </div>
@@ -2508,7 +2508,7 @@ function FilePreviewPane({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
         <div className="min-h-0 flex-1 overflow-auto">
           <div className="grid min-h-full grid-cols-[56px_minmax(0,1fr)]" style={{ minHeight: canvasMinHeight }}>
-            <div className="select-none bg-transparent px-3 py-4 text-right font-mono text-xs leading-6 text-zinc-500">
+            <div className="select-none bg-transparent px-3 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
               {lineNumbers.map((line) => (
                 <div key={line}>{line}</div>
               ))}
@@ -2516,7 +2516,7 @@ function FilePreviewPane({
             {mode === "edit" ? (
               <textarea
                 className={cn(
-                  "min-h-full w-full resize-none rounded-none border-0 bg-transparent px-5 py-4 font-mono text-[13px] leading-6 text-zinc-100 outline-none",
+                  "min-h-full w-full resize-none rounded-none border-0 bg-transparent px-5 py-4 font-mono text-[13px] leading-6 text-foreground outline-none",
                   wrapLines ? "overflow-hidden whitespace-pre-wrap" : "overflow-x-auto whitespace-pre"
                 )}
                 onChange={(event) => {
@@ -2558,7 +2558,7 @@ function FilePreviewPane({
             ) : (
               <pre
                 className={cn(
-                  "min-h-full bg-transparent px-5 py-4 font-mono text-[13px] leading-6 text-zinc-100",
+                  "min-h-full bg-transparent px-5 py-4 font-mono text-[13px] leading-6 text-foreground",
                   wrapLines ? "whitespace-pre-wrap break-words" : "overflow-x-auto whitespace-pre"
                 )}
                 style={{ minHeight: canvasMinHeight }}
@@ -2569,25 +2569,25 @@ function FilePreviewPane({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-4 bg-transparent px-4 py-2 text-[11px] text-zinc-400">
+        <div className="flex items-center justify-between gap-4 bg-transparent px-4 py-2 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-3">
-            <span className="font-medium text-zinc-200">{footerLabel}</span>
+            <span className="font-medium text-foreground">{footerLabel}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-zinc-400">
+            <span className="text-muted-foreground">
               Ln {cursorPosition.line}, Col {cursorPosition.column}
             </span>
             <button
-              className="inline-flex h-6 items-center rounded-md border border-zinc-700 px-2 text-[11px] text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="inline-flex h-6 items-center rounded-md border border-border px-2 text-[11px] text-foreground transition-colors hover:bg-card/80 hover:text-foreground"
               disabled
               type="button"
             >
               Errors: 0
             </button>
-            <div className="mx-1 h-4 w-px bg-zinc-800" />
+            <div className="mx-1 h-4 w-px bg-card/80" />
             <button
               aria-label="Undo"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
               disabled={mode !== "edit" || saving}
               onClick={() => handleTextareaCommand("undo")}
               type="button"
@@ -2597,7 +2597,7 @@ function FilePreviewPane({
             </button>
             <button
               aria-label="Redo"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
               disabled={mode !== "edit" || saving}
               onClick={() => handleTextareaCommand("redo")}
               type="button"
@@ -2607,7 +2607,7 @@ function FilePreviewPane({
             </button>
             <button
               aria-label="Copy content"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
               onClick={onCopyContent}
               type="button"
               title="Copy content"
@@ -2616,7 +2616,7 @@ function FilePreviewPane({
             </button>
             <button
               aria-label="Download file"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
               onClick={onDownload}
               type="button"
               title="Download file"
@@ -2626,8 +2626,8 @@ function FilePreviewPane({
             <button
               aria-label={wrapLines ? "Disable line wrap" : "Enable line wrap"}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white",
-                wrapLines && "bg-zinc-800 text-zinc-200"
+                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground",
+                wrapLines && "bg-card/80 text-foreground"
               )}
               onClick={onToggleWrapLines}
               type="button"
@@ -2643,8 +2643,8 @@ function FilePreviewPane({
 
   if (preview.preview_kind === "image") {
     return (
-      <div className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,#f4f4f5,transparent_48%),linear-gradient(180deg,#fafafa,#f4f4f5)] p-6">
-        <div className="mx-auto flex max-w-6xl justify-center rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="min-h-0 flex-1 overflow-auto bg-background/80 p-6">
+        <div className="mx-auto flex max-w-6xl justify-center rounded-lg border border-border bg-card p-4 shadow-sm">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt={entry.name}
@@ -2658,9 +2658,9 @@ function FilePreviewPane({
 
   if (preview.preview_kind === "pdf") {
     return (
-      <div className="min-h-0 flex-1 bg-zinc-100 p-3">
+      <div className="min-h-0 flex-1 bg-card p-3">
         <iframe
-          className="h-full min-h-[720px] w-full rounded-xl border border-zinc-200 bg-white"
+          className="h-full min-h-[720px] w-full rounded-lg border border-border bg-card"
           src={previewUrl}
           title={entry.name}
         />
@@ -2670,7 +2670,7 @@ function FilePreviewPane({
 
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-      <div className="max-w-lg rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-5 py-4 text-sm leading-6 text-zinc-500">
+      <div className="max-w-lg rounded-lg border border-dashed border-border bg-card px-5 py-4 text-sm leading-6 text-muted-foreground">
         当前文件暂不支持在线预览，可以直接下载或使用 Open raw 查看原始内容。
       </div>
     </div>
@@ -2699,8 +2699,8 @@ function FileTableRow({
   return (
     <div
       className={cn(
-        "grid w-full grid-cols-[minmax(0,1.8fr)_120px_120px_180px_44px] items-center gap-4 border-b border-zinc-800 px-5 py-2.5 text-sm transition-colors",
-        active ? "bg-zinc-900/80" : "hover:bg-zinc-900/50"
+        "grid w-full grid-cols-[minmax(0,1.8fr)_120px_120px_180px_44px] items-center gap-4 border-b border-border px-5 py-2.5 text-sm transition-colors",
+        active ? "bg-card/80/80" : "hover:bg-card/80/50"
       )}
     >
       <button
@@ -2710,11 +2710,11 @@ function FileTableRow({
       >
         <div className="flex min-w-0 items-center gap-3">
           <div className="shrink-0">{icon}</div>
-          <div className="truncate font-medium text-zinc-100">{name}</div>
+          <div className="truncate font-medium text-foreground">{name}</div>
         </div>
-        <div className="text-xs text-zinc-400">{typeLabel}</div>
-        <div className="text-xs text-zinc-400">{sizeLabel}</div>
-        <div className="text-xs text-zinc-400">{updatedAt}</div>
+        <div className="text-xs text-muted-foreground">{typeLabel}</div>
+        <div className="text-xs text-muted-foreground">{sizeLabel}</div>
+        <div className="text-xs text-muted-foreground">{updatedAt}</div>
       </button>
       <div className="flex justify-end">
         {actions}
@@ -2726,7 +2726,7 @@ function FileTableRow({
 function BreadcrumbButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
-      className="rounded-md px-2 py-1 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+      className="rounded-md px-2 py-1 transition-colors hover:bg-card hover:text-foreground"
       onClick={onClick}
       type="button"
     >
@@ -2759,24 +2759,24 @@ function ObjectRow({
   return (
     <div
       className={cn(
-        "grid grid-cols-[minmax(0,1.6fr)_110px_120px_150px_148px] items-center gap-4 border-b border-zinc-100 px-5 py-3 text-sm transition-colors",
-        selected ? "bg-zinc-100/80" : "hover:bg-zinc-50"
+        "grid grid-cols-[minmax(0,1.6fr)_110px_120px_150px_148px] items-center gap-4 border-b border-border px-5 py-3 text-sm transition-colors",
+        selected ? "bg-card/80" : "hover:bg-card"
       )}
     >
       <button className="min-w-0 text-left" onClick={onClick} type="button">
         <div className="flex min-w-0 items-center gap-3">
           <div className="shrink-0">{icon}</div>
           <div className="min-w-0">
-            <div className="truncate font-medium text-zinc-950">{name}</div>
+            <div className="truncate font-medium text-foreground">{name}</div>
             {subtitle ? (
-              <div className="mt-0.5 truncate text-xs text-zinc-400">{subtitle}</div>
+              <div className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</div>
             ) : null}
           </div>
         </div>
       </button>
-      <div className="text-xs text-zinc-500">{typeLabel}</div>
-      <div className="text-xs text-zinc-500">{sizeLabel}</div>
-      <div className="text-xs text-zinc-500">{updatedAt}</div>
+      <div className="text-xs text-muted-foreground">{typeLabel}</div>
+      <div className="text-xs text-muted-foreground">{sizeLabel}</div>
+      <div className="text-xs text-muted-foreground">{updatedAt}</div>
       <div>{actions}</div>
     </div>
   );
@@ -2801,8 +2801,8 @@ function IconActionButton({
       className={cn(
         "inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors",
         tone === "danger"
-          ? "border-rose-200 text-rose-600 hover:bg-rose-50"
-          : "border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700",
+          ? "border-destructive/30 text-destructive hover:bg-destructive/10"
+          : "border-border text-muted-foreground hover:bg-card hover:text-muted-foreground",
         disabled && "cursor-not-allowed opacity-60"
       )}
       disabled={disabled}
@@ -2817,8 +2817,8 @@ function IconActionButton({
 function SelectionItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
-      <div className="text-xs uppercase tracking-[0.14em] text-zinc-400">{label}</div>
-      <div className="break-all text-sm leading-6 text-zinc-900">{value}</div>
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="break-all text-sm leading-6 text-foreground">{value}</div>
     </div>
   );
 }
@@ -2827,46 +2827,46 @@ function UploadQueueRow({ item }: { item: UploadQueueItem }) {
   const progress = calculateUploadPercent(item.uploadedBytes, item.sizeBytes);
   const progressTone =
     item.status === "failed"
-      ? "bg-[#d86184]"
+      ? "bg-destructive"
       : item.status === "completed"
-        ? "bg-[#2ec79a]"
+        ? "bg-primary"
         : item.status === "queued"
-          ? "bg-[rgba(145,157,173,0.85)]"
-          : "bg-[#2492d8]";
+          ? "bg-muted-foreground"
+          : "bg-primary";
   const statusTone =
     item.status === "failed"
-      ? "text-[#f2a5ba]"
+      ? "text-destructive"
       : item.status === "completed"
-        ? "text-[#91e7c9]"
+        ? "text-foreground"
         : item.status === "queued"
-          ? "text-[#c6cfda]"
-          : "text-[#86d1ff]";
+          ? "text-muted-foreground"
+          : "text-primary";
   const progressTextTone =
     item.status === "failed"
-      ? "text-[#f0b3c4]"
+      ? "text-destructive"
       : item.status === "completed"
-        ? "text-[#b2f2db]"
-        : "text-[#c7d4e4]";
+        ? "text-foreground"
+        : "text-muted-foreground";
 
   return (
-    <div className="rounded-xl border border-[rgba(73,88,107,0.82)] bg-[rgba(17,23,31,0.92)] px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <div className="rounded-lg border border-border bg-card/80 px-3.5 py-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-[#f2f7ff]">{item.label}</div>
+          <div className="truncate text-sm font-medium text-foreground">{item.label}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
             <span className={cn("font-medium", statusTone)}>{renderUploadQueueStatusLabel(item.status)}</span>
-            <span className="text-[#9fb0c4]">
+            <span className="text-muted-foreground">
               {formatFileSize(item.uploadedBytes)} / {formatFileSize(item.sizeBytes)}
             </span>
           </div>
           {item.error ? (
-            <div className="mt-1 text-xs text-[#f0a6b8]">{item.error}</div>
+            <div className="mt-1 text-xs text-destructive">{item.error}</div>
           ) : null}
         </div>
         <div className={cn("shrink-0 text-xs font-semibold", progressTextTone)}>{progress}%</div>
       </div>
 
-      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
+      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted/40">
         <div
           className={cn("h-full rounded-full transition-[width] duration-150", progressTone)}
           style={{ width: `${progress}%` }}
@@ -3292,7 +3292,7 @@ function inferObjectType(fileName: string) {
 
   return {
     label: extension ? extension.toUpperCase() : "文件",
-    icon: <FileText className="h-4 w-4 text-zinc-500" />
+    icon: <FileText className="h-4 w-4 text-muted-foreground" />
   };
 }
 

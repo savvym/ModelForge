@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 import type { ObjectStoreBrowserResponse } from "@/types/api";
 
 const secondaryButtonClassName =
-  "h-8 whitespace-nowrap rounded-full border border-[rgb(243,243,247)] bg-transparent px-3.5 text-[13px] font-medium text-[#f3f3f7] shadow-[rgb(243,243,247)_0_0_0_1px_inset] transition-colors hover:bg-[rgba(255,255,255,0.05)]";
+  "h-8 whitespace-nowrap rounded-full border border-border bg-transparent px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
 
 export function S3BrowserDialog({
   description = "浏览 COS / S3 对象存储，选择一个对象路径用于导入。",
@@ -126,13 +126,13 @@ export function S3BrowserDialog({
       }}
       open={open}
     >
-      <SheetContent className="w-full max-w-[760px] gap-0 overflow-hidden border-l border-slate-800/85 bg-[linear-gradient(180deg,rgba(10,15,22,0.98),rgba(8,12,19,0.95))] p-0 text-slate-100 shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[760px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-slate-500 [&>button]:hover:bg-slate-800/80 [&>button]:hover:text-slate-100">
-        <SheetHeader className="border-b border-slate-800/70 bg-[rgba(10,15,22,0.46)] px-5 py-4 pr-16 text-left">
-          <SheetTitle className="text-[17px] font-semibold text-slate-100">{title}</SheetTitle>
-          <SheetDescription className="text-[12px] leading-5 text-slate-400">{description}</SheetDescription>
+      <SheetContent className="w-full max-w-[760px] gap-0 overflow-hidden border-l border-border bg-card p-0 text-foreground shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[760px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-muted-foreground [&>button]:hover:bg-card/80 [&>button]:hover:text-foreground">
+        <SheetHeader className="border-b border-border bg-card/80 px-5 py-4 pr-16 text-left">
+          <SheetTitle className="text-[17px] font-semibold text-foreground">{title}</SheetTitle>
+          <SheetDescription className="text-[12px] leading-5 text-muted-foreground">{description}</SheetDescription>
         </SheetHeader>
 
-        <div className="border-b border-slate-800/70 bg-[rgba(10,15,22,0.22)] px-5 py-4">
+        <div className="border-b border-border bg-card/80 px-5 py-4">
           <div className="space-y-3">
             <Select
               onValueChange={(value) => {
@@ -148,7 +148,7 @@ export function S3BrowserDialog({
               >
                 <SelectValue placeholder="选择 bucket" />
               </SelectTrigger>
-              <SelectContent className="border-slate-800/85 bg-[#111923]/98 text-slate-100">
+              <SelectContent className="border-border bg-card text-foreground">
                 {(browser?.buckets ?? []).map((bucket) => (
                   <SelectItem key={bucket} value={bucket}>
                     {bucket}
@@ -159,11 +159,11 @@ export function S3BrowserDialog({
 
             <div className="flex items-center gap-2">
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className={cn(
                     consoleListSearchInputClassName,
-                    "h-9 rounded-lg border-slate-800/85 bg-[rgba(10,15,22,0.72)] pl-9 text-[13px]"
+                    "h-9 rounded-lg border-border bg-card/80 pl-9 text-[13px]"
                   )}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="支持全桶搜索文件名或路径"
@@ -172,7 +172,7 @@ export function S3BrowserDialog({
               </div>
 
               <Button
-                className="h-9 w-9 rounded-lg border-slate-800/90 bg-[rgba(10,15,22,0.28)] px-0 text-slate-300 shadow-none hover:bg-[rgba(20,28,38,0.42)] hover:text-white"
+                className="h-9 w-9 rounded-lg border-border bg-card/80 px-0 text-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
                 disabled={loading}
                 onClick={() =>
                   void loadBrowser(
@@ -191,12 +191,12 @@ export function S3BrowserDialog({
           </div>
 
           <div className="mt-3 space-y-2">
-            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">
+            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               {isSearchMode ? "全桶搜索结果" : browser?.prefix ? "当前目录" : "对象存储资源"}
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-slate-500">
+            <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
               <button
-                className="rounded-md px-2 py-1 transition-colors hover:bg-slate-800/80 hover:text-slate-100"
+                className="rounded-md px-2 py-1 transition-colors hover:bg-card/80 hover:text-foreground"
                 onClick={() => void loadBrowser(browser?.bucket, "", "", deferredSearchQuery)}
                 type="button"
               >
@@ -204,11 +204,11 @@ export function S3BrowserDialog({
               </button>
               {isSearchMode ? (
                 <>
-                  <span className="rounded-full border border-slate-800/85 bg-[rgba(10,15,22,0.36)] px-2.5 py-1 text-slate-400">
+                  <span className="rounded-full border border-border bg-card/80 px-2.5 py-1 text-muted-foreground">
                     关键词：{browser?.search_query}
                   </span>
                   {browser?.prefix ? (
-                    <span className="rounded-full border border-slate-800/85 bg-[rgba(10,15,22,0.36)] px-2.5 py-1 text-slate-400">
+                    <span className="rounded-full border border-border bg-card/80 px-2.5 py-1 text-muted-foreground">
                       当前浏览位置：{browser.prefix}
                     </span>
                   ) : null}
@@ -216,9 +216,9 @@ export function S3BrowserDialog({
               ) : (
                 breadcrumbSegments.map((segment) => (
                   <React.Fragment key={segment.prefix}>
-                    <ChevronRight className="h-3.5 w-3.5 text-slate-700" />
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                     <button
-                      className="rounded-md px-2 py-1 transition-colors hover:bg-slate-800/80 hover:text-slate-100"
+                      className="rounded-md px-2 py-1 transition-colors hover:bg-card/80 hover:text-foreground"
                       onClick={() => void loadBrowser(browser?.bucket, segment.prefix, "", "")}
                       type="button"
                     >
@@ -232,8 +232,8 @@ export function S3BrowserDialog({
         </div>
 
         <div className="min-h-0 flex-1 px-5 py-4">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-800/80 bg-[rgba(10,15,22,0.18)]">
-            <div className="grid grid-cols-[minmax(0,1fr)_168px] border-b border-slate-800/70 bg-[rgba(15,20,28,0.78)] px-4 py-2.5 text-[12px] font-medium text-slate-500">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card/80">
+            <div className="grid grid-cols-[minmax(0,1fr)_168px] border-b border-border bg-card/80 px-4 py-2.5 text-[12px] font-medium text-muted-foreground">
               <div>名称</div>
               <div>更新时间</div>
             </div>
@@ -241,7 +241,7 @@ export function S3BrowserDialog({
             <div className="console-scrollbar-subtle min-h-0 flex-1 overflow-y-auto">
               {browser?.parent_prefix && !isSearchMode ? (
                 <BrowserRow
-                  icon={<Folder className="h-4 w-4 text-zinc-500" />}
+                  icon={<Folder className="h-4 w-4 text-muted-foreground" />}
                   onClick={() => void loadBrowser(browser.bucket, browser.parent_prefix ?? "", "", "")}
                   title="返回上一级"
                   updatedAt="--"
@@ -250,7 +250,7 @@ export function S3BrowserDialog({
 
               {visiblePrefixes.map((entry) => (
                 <BrowserRow
-                  icon={<Folder className="h-4 w-4 text-zinc-700" />}
+                  icon={<Folder className="h-4 w-4 text-muted-foreground" />}
                   key={entry.prefix}
                   onClick={() => void loadBrowser(browser!.bucket, entry.prefix, "", "")}
                   title={entry.name}
@@ -264,9 +264,9 @@ export function S3BrowserDialog({
                   <BrowserRow
                     icon={
                       selected ? (
-                        <Check className="h-4 w-4 text-zinc-900" />
+                        <Check className="h-4 w-4 text-foreground" />
                       ) : (
-                        <FileText className="h-4 w-4 text-zinc-500" />
+                        <FileText className="h-4 w-4 text-muted-foreground" />
                       )
                     }
                     key={entry.key}
@@ -286,19 +286,19 @@ export function S3BrowserDialog({
               })}
 
               {!loading && !error && visibleCount === 0 ? (
-                <div className="flex min-h-[240px] items-center justify-center px-6 text-center text-[13px] leading-6 text-slate-500">
+                <div className="flex min-h-[240px] items-center justify-center px-6 text-center text-[13px] leading-6 text-muted-foreground">
                   {isSearchMode ? "全桶未找到匹配对象" : "当前目录为空"}
                 </div>
               ) : null}
 
               {loading ? (
-                <div className="flex min-h-[240px] items-center justify-center text-[13px] text-slate-500">
+                <div className="flex min-h-[240px] items-center justify-center text-[13px] text-muted-foreground">
                   正在加载对象列表...
                 </div>
               ) : null}
 
               {error ? (
-                <div className="flex min-h-[240px] items-center justify-center px-6 text-center text-[13px] leading-6 text-rose-300">
+                <div className="flex min-h-[240px] items-center justify-center px-6 text-center text-[13px] leading-6 text-destructive">
                   {error}
                 </div>
               ) : null}
@@ -306,19 +306,19 @@ export function S3BrowserDialog({
           </div>
         </div>
 
-        <div className="border-t border-slate-800/70 bg-[rgba(10,15,22,0.22)] px-5 py-4">
-          <div className="rounded-lg border border-slate-800/80 bg-[rgba(10,15,22,0.32)] px-4 py-3">
-            <div className="flex items-center gap-2 text-[12px] text-slate-500">
+        <div className="border-t border-border bg-card/80 px-5 py-4">
+          <div className="rounded-lg border border-border bg-card/80 px-4 py-3">
+            <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
               <HardDrive className="h-4 w-4" />
               <span>已选择对象路径</span>
             </div>
-            <div className="mt-2 break-all text-[13px] leading-6 text-slate-100">
+            <div className="mt-2 break-all text-[13px] leading-6 text-foreground">
               {selectedUri || "请选择一个对象文件"}
             </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="max-w-[480px] text-[12px] leading-6 text-slate-500">
+            <div className="max-w-[480px] text-[12px] leading-6 text-muted-foreground">
               仅支持选择具体对象文件。确认后会将 `s3://bucket/key` 回填到表单。
             </div>
             <div className="flex shrink-0 items-center gap-3 self-end">
@@ -326,7 +326,7 @@ export function S3BrowserDialog({
                 取消
               </Button>
               <Button
-                className="h-8 rounded-full bg-sky-500 px-4 text-[13px] font-medium text-slate-950 hover:bg-sky-400"
+                className="h-8 rounded-full px-4 text-[13px] font-medium"
                 disabled={!browser || !selectedKey}
                 onClick={() => {
                   if (!browser || !selectedKey) {
@@ -368,8 +368,8 @@ function BrowserRow({
   return (
     <button
       className={cn(
-        "grid w-full grid-cols-[minmax(0,1fr)_168px] items-center gap-4 border-b border-slate-800/70 px-4 py-3 text-left text-slate-200 transition-colors last:border-b-0",
-        selected ? "bg-[rgba(33,50,71,0.55)] text-slate-50" : "hover:bg-[rgba(16,24,34,0.52)]"
+        "grid w-full grid-cols-[minmax(0,1fr)_168px] items-center gap-4 border-b border-border px-4 py-3 text-left text-foreground transition-colors last:border-b-0",
+        selected ? "bg-primary/10 text-foreground" : "hover:bg-muted/60"
       )}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
@@ -380,11 +380,11 @@ function BrowserRow({
         <div className="min-w-0">
           <div className="truncate text-[13px] font-medium">{title}</div>
           {subtitle ? (
-            <div className="mt-1 truncate text-[12px] text-slate-500">{subtitle}</div>
+            <div className="mt-1 truncate text-[12px] text-muted-foreground">{subtitle}</div>
           ) : null}
         </div>
       </div>
-      <div className="text-[12px] text-slate-500">{updatedAt ?? "--"}</div>
+      <div className="text-[12px] text-muted-foreground">{updatedAt ?? "--"}</div>
     </button>
   );
 }

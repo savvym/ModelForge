@@ -562,19 +562,19 @@ export function DatasetUploadManagerProvider({
       {children}
       {isPanelOwner && store.items.length > 0 ? (
         <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[360px] flex-col items-end gap-2">
-          <div className="pointer-events-auto w-full overflow-hidden rounded-2xl border border-slate-800/90 bg-[rgba(8,12,19,0.96)] shadow-[0_24px_60px_rgba(2,6,23,0.55)] backdrop-blur-xl">
-            <div className="flex items-center gap-3 border-b border-slate-800/80 px-4 py-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-200">
+          <div className="pointer-events-auto w-full overflow-hidden rounded-lg border border-border bg-card/80 shadow-[0_24px_60px_rgba(2,6,23,0.55)] backdrop-blur-xl">
+            <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
                 <UploadCloud className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-slate-100">上传中心</div>
-                <div className="text-xs text-slate-500">
+                <div className="text-sm font-medium text-foreground">上传中心</div>
+                <div className="text-xs text-muted-foreground">
                   {activeCount > 0 ? `进行中 ${activeCount} 项` : "全部任务已结束"}
                 </div>
               </div>
               <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-800/70 hover:text-slate-100"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
                 onClick={() => setStoreCollapsed((current) => !current)}
                 type="button"
               >
@@ -588,10 +588,10 @@ export function DatasetUploadManagerProvider({
 
             {!store.collapsed ? (
               <div className="space-y-3 px-3 py-3">
-                <div className="flex items-center justify-between text-xs text-slate-500">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{store.items.length} 个上传任务</span>
                   <button
-                    className="transition-colors hover:text-slate-200"
+                    className="transition-colors hover:text-foreground"
                     onClick={clearFinishedStoreItems}
                     type="button"
                   >
@@ -605,22 +605,19 @@ export function DatasetUploadManagerProvider({
                     const canDismiss = item.status === "completed" || item.status === "failed";
 
                     return (
-                      <div
-                        className="rounded-2xl border border-slate-800/85 bg-[rgba(15,23,34,0.72)] p-3"
-                        key={item.id}
-                      >
+                      <div className="rounded-lg border border-border bg-card/80 p-3" key={item.id}>
                         <div className="flex items-start gap-3">
                           <div className={cn("mt-0.5", getStatusIconClassName(item.status))}>
                             {renderStatusIcon(item.status)}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="truncate text-sm font-medium text-slate-100">
+                              <div className="truncate text-sm font-medium text-foreground">
                                 {item.datasetName}
                               </div>
                               {canDismiss ? (
                                 <button
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-800/70 hover:text-slate-100"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
                                   onClick={() => {
                                     stopPolling(item.id);
                                     dismissStoreItem(item.id);
@@ -631,20 +628,20 @@ export function DatasetUploadManagerProvider({
                                 </button>
                               ) : null}
                             </div>
-                            <div className="mt-1 truncate text-xs text-slate-500">
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
                               {item.versionLabel} · {item.fileName}
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-3 text-xs">
                               <span className={getStatusTextClassName(item.status)}>
                                 {STATUS_LABELS[item.status]}
                               </span>
-                              <span className="text-slate-500">
+                              <span className="text-muted-foreground">
                                 {item.status === "processing"
                                   ? "等待后台导入完成"
                                   : `${progress}% · ${formatFileSize(item.sizeBytes)}`}
                               </span>
                             </div>
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800/90">
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-card/80">
                               <div
                                 className={cn(
                                   "h-full rounded-full transition-[width] duration-300",
@@ -652,13 +649,13 @@ export function DatasetUploadManagerProvider({
                                     ? "bg-rose-500/80"
                                     : item.status === "completed"
                                       ? "bg-emerald-500/80"
-                                      : "bg-sky-500"
+                                      : "bg-primary"
                                 )}
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
                             {item.error ? (
-                              <div className="mt-2 text-xs leading-5 text-rose-300">
+                              <div className="mt-2 text-xs leading-5 text-destructive">
                                 {item.error}
                               </div>
                             ) : null}
@@ -670,7 +667,7 @@ export function DatasetUploadManagerProvider({
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-3 text-xs text-slate-500">
+              <div className="px-4 py-3 text-xs text-muted-foreground">
                 上传在后台继续，展开可查看每个数据集的进度。
               </div>
             )}
@@ -723,10 +720,10 @@ function getStatusIconClassName(status: QueueItemStatus) {
   }
 
   if (status === "failed") {
-    return "text-rose-300";
+    return "text-destructive";
   }
 
-  return "text-sky-300";
+  return "text-primary";
 }
 
 function getStatusTextClassName(status: QueueItemStatus) {
@@ -735,10 +732,10 @@ function getStatusTextClassName(status: QueueItemStatus) {
   }
 
   if (status === "failed") {
-    return "text-rose-300";
+    return "text-destructive";
   }
 
-  return "text-sky-300";
+  return "text-primary";
 }
 
 function formatFileSize(bytes: number) {

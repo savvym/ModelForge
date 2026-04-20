@@ -19,12 +19,12 @@ export function EvaluationTemplateRegistryPanel({
     <div className="space-y-6">
       <section className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-slate-100">模板资产</h2>
-          <p className="text-sm text-slate-400">
+          <h2 className="text-base font-semibold text-foreground">模板资产</h2>
+          <p className="text-sm text-muted-foreground">
             模板只保存 prompt、变量和输出结构，不再直接绑定模型 Provider。
           </p>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)]">
+        <div className="overflow-hidden rounded-lg border border-border bg-card/80">
           <Table>
             <TableHeader>
               <TableRow>
@@ -41,10 +41,10 @@ export function EvaluationTemplateRegistryPanel({
                 return (
                   <TableRow key={template.id}>
                     <TableCell className="min-w-[260px] align-top">
-                      <div className="font-medium text-slate-100">{template.display_name}</div>
-                      <div className="mt-1 text-xs text-slate-500">{template.name}</div>
+                      <div className="font-medium text-foreground">{template.display_name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{template.name}</div>
                       {template.description ? (
-                        <div className="mt-2 max-w-[480px] text-sm leading-6 text-slate-400">
+                        <div className="mt-2 max-w-[480px] text-sm leading-6 text-muted-foreground">
                           {template.description}
                         </div>
                       ) : null}
@@ -54,8 +54,8 @@ export function EvaluationTemplateRegistryPanel({
                     <TableCell>
                       {activeVersion ? (
                         <div className="space-y-1">
-                          <div className="text-sm text-slate-200">v{activeVersion.version}</div>
-                          <div className="text-xs text-slate-500">
+                          <div className="text-sm text-foreground">v{activeVersion.version}</div>
+                          <div className="text-xs text-muted-foreground">
                             vars · {activeVersion.vars_json.length}
                           </div>
                         </div>
@@ -73,21 +73,21 @@ export function EvaluationTemplateRegistryPanel({
 
       <section className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-slate-100">Judge Policy</h2>
-          <p className="text-sm text-slate-400">
+          <h2 className="text-base font-semibold text-foreground">Judge Policy</h2>
+          <p className="text-sm text-muted-foreground">
             Judge Policy 承接模型选择、执行参数、解析策略和重试策略，是模板之外的执行规则层。
           </p>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
           {catalog.judge_policies.length ? (
             catalog.judge_policies.map((policy) => (
-              <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none" key={policy.id}>
+              <Card className="border-border bg-card/80 shadow-none" key={policy.id}>
                 <CardHeader className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-base text-slate-50">{policy.display_name}</CardTitle>
+                    <CardTitle className="text-base text-foreground">{policy.display_name}</CardTitle>
                     <Badge variant="outline">{policy.strategy}</Badge>
                   </div>
-                  <div className="text-xs text-slate-500">{policy.name}</div>
+                  <div className="text-xs text-muted-foreground">{policy.name}</div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <PolicyMetaRow
@@ -118,7 +118,7 @@ export function EvaluationTemplateRegistryPanel({
               </Card>
             ))
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-800/80 px-4 py-10 text-sm text-slate-500">
+            <div className="rounded-lg border border-dashed border-border px-4 py-10 text-sm text-muted-foreground">
               当前还没有 Judge Policy。
             </div>
           )}
@@ -130,9 +130,9 @@ export function EvaluationTemplateRegistryPanel({
 
 function PolicyMetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] px-4 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <div className="mt-2 break-all text-sm leading-6 text-slate-200">{value}</div>
+    <div className="rounded-lg border border-border bg-card/80 px-4 py-3">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 break-all text-sm leading-6 text-foreground">{value}</div>
     </div>
   );
 }

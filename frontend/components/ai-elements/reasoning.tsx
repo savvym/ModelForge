@@ -126,7 +126,7 @@ export const Reasoning = memo(
     return (
       <ReasoningContext.Provider value={contextValue}>
         <Collapsible
-          className={cn("mb-3 rounded-2xl border border-slate-800/70 bg-[rgba(255,255,255,0.02)] px-4 py-3", className)}
+          className={cn("mb-3 rounded-lg border border-border bg-muted/40 px-4 py-3", className)}
           onOpenChange={handleOpenChange}
           open={isOpen}
           {...props}
@@ -147,7 +147,7 @@ export type ReasoningTriggerProps = ComponentProps<
 function defaultThinkingMessage(isStreaming: boolean, duration?: number) {
   if (isStreaming || duration === 0) {
     return (
-      <span className="animate-pulse text-slate-300">思考中...</span>
+      <span className="animate-pulse text-foreground">思考中...</span>
     );
   }
   if (duration === undefined) {
@@ -168,7 +168,7 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 text-sm text-slate-400 transition-colors hover:text-slate-100",
+          "flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground",
           className
         )}
         {...props}
@@ -200,13 +200,13 @@ export const ReasoningContent = memo(
   ({ children, className, ...props }: ReasoningContentProps) => (
     <CollapsibleContent
       className={cn(
-        "mt-3 overflow-hidden text-sm leading-7 text-slate-400 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in",
+        "mt-3 overflow-hidden text-sm leading-7 text-muted-foreground data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in",
         className
       )}
       {...props}
     >
       <Streamdown
-        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-800/80 [&_pre]:bg-[rgba(8,12,19,0.92)] [&_pre]:p-4"
+        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-border [&_pre]:bg-card/80 [&_pre]:p-4"
         plugins={streamdownPlugins}
       >
         {children}

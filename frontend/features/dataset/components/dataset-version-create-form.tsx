@@ -19,7 +19,7 @@ const uploadTabs = [
 ] as const;
 
 const secondaryButtonClassName =
-  "h-7 whitespace-nowrap rounded-full border border-[rgb(243,243,247)] bg-transparent px-3 text-[14px] font-medium leading-6 text-[#f3f3f7] shadow-[rgb(243,243,247)_0_0_0_1px_inset] transition-colors hover:bg-[rgba(255,255,255,0.05)]";
+  "h-7 whitespace-nowrap rounded-full border border-border bg-transparent px-3 text-[14px] font-medium leading-6 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
 
 export function DatasetVersionCreateForm({
   datasetId,
@@ -113,15 +113,15 @@ export function DatasetVersionCreateForm({
         <div className="mt-2.5 grid gap-3">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
             <div className="space-y-2.5">
-              <Label className="text-[13px] text-slate-300">当前数据集</Label>
-              <div className="flex h-10 items-center rounded-lg border border-slate-800/90 bg-[rgba(10,15,22,0.18)] px-3 text-[14px] text-slate-100">
+              <Label className="text-[13px] text-foreground">当前数据集</Label>
+              <div className="flex h-10 items-center rounded-lg border border-border bg-card/80 px-3 text-[14px] text-foreground">
                 {datasetName}
               </div>
             </div>
 
             <div className="space-y-2.5">
-              <Label className="text-[13px] text-slate-300">版本号</Label>
-              <div className="flex h-10 w-fit items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/12 px-3 text-[13px] font-medium text-sky-100">
+              <Label className="text-[13px] text-foreground">版本号</Label>
+              <div className="flex h-10 w-fit items-center gap-2 rounded-lg border border-primary/20 bg-primary/10 px-3 text-[13px] font-medium text-primary">
                 <Layers3 className="h-4 w-4" />
                 V{nextVersion}
               </div>
@@ -129,14 +129,14 @@ export function DatasetVersionCreateForm({
           </div>
 
           <div className="space-y-2.5">
-            <Label className="text-[13px] text-slate-300">用途与格式</Label>
-            <div className="flex min-h-[40px] items-center rounded-lg border border-slate-800/90 bg-[rgba(10,15,22,0.18)] px-3 py-2 text-[13px] text-slate-300">
+            <Label className="text-[13px] text-foreground">用途与格式</Label>
+            <div className="flex min-h-[40px] items-center rounded-lg border border-border bg-card/80 px-3 py-2 text-[13px] text-foreground">
               {formatLabel}
             </div>
           </div>
 
           <div className="space-y-2.5">
-            <Label className="text-[13px] text-slate-300" htmlFor="version-description">
+            <Label className="text-[13px] text-foreground" htmlFor="version-description">
               版本描述
             </Label>
             <Textarea
@@ -153,7 +153,7 @@ export function DatasetVersionCreateForm({
               placeholder="描述本次版本与上一版本的差异、来源或适用场景。"
               value={description}
             />
-            <div className="flex flex-wrap items-start justify-between gap-3 text-[12px] leading-5 text-slate-500">
+            <div className="flex flex-wrap items-start justify-between gap-3 text-[12px] leading-5 text-muted-foreground">
               <div>建议说明这次版本新增了什么、替换了什么，以及主要适用场景。</div>
               <div className="shrink-0">{description.length}/300</div>
             </div>
@@ -161,11 +161,11 @@ export function DatasetVersionCreateForm({
         </div>
       </section>
 
-      <section className="border-t border-slate-800/55 px-0 py-3">
+      <section className="border-t border-border px-0 py-3">
         <SectionHeading title="数据上传" />
 
         <div className="mt-2.5 space-y-3">
-          <div className="flex flex-wrap items-center gap-5 border-b border-slate-800/70">
+          <div className="flex flex-wrap items-center gap-5 border-b border-border">
             {uploadTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = tab.key === sourceType;
@@ -175,8 +175,8 @@ export function DatasetVersionCreateForm({
                   className={cn(
                     "-mb-px inline-flex h-9 items-center gap-2 border-b-2 px-0.5 text-[13px] transition-colors",
                     isActive
-                      ? "border-slate-100 font-medium text-slate-50"
-                      : "border-transparent text-slate-500 hover:text-slate-200"
+                      ? "border-primary font-medium text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                   disabled={isSubmitting}
                   key={tab.key}
@@ -199,8 +199,8 @@ export function DatasetVersionCreateForm({
                 className={cn(
                   "rounded-lg border border-dashed px-5 py-5 transition-colors",
                   isDragging
-                    ? "border-sky-500/55 bg-[rgba(18,30,42,0.42)]"
-                    : "border-slate-800/90 bg-[rgba(10,15,22,0.16)]"
+                    ? "border-primary/50 bg-primary/10"
+                    : "border-border bg-card/80"
                 )}
                 onClick={() => fileInputRef.current?.click()}
                 onDragEnter={(event) => {
@@ -248,10 +248,10 @@ export function DatasetVersionCreateForm({
                 />
 
                 <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-800/90 bg-[rgba(10,15,22,0.32)] text-slate-300">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card/80 text-foreground">
                     <FileUp className="h-5 w-5" />
                   </div>
-                  <div className="mt-3 text-[14px] font-medium text-slate-100">
+                  <div className="mt-3 text-[14px] font-medium text-foreground">
                     将文件拖拽到此处，或点击上传
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -267,10 +267,10 @@ export function DatasetVersionCreateForm({
                     >
                       选择文件
                     </Button>
-                    <span className="rounded-full border border-slate-800/90 bg-[rgba(10,15,22,0.28)] px-2.5 py-1 text-[12px] text-slate-400">
+                    <span className="rounded-full border border-border bg-card/80 px-2.5 py-1 text-[12px] text-muted-foreground">
                       {isEvaluationDataset ? "支持 JSONL / XLSX / XLS" : "推荐 JSONL"}
                     </span>
-                    <span className="rounded-full border border-slate-800/90 bg-[rgba(10,15,22,0.28)] px-2.5 py-1 text-[12px] text-slate-400">
+                    <span className="rounded-full border border-border bg-card/80 px-2.5 py-1 text-[12px] text-muted-foreground">
                       当前环境接入 COS
                     </span>
                   </div>
@@ -278,18 +278,18 @@ export function DatasetVersionCreateForm({
               </div>
 
               {selectedFile ? (
-                <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-800/90 bg-[rgba(10,15,22,0.28)] px-3 py-2 text-slate-300">
-                    <FileUp className="h-4 w-4 text-slate-500" />
-                    <span className="font-medium text-slate-100">{selectedFile.name}</span>
-                    <span className="text-slate-500">{formatFileSize(selectedFile.size)}</span>
+                <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-2 text-foreground">
+                    <FileUp className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium text-foreground">{selectedFile.name}</span>
+                    <span className="text-muted-foreground">{formatFileSize(selectedFile.size)}</span>
                   </div>
                 </div>
               ) : null}
             </div>
           ) : (
             <div className="space-y-2.5">
-              <Label className="text-[13px] text-slate-300" htmlFor="source_uri">
+              <Label className="text-[13px] text-foreground" htmlFor="source_uri">
                 对象存储路径
               </Label>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -316,7 +316,7 @@ export function DatasetVersionCreateForm({
                   从对象存储选择
                 </Button>
               </div>
-              <div className="text-[12px] leading-5 text-slate-500">
+              <div className="text-[12px] leading-5 text-muted-foreground">
                 支持直接粘贴对象路径，或从右侧资源浏览器选择文件。导入后会同步生成版本记录，并保留文件预览与下载能力。
               </div>
             </div>
@@ -326,7 +326,7 @@ export function DatasetVersionCreateForm({
 
       <section className="px-0 py-4">
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <Button className="bg-sky-500 px-5 text-slate-950 hover:bg-sky-400" disabled={isSubmitting} type="submit">
+          <Button className="px-5" disabled={isSubmitting} type="submit">
             {isSubmitting ? "提交中..." : "创建版本"}
           </Button>
           <Button
@@ -364,8 +364,8 @@ function SectionHeading({
 }) {
   return (
     <div className="space-y-0.5">
-      <h2 className="text-[14px] font-medium text-slate-100">{title}</h2>
-      {description ? <p className="text-[12px] leading-5 text-slate-500">{description}</p> : null}
+      <h2 className="text-[14px] font-medium text-foreground">{title}</h2>
+      {description ? <p className="text-[12px] leading-5 text-muted-foreground">{description}</p> : null}
     </div>
   );
 }
@@ -375,7 +375,7 @@ function FieldError({ message }: { message?: string | null }) {
     return null;
   }
 
-  return <p className="mt-2 text-[12px] text-rose-400">{message}</p>;
+  return <p className="mt-2 text-[12px] text-destructive">{message}</p>;
 }
 
 function formatFileSize(bytes: number) {

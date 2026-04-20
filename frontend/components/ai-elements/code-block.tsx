@@ -51,7 +51,7 @@ export function CodeBlock({
     <CodeBlockContext.Provider value={contextValue}>
       <div
         className={cn(
-          "group relative w-full overflow-hidden rounded-2xl border border-white/8 bg-[rgba(8,12,19,0.78)] text-slate-100",
+          "group relative w-full overflow-hidden rounded-lg border border-border bg-card/80 text-foreground",
           className
         )}
         data-language={formatLanguageLabel(language)}
@@ -62,7 +62,7 @@ export function CodeBlock({
           <pre className="m-0 p-4">
             <code
               className={cn(
-                "block min-w-full whitespace-pre font-mono text-[14px] leading-7 text-slate-100 [overflow-wrap:normal] break-normal"
+                "block min-w-full whitespace-pre font-mono text-[14px] leading-7 text-foreground [overflow-wrap:normal] break-normal"
               )}
             >
               {code}
@@ -83,7 +83,7 @@ export function CodeBlockHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between border-b border-white/8 bg-[rgba(255,255,255,0.02)] px-3.5 py-2 text-xs text-slate-400",
+        "flex items-center justify-between border-b border-border bg-muted/40 px-3.5 py-2 text-xs text-muted-foreground",
         className
       )}
       {...props}
@@ -159,7 +159,7 @@ export function CodeBlockCopyButton({
   return (
     <Button
       className={cn(
-        "h-7 w-7 shrink-0 rounded-full border border-transparent bg-transparent p-0 text-slate-400 shadow-none hover:bg-[rgba(255,255,255,0.06)] hover:text-white",
+        "h-7 w-7 shrink-0 rounded-full border border-transparent bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground",
         className
       )}
       onClick={copyCode}

@@ -41,8 +41,8 @@ export function MessageContent({
     <div
       className={cn(
         "flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-        "group-[.is-user]:ml-auto group-[.is-user]:max-w-[80%] group-[.is-user]:rounded-[20px] group-[.is-user]:bg-[rgba(255,255,255,0.05)] group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-slate-100",
-        "group-[.is-assistant]:text-slate-100",
+        "group-[.is-user]:ml-auto group-[.is-user]:max-w-[80%] group-[.is-user]:rounded-[20px] group-[.is-user]:bg-muted/40 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+        "group-[.is-assistant]:text-foreground",
         className
       )}
       {...props}
@@ -87,13 +87,13 @@ export const MessageResponse = memo(
     const content = typeof children === "string" ? children : "";
     const blocks = useMemo(() => parseMarkdownIntoBlocks(content), [content]);
     const proseClassName = cn(
-      "max-w-none text-[15px] leading-8 text-slate-100",
+      "max-w-none text-[15px] leading-8 text-foreground",
       "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-      "[&_a]:text-sky-300 [&_a]:underline [&_a]:underline-offset-4",
-      "[&_blockquote]:border-l-2 [&_blockquote]:border-slate-700 [&_blockquote]:pl-4 [&_blockquote]:text-slate-400",
-      "[&_code]:rounded-md [&_code]:bg-[rgba(255,255,255,0.06)] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em]",
+      "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4",
+      "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground",
+      "[&_code]:rounded-md [&_code]:bg-muted/40 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em]",
       "[&_table]:w-full [&_table]:border-collapse [&_table]:overflow-hidden",
-      "[&_td]:border-t [&_td]:border-slate-800/80 [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-slate-400",
+      "[&_td]:border-t [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-muted-foreground",
       className
     );
 
@@ -149,7 +149,7 @@ export function MessageToolbar({
   return (
     <div
       className={cn(
-        "mt-4 flex w-full items-center justify-between gap-4 text-xs text-slate-500",
+        "mt-4 flex w-full items-center justify-between gap-4 text-xs text-muted-foreground",
         className
       )}
       {...props}

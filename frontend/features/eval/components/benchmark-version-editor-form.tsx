@@ -204,7 +204,7 @@ export function BenchmarkVersionEditorForm({
           ref={fileInputRef}
           type="file"
         />
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {mode === "edit" ? "编辑 Benchmark Version" : "新增 Benchmark Version"}
         </h1>
       </div>
@@ -212,7 +212,7 @@ export function BenchmarkVersionEditorForm({
       {feedback ? (
         <div
           className={cn(
-            "rounded-xl border px-3 py-2 text-sm",
+            "rounded-lg border px-3 py-2 text-sm",
             feedback.tone === "error"
               ? "border-rose-800/80 bg-rose-950/40 text-rose-200"
               : "border-emerald-800/80 bg-emerald-950/30 text-emerald-200"
@@ -222,9 +222,9 @@ export function BenchmarkVersionEditorForm({
         </div>
       ) : null}
 
-      <Card className="border-slate-800/80 bg-[rgba(10,15,22,0.72)] shadow-none">
+      <Card className="border-border bg-card/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base text-slate-50">Version 配置</CardTitle>
+          <CardTitle className="text-base text-foreground">Version 配置</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
           {mode === "edit" ? (
@@ -284,13 +284,13 @@ export function BenchmarkVersionEditorForm({
                 从对象存储选择
               </Button>
             </div>
-            <div className="text-xs leading-5 text-slate-500">
+            <div className="text-xs leading-5 text-muted-foreground">
               Benchmark Version 对应这个 Benchmark 的某一个数据集版本。当前只接受
               `s3://` 数据源；如果当前有项目上下文，也可以先上传到对象存储，再自动回填 URI。
             </div>
           </div>
           <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-slate-800/80 bg-[rgba(15,23,32,0.72)] px-4 py-3 text-sm leading-6 text-slate-400">
+            <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-sm leading-6 text-muted-foreground">
               系统会在创建或更新 Version 时读取数据文件、校验样本结构，并自动统计样本数。
               上传前请确保 JSONL 已符合这个 Benchmark 绑定的评测维度格式。
             </div>
@@ -358,7 +358,7 @@ function Field({
         placeholder={placeholder}
         value={value}
       />
-      {hint ? <p className="text-xs text-slate-500">{hint}</p> : null}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

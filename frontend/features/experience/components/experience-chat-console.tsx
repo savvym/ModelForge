@@ -276,15 +276,15 @@ export function ExperienceChatConsole({
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] overflow-hidden">
-      <aside className="border-r border-slate-800 bg-[#0f141b] px-2 py-6">
+      <aside className="border-r border-border bg-card/80 px-2 py-6">
         <div className="flex flex-col items-center gap-3">
           {sideModes.map((mode) => (
             <button
               className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-colors",
+                "inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors",
                 mode.active
-                  ? "border-slate-700 bg-[rgba(30,41,59,0.9)] text-slate-100"
-                  : "border-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+                  ? "border-border bg-muted/60 text-foreground"
+                  : "border-transparent text-muted-foreground hover:bg-card/80 hover:text-foreground"
               )}
               key={mode.label}
               title={mode.label}
@@ -296,17 +296,17 @@ export function ExperienceChatConsole({
         </div>
       </aside>
 
-      <section className="flex min-h-0 flex-col bg-[linear-gradient(180deg,rgba(8,12,18,0.18),rgba(8,12,18,0.05)_28%,rgba(8,12,18,0)_100%)]">
+      <section className="flex min-h-0 flex-col bg-background/40">
         {!selectedModel ? (
           <div className="flex flex-1 items-center justify-center px-6 py-10">
-            <div className="space-y-4 rounded-2xl border border-dashed border-slate-700 bg-[rgba(15,20,28,0.72)] px-8 py-10 text-center">
-              <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-[#0f141b] text-slate-200">
+            <div className="space-y-4 rounded-lg border border-dashed border-border bg-card/80 px-8 py-10 text-center">
+              <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-card/80 text-foreground">
                 <Bot className="h-5 w-5" />
               </div>
-              <div className="text-lg font-semibold text-slate-100">
+              <div className="text-lg font-semibold text-foreground">
                 当前没有可用的语言模型
               </div>
-              <div className="text-sm leading-6 text-slate-400">
+              <div className="text-sm leading-6 text-muted-foreground">
                 请先前往模型广场接入并启用至少一个可对话模型。
               </div>
               <Link
@@ -349,14 +349,14 @@ export function ExperienceChatConsole({
                                     isStreaming={isReasoningStreaming}
                                     open
                                   >
-                                    <ReasoningTrigger className="pointer-events-none hover:text-slate-400" />
-                                    <ReasoningContent className="text-[13px] leading-6 text-slate-400 [&_blockquote]:text-slate-400 [&_code]:bg-[rgba(255,255,255,0.04)] [&_pre]:border-white/8 [&_pre]:bg-[rgba(8,12,19,0.72)]">
+                                    <ReasoningTrigger className="pointer-events-none hover:text-muted-foreground" />
+                                    <ReasoningContent className="text-[13px] leading-6 text-muted-foreground [&_blockquote]:text-muted-foreground [&_code]:bg-muted/40 [&_pre]:border-border [&_pre]:bg-card/80">
                                       {reasoning}
                                     </ReasoningContent>
                                   </Reasoning>
                                 ) : message.metadata?.reasoningDepth &&
                                   message.metadata.reasoningDepth !== "关闭" ? (
-                                  <div className="text-xs text-slate-600">
+                                  <div className="text-xs text-muted-foreground">
                                     当前模型未返回可展示的思考摘要。
                                   </div>
                                 ) : null}
@@ -364,7 +364,7 @@ export function ExperienceChatConsole({
                                 {text ? (
                                   <MessageResponse>{text}</MessageResponse>
                                 ) : isLastMessage && isPending ? (
-                                  <div className="text-sm text-slate-500">
+                                  <div className="text-sm text-muted-foreground">
                                     正在生成回答...
                                   </div>
                                 ) : null}
@@ -390,7 +390,7 @@ export function ExperienceChatConsole({
                               </div>
                               {text ? (
                                 <button
-                                  className="inline-flex items-center gap-1 rounded-full border border-transparent px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-slate-800 hover:bg-[rgba(255,255,255,0.04)] hover:text-slate-100"
+                                  className="inline-flex items-center gap-1 rounded-full border border-transparent px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground"
                                   onClick={() => copyText(text)}
                                   type="button"
                                 >
@@ -409,7 +409,7 @@ export function ExperienceChatConsole({
                     <ConversationEmptyState
                       description="保留模型切换，把界面收成更轻的对话区。"
                       icon={
-                        <div className="rounded-full border border-slate-800/80 bg-[rgba(255,255,255,0.03)] p-3">
+                        <div className="rounded-full border border-border bg-muted/40 p-3">
                           <Bot className="h-5 w-5" />
                         </div>
                       }
@@ -417,10 +417,10 @@ export function ExperienceChatConsole({
                     >
                       <div className="space-y-5">
                         <div className="space-y-2">
-                          <div className="text-lg font-medium text-slate-100">
+                          <div className="text-lg font-medium text-foreground">
                             从一个简洁的问题开始
                           </div>
-                          <div className="text-sm leading-6 text-slate-500">
+                          <div className="text-sm leading-6 text-muted-foreground">
                             体验中心现在使用更轻的消息流和输入区，减少视觉噪音。
                           </div>
                         </div>
@@ -428,20 +428,20 @@ export function ExperienceChatConsole({
                         <div className="grid gap-2 sm:grid-cols-2">
                           {starterPrompts.map((item) => (
                             <button
-                              className="rounded-2xl border border-slate-800/80 bg-[rgba(255,255,255,0.02)] px-4 py-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+                              className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/40"
                               key={item.title}
                               onClick={() => submitPrompt(item.prompt)}
                               type="button"
                             >
                               <div className="flex items-start gap-3">
-                                <div className="mt-0.5 text-slate-400">
+                                <div className="mt-0.5 text-muted-foreground">
                                   <item.icon className="h-4 w-4" />
                                 </div>
                                 <div className="space-y-1">
-                                  <div className="text-sm font-medium text-slate-100">
+                                  <div className="text-sm font-medium text-foreground">
                                     {item.title}
                                   </div>
-                                  <div className="text-xs leading-5 text-slate-500">
+                                  <div className="text-xs leading-5 text-muted-foreground">
                                     {item.description}
                                   </div>
                                 </div>
@@ -457,7 +457,7 @@ export function ExperienceChatConsole({
               </Conversation>
             </div>
 
-            <div className="border-t border-slate-900/80 bg-[linear-gradient(180deg,rgba(10,14,21,0.72),rgba(10,14,21,0.96))] px-6 py-4 backdrop-blur-xl">
+            <div className="border-t border-border bg-card/90 px-6 py-4 backdrop-blur-xl">
               <div className="mx-auto w-full max-w-[880px] space-y-3">
                 <PromptInputProvider>
                   <ExperienceComposer
@@ -529,7 +529,7 @@ function ExperienceComposer({
             <ModelSelectorTrigger
               className={cn(
                 buttonVariants({ size: "sm", variant: "secondary" }),
-                "max-w-[320px] justify-between gap-2 rounded-full border-white/10 bg-[rgba(255,255,255,0.04)] px-3 text-slate-100 hover:bg-[rgba(255,255,255,0.08)]"
+                "max-w-[320px] justify-between gap-2 rounded-full border-border bg-muted/40 px-3 text-foreground hover:bg-muted/40"
               )}
             >
               <span className="min-w-0 truncate text-left">
@@ -537,7 +537,7 @@ function ExperienceComposer({
                   ? `${selectedModel.name} · ${selectedModel.provider_name ?? "未绑定 Provider"}`
                   : "选择一个语言模型"}
               </span>
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </ModelSelectorTrigger>
 
             <ModelSelectorContent
@@ -552,20 +552,20 @@ function ExperienceComposer({
                     const isSelected = model.id === selectedModelId;
                     return (
                       <ModelSelectorItem
-                        className="mx-2 rounded-2xl px-3 py-3"
+                        className="mx-2 rounded-lg px-3 py-3"
                         key={model.id}
                         onSelect={() => handleSelectModel(model.id)}
                         value={`${model.name} ${model.provider_name ?? ""}`}
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
-                          <ModelSelectorName className="text-sm font-medium text-slate-100">
+                          <ModelSelectorName className="text-sm font-medium text-foreground">
                             {model.name}
                           </ModelSelectorName>
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-muted-foreground">
                             {model.provider_name ?? "未绑定 Provider"}
                           </div>
                         </div>
-                        {isSelected ? <Check className="h-4 w-4 text-[#8fffcf]" /> : null}
+                        {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
                       </ModelSelectorItem>
                     );
                   })}
@@ -583,7 +583,7 @@ function ExperienceComposer({
               新对话
             </PromptInputButton>
           ) : (
-            <span className="hidden text-xs text-slate-500 sm:inline">
+            <span className="hidden text-xs text-muted-foreground sm:inline">
               Enter 发送，Shift + Enter 换行
             </span>
           )}
@@ -602,7 +602,7 @@ function ExperienceComposer({
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-red-200/30 bg-[rgba(120,30,52,0.18)] px-4 py-3 text-sm text-red-200">
+    <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
       {message}
     </div>
   );
@@ -610,7 +610,7 @@ function ErrorBanner({ message }: { message: string }) {
 
 function FooterNote() {
   return (
-    <div className="text-center text-xs text-slate-600">
+    <div className="text-center text-xs text-muted-foreground">
       试用体验内容均由人工智能模型生成，不代表平台立场。
     </div>
   );

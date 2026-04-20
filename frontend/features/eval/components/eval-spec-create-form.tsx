@@ -349,11 +349,11 @@ export function EvalSpecCreateForm({
         </Field>
       </div>
 
-      <div className="space-y-4 rounded-2xl border border-slate-800/80 bg-[rgba(10,15,22,0.72)] p-4">
+      <div className="space-y-4 rounded-lg border border-border bg-card/80 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium text-slate-100">版本数据集文件</div>
-            <div className="mt-1 text-sm text-slate-400">
+            <div className="text-sm font-medium text-foreground">版本数据集文件</div>
+            <div className="mt-1 text-sm text-muted-foreground">
               每个评测版本由一个或多个数据集文件组成。内置 EvalScope benchmark 可留空，系统会自动生成内置数据集引用。
             </div>
           </div>
@@ -364,7 +364,7 @@ export function EvalSpecCreateForm({
         </div>
 
         {!datasetFiles.length ? (
-          <div className="rounded-xl border border-dashed border-slate-800/80 px-4 py-6 text-sm text-slate-500">
+          <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
             当前版本还没有显式的数据集文件。若是平台内置 benchmark，可以直接保存；若依赖自定义数据，请添加文件来源。
           </div>
         ) : null}
@@ -372,7 +372,7 @@ export function EvalSpecCreateForm({
         <div className="space-y-4">
           {datasetFiles.map((datasetFile, index) => (
             <div
-              className="rounded-xl border border-slate-800/80 bg-[rgba(14,20,29,0.84)] p-4"
+              className="rounded-lg border border-border bg-card/80 p-4"
               key={datasetFile.id}
             >
               <div className="grid gap-4 md:grid-cols-[1fr_1fr_140px_auto]">
@@ -420,7 +420,7 @@ export function EvalSpecCreateForm({
                   />
                 </Field>
                 <Field label="是否必需">
-                  <label className="flex h-10 items-center gap-2 rounded-md border border-slate-800/80 px-3 text-sm text-slate-300">
+                  <label className="flex h-10 items-center gap-2 rounded-md border border-border px-3 text-sm text-foreground">
                     <input
                       checked={datasetFile.isRequired}
                       className="h-4 w-4"
@@ -447,7 +447,7 @@ export function EvalSpecCreateForm({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       ) : null}
@@ -464,7 +464,7 @@ export function EvalSpecCreateForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <Label className="text-sm text-slate-200">{label}</Label>
+      <Label className="text-sm text-foreground">{label}</Label>
       {children}
     </div>
   );
