@@ -32,3 +32,6 @@ references/
 backend/.datasets/
 backend/.evalruns/
 backend/.evalruns-v2/
+.firecrawl
+.playwright-cli
+
