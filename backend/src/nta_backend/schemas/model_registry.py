@@ -1,5 +1,5 @@
-from typing import Any
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -63,8 +63,13 @@ class RegistryModelSummary(BaseModel):
     vendor: str | None = None
     source: str | None = None
     api_format: str | None = None
+    base_model: str | None = None
     category: str | None = None
     description: str | None = None
+    import_source_type: str | None = None
+    import_source_uri: str | None = None
+    import_bucket: str | None = None
+    import_object_key: str | None = None
     status: str
     provider_id: UUID | None = None
     provider_name: str | None = None
@@ -82,6 +87,13 @@ class RegistryModelCreate(BaseModel):
     source: str = "manual"
     api_format: str = "chat-completions"
     category: str | None = Field(default=None, max_length=64)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class RegistryModelObjectStorageImport(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    base_model: str = Field(min_length=1, max_length=120)
+    source_uri: str = Field(min_length=8, max_length=2000)
     description: str | None = Field(default=None, max_length=500)
 
 

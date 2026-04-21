@@ -8,6 +8,7 @@ from nta_backend.schemas.model_registry import (
     RegistryModelChatRequest,
     RegistryModelChatResponse,
     RegistryModelCreate,
+    RegistryModelObjectStorageImport,
     RegistryModelSummary,
     RegistryModelTestRequest,
     RegistryModelTestResponse,
@@ -22,6 +23,20 @@ service = ModelRegistryService()
 @router.get("", response_model=list[RegistryModelSummary])
 async def list_models() -> list[RegistryModelSummary]:
     return await service.list_models()
+
+
+@router.post(
+    "/import-object-storage",
+    response_model=RegistryModelSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_model_from_object_storage(
+    payload: RegistryModelObjectStorageImport,
+) -> RegistryModelSummary:
+    try:
+        return await service.import_model_from_object_storage(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{model_id}", response_model=RegistryModelSummary)

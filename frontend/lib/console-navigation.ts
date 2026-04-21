@@ -42,6 +42,7 @@ export const consoleNavSections: ConsoleNavSection[] = [
     id: "customization",
     title: "模型定制",
     items: [
+      { title: "我的模型", href: "/model/my-models", group: "workspace" },
       { title: "模型精调", href: "/model/finetune", group: "workspace" },
       { title: "模型评测", href: "/model/eval", group: "workspace" },
       { title: "Probe", href: "/model/probes", group: "workspace" }
@@ -70,6 +71,11 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   experience: { title: "体验中心", description: "试玩工作台，适合做模型和工具链验证。", group: "overview" },
   endpoint: { title: "在线推理", description: "管理在线推理接入点和实时调用。", group: "workspace" },
   "batch-inference": { title: "批量推理", description: "离线任务、接入点和结果管理。", group: "workspace" },
+  "model-my-models": {
+    title: "我的模型",
+    description: "管理自有模型资产，并从 COS / 对象存储导入模型。",
+    group: "workspace"
+  },
   "model-finetune": { title: "模型精调", description: "训练任务和精调流程管理。", group: "workspace" },
   "model-warehouse": { title: "模型广场", description: "兼容旧路由，实际跳转到模型广场。", group: "overview" },
   "model-eval": { title: "模型评测", description: "评测任务与评测管理入口。", group: "workspace" },

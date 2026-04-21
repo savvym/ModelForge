@@ -320,6 +320,7 @@ const iconByHref: Record<string, LucideIcon> = {
   "/experience": Sparkles,
   "/endpoint": Rocket,
   "/batch-inference": Boxes,
+  "/model/my-models": Database,
   "/model/finetune": WandSparkles,
   "/model/eval": ClipboardCheck,
   "/model/eval-benchmarks": ClipboardCheck,

@@ -7,6 +7,7 @@ import type {
   ModelProviderSyncResult,
   ModelProviderUpdateInput,
   RegistryModelCreateInput,
+  RegistryModelObjectStorageImportInput,
   RegistryModelSummary,
   RegistryModelTestInput,
   RegistryModelTestResponse,
@@ -76,6 +77,16 @@ export async function createRegistryModel(
   payload: RegistryModelCreateInput
 ): Promise<RegistryModelSummary> {
   return apiFetch<RegistryModelSummary>("/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function importRegistryModelFromObjectStorage(
+  payload: RegistryModelObjectStorageImportInput
+): Promise<RegistryModelSummary> {
+  return apiFetch<RegistryModelSummary>("/models/import-object-storage", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)

@@ -44,6 +44,7 @@ def _load_target_module():
         RegistryModelChatRequest=type("RegistryModelChatRequest", (), {}),
         RegistryModelChatResponse=type("RegistryModelChatResponse", (), {}),
         RegistryModelCreate=type("RegistryModelCreate", (), {}),
+        RegistryModelObjectStorageImport=type("RegistryModelObjectStorageImport", (), {}),
         RegistryModelSummary=type("RegistryModelSummary", (), {}),
         RegistryModelTestRequest=type("RegistryModelTestRequest", (), {}),
         RegistryModelTestResponse=type("RegistryModelTestResponse", (), {}),
@@ -148,6 +149,85 @@ def test_google_remote_models_normalizes_model_code() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        (
+            "s3://nta-models/projects/default/qwen/model.safetensors",
+            {
+                "source_type": "object-storage",
+                "source_uri": "s3://nta-models/projects/default/qwen/model.safetensors",
+                "bucket": "nta-models",
+                "object_key": "projects/default/qwen/model.safetensors",
+            },
+        ),
+        (
+            " COS://bucket-name/models/qwen/ ",
+            {
+                "source_type": "cos",
+                "source_uri": "cos://bucket-name/models/qwen/",
+                "bucket": "bucket-name",
+                "object_key": "models/qwen/",
+            },
+        ),
+    ],
+)
+def test_parse_object_storage_uri(raw_value: str, expected: dict[str, str]) -> None:
+    assert TARGET_MODULE._parse_object_storage_uri(raw_value) == expected
+
+
+@pytest.mark.parametrize("raw_value", ["", "bucket/key", "s3://bucket", "http://bucket/key"])
+def test_parse_object_storage_uri_rejects_invalid_paths(raw_value: str) -> None:
+    with pytest.raises(ValueError):
+        TARGET_MODULE._parse_object_storage_uri(raw_value)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected_uri", "expected_key", "expected_type"),
+    [
+        (
+            "s3://nta-models/projects/default/qwen",
+            "s3://nta-models/projects/default/qwen/",
+            "projects/default/qwen/",
+            "directory",
+        ),
+        (
+            "s3://nta-models/projects/default/qwen/",
+            "s3://nta-models/projects/default/qwen/",
+            "projects/default/qwen/",
+            "directory",
+        ),
+        (
+            "cos://nta-models/projects/default/qwen/model.safetensors",
+            "cos://nta-models/projects/default/qwen/model.safetensors",
+            "projects/default/qwen/model.safetensors",
+            "file",
+        ),
+    ],
+)
+def test_normalize_safetensors_import_target(
+    raw_value: str, expected_uri: str, expected_key: str, expected_type: str
+) -> None:
+    normalized = TARGET_MODULE._normalize_safetensors_import_target(
+        TARGET_MODULE._parse_object_storage_uri(raw_value)
+    )
+
+    assert normalized["source_uri"] == expected_uri
+    assert normalized["object_key"] == expected_key
+    assert normalized["target_type"] == expected_type
+
+
+@pytest.mark.parametrize(
+    "raw_value",
+    ["s3://nta-models/projects/default/qwen/pytorch_model.bin", "s3://bucket/model/config.json"],
+)
+def test_normalize_safetensors_import_target_rejects_unsupported_files(raw_value: str) -> None:
+    with pytest.raises(ValueError):
+        TARGET_MODULE._normalize_safetensors_import_target(
+            TARGET_MODULE._parse_object_storage_uri(raw_value)
+        )
+
+
 def test_google_payload_from_messages_uses_system_instruction() -> None:
     payload = TARGET_MODULE._google_payload_from_messages(
         [
@@ -160,9 +240,7 @@ def test_google_payload_from_messages_uses_system_instruction() -> None:
         parameters={"top_p": 0.8, "stop": ["STOP"]},
     )
 
-    assert payload["systemInstruction"] == {
-        "parts": [{"text": "You are precise."}]
-    }
+    assert payload["systemInstruction"] == {"parts": [{"text": "You are precise."}]}
     assert payload["contents"] == [
         {"role": "user", "parts": [{"text": "Explain VPC peering."}]},
         {"role": "model", "parts": [{"text": "Sure."}]},

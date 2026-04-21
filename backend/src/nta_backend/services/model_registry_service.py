@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import delete, func, select
@@ -27,11 +27,14 @@ from nta_backend.schemas.model_registry import (
     RegistryModelChatRequest,
     RegistryModelChatResponse,
     RegistryModelCreate,
+    RegistryModelObjectStorageImport,
     RegistryModelSummary,
     RegistryModelTestRequest,
     RegistryModelTestResponse,
     RegistryModelUpdate,
 )
+
+OBJECT_STORAGE_IMPORT_SOURCE = "object-storage-import"
 
 
 def _now() -> datetime:
@@ -201,6 +204,102 @@ def _serialize_model_name(model: Model) -> str:
     return model.name
 
 
+def _parse_object_storage_uri(source_uri: str) -> dict[str, str]:
+    normalized = source_uri.strip()
+    match = re.fullmatch(
+        r"(?P<scheme>s3|cos)://(?P<bucket>[^/\s]+)/(?P<key>.+)",
+        normalized,
+        re.IGNORECASE,
+    )
+    if not match:
+        raise ValueError("请输入有效的 s3://bucket/key 或 cos://bucket/key 对象存储路径。")
+
+    scheme = match.group("scheme").lower()
+    bucket = match.group("bucket").strip()
+    object_key = match.group("key").strip().lstrip("/")
+    if not bucket or not object_key:
+        raise ValueError("对象存储路径需要包含 bucket 和对象 key。")
+
+    return {
+        "source_type": "cos" if scheme == "cos" else "object-storage",
+        "source_uri": f"{scheme}://{bucket}/{object_key}",
+        "bucket": bucket,
+        "object_key": object_key,
+    }
+
+
+def _normalize_safetensors_import_target(parsed_uri: dict[str, str]) -> dict[str, str]:
+    object_key = parsed_uri["object_key"]
+    leaf_name = object_key.rstrip("/").rsplit("/", maxsplit=1)[-1]
+    is_safetensors_file = leaf_name.lower().endswith(".safetensors")
+    unsupported_file_suffixes = (
+        ".bin",
+        ".ckpt",
+        ".gguf",
+        ".gz",
+        ".json",
+        ".onnx",
+        ".pt",
+        ".pth",
+        ".tar",
+        ".txt",
+        ".zip",
+    )
+    looks_like_directory = object_key.endswith("/") or (
+        not is_safetensors_file and not leaf_name.lower().endswith(unsupported_file_suffixes)
+    )
+
+    if not is_safetensors_file and not looks_like_directory:
+        raise ValueError(
+            "当前仅支持导入 safetensors 模型文件或包含 safetensors checkpoint 的模型目录。"
+        )
+
+    normalized_key = object_key
+    if looks_like_directory and not object_key.endswith("/"):
+        normalized_key = f"{object_key}/"
+
+    scheme = "cos" if parsed_uri["source_type"] == "cos" else "s3"
+    return {
+        **parsed_uri,
+        "source_uri": f"{scheme}://{parsed_uri['bucket']}/{normalized_key}",
+        "object_key": normalized_key,
+        "target_type": "file" if is_safetensors_file else "directory",
+    }
+
+
+def _build_imported_model_code(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    normalized_slug = slug[:72].strip("-") or "model"
+    return f"cos-{normalized_slug}-{uuid4().hex[:8]}"
+
+
+def _strip_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _object_storage_import_metadata(model: Model) -> dict[str, str | None]:
+    if not isinstance(model.capabilities_json, dict):
+        return {}
+
+    metadata = model.capabilities_json.get("object_storage_import")
+    if not isinstance(metadata, dict):
+        return {}
+
+    def read_text(key: str) -> str | None:
+        value = metadata.get(key)
+        return value if isinstance(value, str) else None
+
+    return {
+        "source_type": read_text("source_type"),
+        "source_uri": read_text("source_uri"),
+        "bucket": read_text("bucket"),
+        "object_key": read_text("object_key"),
+    }
+
+
 def _serialize_provider(provider: ModelProvider, model_count: int) -> ModelProviderSummary:
     return ModelProviderSummary(
         id=provider.id,
@@ -221,6 +320,7 @@ def _serialize_provider(provider: ModelProvider, model_count: int) -> ModelProvi
 
 
 def _serialize_model(model: Model, provider_name: str | None) -> RegistryModelSummary:
+    import_metadata = _object_storage_import_metadata(model)
     return RegistryModelSummary(
         id=model.id,
         name=_serialize_model_name(model),
@@ -228,8 +328,13 @@ def _serialize_model(model: Model, provider_name: str | None) -> RegistryModelSu
         vendor=model.vendor,
         source=model.source,
         api_format=model.api_format,
+        base_model=model.base_model,
         category=model.category,
         description=model.description,
+        import_source_type=import_metadata.get("source_type"),
+        import_source_uri=import_metadata.get("source_uri"),
+        import_bucket=import_metadata.get("bucket"),
+        import_object_key=import_metadata.get("object_key"),
         status=model.status,
         provider_id=model.provider_id,
         provider_name=provider_name,
@@ -981,6 +1086,49 @@ class ModelRegistryService:
                 raise ValueError("模型 ID 已存在，请检查 Provider 和模型编码。") from exc
             await session.refresh(model)
             return _serialize_model(model, provider_name)
+
+    async def import_model_from_object_storage(
+        self, payload: RegistryModelObjectStorageImport
+    ) -> RegistryModelSummary:
+        parsed_uri = _normalize_safetensors_import_target(
+            _parse_object_storage_uri(payload.source_uri)
+        )
+        model_code = _build_imported_model_code(payload.name)
+        imported_at = _now()
+
+        async with SessionLocal() as session:
+            await ensure_default_project(session)
+            project_id = await resolve_active_project_id(session)
+
+            model = Model(
+                project_id=project_id,
+                provider_id=None,
+                name=payload.name.strip(),
+                model_code=model_code,
+                vendor="对象存储",
+                source=OBJECT_STORAGE_IMPORT_SOURCE,
+                api_format=None,
+                base_model=payload.base_model.strip(),
+                category="文本生成",
+                description=_strip_optional_text(payload.description),
+                capabilities_json={
+                    "object_storage_import": {
+                        **parsed_uri,
+                        "artifact_format": "safetensors",
+                        "imported_at": imported_at.isoformat(),
+                    }
+                },
+                is_provider_managed=False,
+                status="active",
+            )
+            session.add(model)
+            try:
+                await session.commit()
+            except IntegrityError as exc:
+                await session.rollback()
+                raise ValueError("模型 ID 已存在，请更换后重试。") from exc
+            await session.refresh(model)
+            return _serialize_model(model, None)
 
     async def update_model(
         self, model_id: UUID, payload: RegistryModelUpdate

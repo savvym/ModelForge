@@ -1097,8 +1097,13 @@ export interface RegistryModelSummary {
   vendor?: string | null;
   source?: string | null;
   api_format?: string | null;
+  base_model?: string | null;
   category?: string | null;
   description?: string | null;
+  import_source_type?: string | null;
+  import_source_uri?: string | null;
+  import_bucket?: string | null;
+  import_object_key?: string | null;
   status: string;
   provider_id?: string | null;
   provider_name?: string | null;
@@ -1116,6 +1121,13 @@ export interface RegistryModelCreateInput {
   source: string;
   api_format: string;
   category?: string | null;
+  description?: string | null;
+}
+
+export interface RegistryModelObjectStorageImportInput {
+  name: string;
+  base_model: string;
+  source_uri: string;
   description?: string | null;
 }
 

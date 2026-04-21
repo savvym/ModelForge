@@ -43,6 +43,7 @@ export function S3BrowserDialog({
   onClose,
   onSelect,
   open,
+  selectionMode = "object",
   title = "对象存储资源选择"
 }: {
   description?: string;
@@ -50,6 +51,7 @@ export function S3BrowserDialog({
   onClose: () => void;
   onSelect: (uri: string) => void;
   open: boolean;
+  selectionMode?: "object" | "prefix";
   title?: string;
 }) {
   const [browser, setBrowser] = React.useState<ObjectStoreBrowserResponse | null>(null);
@@ -110,12 +112,20 @@ export function S3BrowserDialog({
   }, [browser, deferredSearchQuery, loadBrowser, open, selectedKey]);
 
   const selectedUri =
-    browser && selectedKey ? `s3://${browser.bucket}/${selectedKey}` : initialUri ?? "";
+    selectionMode === "prefix"
+      ? browser?.prefix
+        ? `s3://${browser.bucket}/${browser.prefix}`
+        : initialUri ?? ""
+      : browser && selectedKey
+        ? `s3://${browser.bucket}/${selectedKey}`
+        : initialUri ?? "";
   const breadcrumbSegments = buildBreadcrumbSegments(browser?.prefix ?? "");
   const visiblePrefixes = browser?.prefixes ?? [];
   const visibleObjects = browser?.objects ?? [];
   const visibleCount = visiblePrefixes.length + visibleObjects.length;
   const isSearchMode = Boolean(browser?.search_query);
+  const canConfirm =
+    selectionMode === "prefix" ? Boolean(browser?.bucket && browser.prefix) : Boolean(browser && selectedKey);
 
   return (
     <Sheet
@@ -259,7 +269,7 @@ export function S3BrowserDialog({
               ))}
 
               {visibleObjects.map((entry) => {
-                const selected = entry.key === selectedKey;
+                const selected = selectionMode === "object" && entry.key === selectedKey;
                 return (
                   <BrowserRow
                     icon={
@@ -270,10 +280,16 @@ export function S3BrowserDialog({
                       )
                     }
                     key={entry.key}
-                    onClick={() => setSelectedKey(entry.key)}
+                    onClick={() => {
+                      if (selectionMode === "object") {
+                        setSelectedKey(entry.key);
+                      }
+                    }}
                     onDoubleClick={() => {
-                      onSelect(`s3://${browser!.bucket}/${entry.key}`);
-                      onClose();
+                      if (selectionMode === "object") {
+                        onSelect(`s3://${browser!.bucket}/${entry.key}`);
+                        onClose();
+                      }
                     }}
                     selected={selected}
                     subtitle={
@@ -310,16 +326,18 @@ export function S3BrowserDialog({
           <div className="rounded-lg border border-border bg-card/80 px-4 py-3">
             <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
               <HardDrive className="h-4 w-4" />
-              <span>已选择对象路径</span>
+              <span>{selectionMode === "prefix" ? "已选择目录路径" : "已选择对象路径"}</span>
             </div>
             <div className="mt-2 break-all text-[13px] leading-6 text-foreground">
-              {selectedUri || "请选择一个对象文件"}
+              {selectedUri || (selectionMode === "prefix" ? "请选择一个模型目录" : "请选择一个对象文件")}
             </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="max-w-[480px] text-[12px] leading-6 text-muted-foreground">
-              仅支持选择具体对象文件。确认后会将 `s3://bucket/key` 回填到表单。
+              {selectionMode === "prefix"
+                ? "进入目标目录后确认，会将当前目录路径回填到表单。"
+                : "仅支持选择具体对象文件。确认后会将 `s3://bucket/key` 回填到表单。"}
             </div>
             <div className="flex shrink-0 items-center gap-3 self-end">
               <Button className={secondaryButtonClassName} onClick={onClose} type="button" variant="outline">
@@ -327,13 +345,20 @@ export function S3BrowserDialog({
               </Button>
               <Button
                 className="h-8 rounded-full px-4 text-[13px] font-medium"
-                disabled={!browser || !selectedKey}
+                disabled={!canConfirm}
                 onClick={() => {
-                  if (!browser || !selectedKey) {
+                  if (!browser) {
                     return;
                   }
 
-                  onSelect(`s3://${browser.bucket}/${selectedKey}`);
+                  if (selectionMode === "prefix") {
+                    if (!browser.prefix) {
+                      return;
+                    }
+                    onSelect(`s3://${browser.bucket}/${browser.prefix}`);
+                  } else if (selectedKey) {
+                    onSelect(`s3://${browser.bucket}/${selectedKey}`);
+                  }
                   onClose();
                 }}
                 type="button"
@@ -390,11 +415,11 @@ function BrowserRow({
 }
 
 function parseS3Uri(value?: string | null) {
-  if (!value || !value.startsWith("s3://")) {
+  if (!value || !/^(s3|cos):\/\//i.test(value)) {
     return null;
   }
 
-  const trimmed = value.slice(5);
+  const trimmed = value.replace(/^(s3|cos):\/\//i, "");
   const slashIndex = trimmed.indexOf("/");
   if (slashIndex < 0) {
     return { bucket: trimmed, key: "", prefix: "" };
