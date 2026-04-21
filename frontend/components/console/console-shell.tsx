@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Rocket,
   Search,
+  Settings2,
   Sparkles,
   WandSparkles
 } from "lucide-react";
@@ -329,7 +330,8 @@ const iconByHref: Record<string, LucideIcon> = {
   "/lake-assets": Database,
   "/files": HardDrive,
   "/data": HardDrive,
-  "/project": FolderCog
+  "/project": FolderCog,
+  "/system/config": Settings2
 } as const;
 
 const navPrefetchTargets = Array.from(

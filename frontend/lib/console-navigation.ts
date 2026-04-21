@@ -61,7 +61,10 @@ export const consoleNavSections: ConsoleNavSection[] = [
   {
     id: "system",
     title: "系统管理",
-    items: [{ title: "项目配置", href: "/project", group: "system" }]
+    items: [
+      { title: "项目配置", href: "/project", group: "system" },
+      { title: "系统配置", href: "/system/config", group: "system" }
+    ]
   }
 ];
 
@@ -121,4 +124,5 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   "dataset-create": { title: "创建数据集", description: "创建数据集和版本上传流程。", group: "workspace" },
   "dataset-detail": { title: "数据集详情", description: "查看数据集元数据与版本列表。", group: "workspace" },
   project: { title: "项目配置", description: "项目配额和授权管理。", group: "system" },
+  "system-config": { title: "系统配置", description: "全局集成配置和系统级凭据管理。", group: "system" },
 };

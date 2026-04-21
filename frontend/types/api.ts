@@ -25,6 +25,18 @@ export interface ProjectCreateInput {
   description?: string | null;
 }
 
+export interface SystemHuggingFaceSettings {
+  endpoint_url?: string | null;
+  token?: string | null;
+  has_token: boolean;
+}
+
+export interface SystemHuggingFaceSettingsUpdateInput {
+  endpoint_url?: string | null;
+  token?: string | null;
+  clear_token?: boolean;
+}
+
 export interface DatasetSummary {
   id: string;
   name: string;
@@ -1104,6 +1116,8 @@ export interface RegistryModelSummary {
   import_source_uri?: string | null;
   import_bucket?: string | null;
   import_object_key?: string | null;
+  import_repo_id?: string | null;
+  import_revision?: string | null;
   status: string;
   provider_id?: string | null;
   provider_name?: string | null;
@@ -1129,6 +1143,43 @@ export interface RegistryModelObjectStorageImportInput {
   base_model: string;
   source_uri: string;
   description?: string | null;
+}
+
+export interface RegistryModelHuggingFaceImportInput {
+  name: string;
+  base_model: string;
+  repo_id: string;
+  revision?: string | null;
+  description?: string | null;
+}
+
+export interface RegistryModelHuggingFaceSearchInput {
+  query: string;
+  limit?: number;
+}
+
+export interface RegistryModelHuggingFaceSearchResult {
+  repo_id: string;
+  author?: string | null;
+  pipeline_tag?: string | null;
+  library_name?: string | null;
+  downloads?: number | null;
+  likes?: number | null;
+  is_private: boolean;
+  is_gated: boolean;
+  tags: string[];
+  last_modified?: string | null;
+}
+
+export interface RegistryModelHuggingFaceRevisionInput {
+  repo_id: string;
+}
+
+export interface RegistryModelHuggingFaceRevisionResult {
+  name: string;
+  kind: "branch" | "tag" | "convert";
+  ref?: string | null;
+  target_commit?: string | null;
 }
 
 export interface RegistryModelUpdateInput {
@@ -1183,6 +1234,45 @@ export interface RegistryModelChatResponse {
   input_tokens?: number | null;
   output_tokens?: number | null;
   total_tokens?: number | null;
+}
+
+export interface ModelDeploymentSummary {
+  id: string;
+  name: string;
+  model_id?: string | null;
+  model_name?: string | null;
+  status: string;
+  endpoint_url?: string | null;
+  agent_base_url?: string | null;
+  served_model_name?: string | null;
+  generation: number;
+  phase?: string | null;
+  progress: number;
+  last_event?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelDeploymentEvent {
+  id?: number | null;
+  deployment_id?: string | null;
+  generation: number;
+  event_type: string;
+  level: string;
+  message: string;
+  progress?: number | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DeployModelInput {
+  name?: string | null;
+  served_model_name?: string | null;
+  gpu_ids?: number[] | null;
+  tensor_parallel_size?: number | null;
+  max_model_len?: number | null;
+  dtype?: string | null;
 }
 
 export interface ObjectStorePrefixEntry {

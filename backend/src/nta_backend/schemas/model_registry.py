@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -70,6 +70,8 @@ class RegistryModelSummary(BaseModel):
     import_source_uri: str | None = None
     import_bucket: str | None = None
     import_object_key: str | None = None
+    import_repo_id: str | None = None
+    import_revision: str | None = None
     status: str
     provider_id: UUID | None = None
     provider_name: str | None = None
@@ -95,6 +97,45 @@ class RegistryModelObjectStorageImport(BaseModel):
     base_model: str = Field(min_length=1, max_length=120)
     source_uri: str = Field(min_length=8, max_length=2000)
     description: str | None = Field(default=None, max_length=500)
+
+
+class RegistryModelHuggingFaceImport(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    base_model: str = Field(min_length=1, max_length=120)
+    repo_id: str = Field(min_length=1, max_length=500)
+    revision: str | None = Field(default=None, max_length=160)
+    hf_token: str | None = Field(default=None, max_length=4000)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class RegistryModelHuggingFaceSearchRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=200)
+    hf_token: str | None = Field(default=None, max_length=4000)
+    limit: int = Field(default=12, ge=1, le=30)
+
+
+class RegistryModelHuggingFaceSearchResult(BaseModel):
+    repo_id: str
+    author: str | None = None
+    pipeline_tag: str | None = None
+    library_name: str | None = None
+    downloads: int | None = None
+    likes: int | None = None
+    is_private: bool = False
+    is_gated: bool = False
+    tags: list[str] = Field(default_factory=list)
+    last_modified: str | None = None
+
+
+class RegistryModelHuggingFaceRevisionRequest(BaseModel):
+    repo_id: str = Field(min_length=1, max_length=500)
+
+
+class RegistryModelHuggingFaceRevisionResult(BaseModel):
+    name: str
+    kind: Literal["branch", "tag", "convert"]
+    ref: str | None = None
+    target_commit: str | None = None
 
 
 class RegistryModelUpdate(BaseModel):

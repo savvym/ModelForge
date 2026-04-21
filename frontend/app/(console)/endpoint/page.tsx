@@ -1,10 +1,20 @@
-import { ConsolePage } from "@/components/console/console-page";
+import { getModelDeployments } from "@/features/model-deployments/api";
+import { ModelDeploymentsConsole } from "@/features/model-deployments/components/model-deployments-console";
+import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 
-export default function EndpointPage() {
+export default async function EndpointPage({
+  searchParams
+}: {
+  searchParams: Promise<{ deploymentId?: string }>;
+}) {
+  const projectId = await getCurrentProjectIdFromCookie();
+  const resolvedSearchParams = await searchParams;
+  const deployments = await getModelDeployments(projectId).catch(() => []);
+
   return (
-    <ConsolePage
-      pageKey="endpoint"
-      highlight="在线推理建议拆成预置接入点和自定义接入点两个 tab，再接入数据表格和 SSE 状态刷新。"
+    <ModelDeploymentsConsole
+      initialDeployments={deployments}
+      selectedDeploymentId={resolvedSearchParams.deploymentId}
     />
   );
 }
