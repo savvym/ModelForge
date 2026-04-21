@@ -328,6 +328,21 @@
     padding: 0 !important;
   }
 
+  .experience-composer [data-slot="input-group"] {
+    border-color: hsl(var(--border) / 0.82);
+    box-shadow:
+      0 10px 26px rgba(2, 6, 23, 0.08),
+      inset 0 1px 0 hsl(var(--foreground) / 0.03);
+  }
+
+  .experience-composer [data-slot="input-group"]:focus-within {
+    border-color: hsl(var(--border));
+    box-shadow:
+      0 10px 26px rgba(2, 6, 23, 0.08),
+      inset 0 0 0 1px hsl(var(--primary) / 0.18),
+      inset 0 1px 0 hsl(var(--foreground) / 0.03);
+  }
+
   .light .console-shell {
     --background: 210 40% 98%;
     --foreground: 222 47% 11%;

@@ -232,6 +232,15 @@ export function ModelDeploymentsConsole({
   );
   const selectedPhase = selected?.phase ?? selected?.status ?? null;
   const canPublishSelected = selectedPhase === "ready";
+  const pollingDeploymentIds = useMemo(
+    () =>
+      deployments
+        .filter(shouldPollDeployment)
+        .map((deployment) => deployment.id)
+        .sort()
+        .join("|"),
+    [deployments]
+  );
 
   useEffect(() => {
     if (!selected?.id) {
@@ -244,27 +253,46 @@ export function ModelDeploymentsConsole({
   }, [selected?.id]);
 
   useEffect(() => {
-    const pollingTargets = deployments.filter(shouldPollDeployment);
-    if (!pollingTargets.length) {
+    if (!pollingDeploymentIds) {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      void Promise.allSettled(
-        pollingTargets.map((deployment) => refreshModelDeployment(deployment.id))
-      )
-        .then(() => getModelDeployments())
-        .then((updatedDeployments) => {
-          setDeployments(updatedDeployments);
-          if (selected?.id) {
-            void getModelDeploymentEvents(selected.id).then(setEvents).catch(() => setEvents([]));
-          }
-        })
-        .catch(() => undefined);
-    }, 2500);
+    let isCancelled = false;
+    let isRefreshing = false;
+    const deploymentIds = pollingDeploymentIds.split("|").filter(Boolean);
 
-    return () => window.clearTimeout(timeoutId);
-  }, [deployments, selected?.id]);
+    async function refreshPollingDeployments() {
+      if (isRefreshing) {
+        return;
+      }
+      isRefreshing = true;
+      try {
+        await Promise.allSettled(
+          deploymentIds.map((deploymentId) => refreshModelDeployment(deploymentId))
+        );
+        const updatedDeployments = await getModelDeployments();
+        if (isCancelled) {
+          return;
+        }
+        setDeployments(updatedDeployments);
+        if (selectedId) {
+          void getModelDeploymentEvents(selectedId).then(setEvents).catch(() => setEvents([]));
+        }
+      } catch {
+        // The next interval will retry; keep the current snapshot visible.
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    void refreshPollingDeployments();
+    const intervalId = window.setInterval(refreshPollingDeployments, 2500);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [pollingDeploymentIds, selectedId]);
 
   function refreshSelected() {
     if (!selected?.id) {

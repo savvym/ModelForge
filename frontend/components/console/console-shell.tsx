@@ -298,7 +298,7 @@ export function ConsoleShell({
             )}
           >
             {isStorageBrowserPage || isCustomWorkbenchPage ? (
-              <div className="min-h-0 min-w-0">{children}</div>
+              <div className="h-full min-h-0 min-w-0 overflow-hidden">{children}</div>
             ) : (
               <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/70 shadow-sm backdrop-blur">
                 <ScrollArea className="console-workbench__scroll h-full min-h-0">

@@ -275,9 +275,9 @@ export function ExperienceChatConsole({
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] overflow-hidden">
-      <aside className="border-r border-border bg-card/80 px-2 py-6">
-        <div className="flex flex-col items-center gap-3">
+    <div className="grid h-full min-h-0 min-w-0 grid-cols-[52px_minmax(0,1fr)] overflow-hidden">
+      <aside className="border-r border-border bg-card/80 px-2 py-4">
+        <div className="flex flex-col items-center gap-2">
           {sideModes.map((mode) => (
             <button
               className={cn(
@@ -296,7 +296,7 @@ export function ExperienceChatConsole({
         </div>
       </aside>
 
-      <section className="flex min-h-0 flex-col bg-background/40">
+      <section className="flex min-h-0 min-w-0 flex-col bg-background/40">
         {!selectedModel ? (
           <div className="flex flex-1 items-center justify-center px-6 py-10">
             <div className="space-y-4 rounded-lg border border-dashed border-border bg-card/80 px-8 py-10 text-center">
@@ -319,9 +319,12 @@ export function ExperienceChatConsole({
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex flex-1 overflow-hidden">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
               <Conversation className="h-full min-h-0 w-full">
-                <ConversationContent className="mx-auto w-full max-w-[880px] gap-6 px-6 py-6 md:px-8">
+                <ConversationContent
+                  className="mx-auto w-full max-w-[900px] gap-5 px-5 py-5 md:px-8"
+                  scrollClassName="console-scrollbar-subtle"
+                >
                   {messages.length ? (
                     messages.map((message, index) => {
                       const text = getMessageText(message);
@@ -407,7 +410,7 @@ export function ExperienceChatConsole({
                     })
                   ) : (
                     <ConversationEmptyState
-                      description="保留模型切换，把界面收成更轻的对话区。"
+                      className="min-h-0 flex-1 px-0 py-6"
                       icon={
                         <div className="rounded-full border border-border bg-muted/40 p-3">
                           <Bot className="h-5 w-5" />
@@ -421,14 +424,14 @@ export function ExperienceChatConsole({
                             从一个简洁的问题开始
                           </div>
                           <div className="text-sm leading-6 text-muted-foreground">
-                            体验中心现在使用更轻的消息流和输入区，减少视觉噪音。
+                            选择一个场景，或直接输入问题。
                           </div>
                         </div>
 
                         <div className="grid gap-2 sm:grid-cols-2">
                           {starterPrompts.map((item) => (
                             <button
-                              className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                              className="rounded-md border border-border bg-muted/35 px-4 py-3 text-left transition-colors hover:bg-muted/55"
                               key={item.title}
                               onClick={() => submitPrompt(item.prompt)}
                               type="button"
@@ -457,8 +460,8 @@ export function ExperienceChatConsole({
               </Conversation>
             </div>
 
-            <div className="border-t border-border bg-card/90 px-6 py-4 backdrop-blur-xl">
-              <div className="mx-auto w-full max-w-[880px] space-y-3">
+            <div className="border-t border-border bg-card/90 px-5 py-3 backdrop-blur-xl md:px-8">
+              <div className="mx-auto w-full max-w-[900px] space-y-2.5">
                 <PromptInputProvider>
                   <ExperienceComposer
                     chatModels={chatModels}
@@ -509,7 +512,7 @@ function ExperienceComposer({
 
   return (
     <PromptInput
-      className="w-full"
+      className="experience-composer w-full"
       onSubmit={({ text }) => onSubmitPrompt(text)}
     >
       <PromptInputBody>
@@ -583,9 +586,7 @@ function ExperienceComposer({
               新对话
             </PromptInputButton>
           ) : (
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              Enter 发送，Shift + Enter 换行
-            </span>
+            <span />
           )}
         </PromptInputTools>
 
