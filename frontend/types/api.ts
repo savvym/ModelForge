@@ -1118,6 +1118,7 @@ export interface RegistryModelSummary {
   import_object_key?: string | null;
   import_repo_id?: string | null;
   import_revision?: string | null;
+  deployment_hints?: RegistryModelDeploymentHints | null;
   status: string;
   provider_id?: string | null;
   provider_name?: string | null;
@@ -1125,6 +1126,16 @@ export interface RegistryModelSummary {
   last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RegistryModelDeploymentHints {
+  model_type?: string | null;
+  architectures: string[];
+  num_attention_heads?: number | null;
+  num_key_value_heads?: number | null;
+  vocab_size?: number | null;
+  max_model_len?: number | null;
+  tensor_parallel_size_options: number[];
 }
 
 export interface RegistryModelCreateInput {

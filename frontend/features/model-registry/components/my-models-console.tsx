@@ -84,6 +84,7 @@ import {
   importRegistryModelFromHuggingFace,
   importRegistryModelFromObjectStorage,
   listHuggingFaceRevisions,
+  refreshRegistryModelDeploymentHints,
   searchHuggingFaceModels
 } from "@/features/model-registry/api";
 import { cn } from "@/lib/utils";
@@ -218,6 +219,63 @@ function readMachineGpuString(machine: InferenceMachineSummary) {
   return `${gpuCount} x ${gpuName}${memoryText}`;
 }
 
+function readMachineGpuCount(machine: InferenceMachineSummary | null) {
+  if (!machine) {
+    return null;
+  }
+  const detectedCount = machine.last_gpu_count ?? machine.last_gpus.length;
+  if (detectedCount > 0) {
+    return detectedCount;
+  }
+  return machine.gpu_ids.length > 0 ? machine.gpu_ids.length : null;
+}
+
+function getModelTensorParallelOptions(
+  model: RegistryModelSummary | null,
+  machine: InferenceMachineSummary | null
+) {
+  const rawOptions = model?.deployment_hints?.tensor_parallel_size_options ?? [];
+  const normalized = Array.from(
+    new Set(rawOptions.filter((value) => Number.isInteger(value) && value > 0))
+  ).sort((left, right) => left - right);
+  const gpuCount = readMachineGpuCount(machine);
+  if (!gpuCount) {
+    return normalized;
+  }
+  return normalized.filter((value) => value <= gpuCount);
+}
+
+function getDefaultTensorParallelSize(
+  options: number[],
+  machine: InferenceMachineSummary | null
+) {
+  if (options.length > 0) {
+    if (machine && options.includes(machine.tensor_parallel_size)) {
+      return machine.tensor_parallel_size;
+    }
+    if (options.includes(1)) {
+      return 1;
+    }
+    return options[0];
+  }
+  return machine?.tensor_parallel_size ?? null;
+}
+
+function formatTensorParallelHint(model: RegistryModelSummary | null) {
+  const hints = model?.deployment_hints;
+  if (!hints?.num_attention_heads) {
+    return "未读取到 config.json 中的 attention heads，使用机器默认 TP。";
+  }
+  const architecture = hints.architectures[0] ?? hints.model_type ?? "模型";
+  const vocabText = hints.vocab_size ? ` · vocab ${hints.vocab_size}` : "";
+  return `${architecture} · attention heads ${hints.num_attention_heads}${vocabText}`;
+}
+
+function shouldRefreshDeploymentHints(model: RegistryModelSummary) {
+  const hasOptions = Boolean(model.deployment_hints?.tensor_parallel_size_options.length);
+  return !hasOptions && Boolean(model.import_repo_id || model.import_source_type);
+}
+
 export function MyModelsConsole({ initialModels }: { initialModels: RegistryModelSummary[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -227,7 +285,9 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const [deployMachines, setDeployMachines] = useState<InferenceMachineSummary[]>([]);
   const [deployMachineId, setDeployMachineId] = useState("");
   const [deployModelId, setDeployModelId] = useState("");
+  const [deployTensorParallelSize, setDeployTensorParallelSize] = useState("");
   const [isDeployMachineLoading, setIsDeployMachineLoading] = useState(false);
+  const [isDeployHintsLoading, setIsDeployHintsLoading] = useState(false);
   const [deployMachineError, setDeployMachineError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelPage, setModelPage] = useState(1);
@@ -251,6 +311,29 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const selectedDeployMachine = useMemo(
     () => deployMachines.find((machine) => machine.id === deployMachineId) ?? null,
     [deployMachineId, deployMachines]
+  );
+  const deployTensorParallelOptions = useMemo(
+    () => getModelTensorParallelOptions(pendingDeploy, selectedDeployMachine),
+    [pendingDeploy, selectedDeployMachine]
+  );
+  const hasDeployTensorParallelHints = Boolean(
+    pendingDeploy?.deployment_hints?.tensor_parallel_size_options.length
+  );
+  const deployTensorParallelFallback = useMemo(
+    () =>
+      hasDeployTensorParallelHints && deployTensorParallelOptions.length === 0
+        ? null
+        : getDefaultTensorParallelSize(deployTensorParallelOptions, selectedDeployMachine),
+    [deployTensorParallelOptions, hasDeployTensorParallelHints, selectedDeployMachine]
+  );
+  const deployTensorParallelSelectOptions = useMemo(
+    () =>
+      deployTensorParallelOptions.length > 0
+        ? deployTensorParallelOptions
+        : deployTensorParallelFallback != null
+          ? [deployTensorParallelFallback]
+          : [],
+    [deployTensorParallelFallback, deployTensorParallelOptions]
   );
 
   const filteredModels = useMemo(() => {
@@ -276,6 +359,31 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   useEffect(() => {
     setModelPage(1);
   }, [deferredQuery]);
+
+  useEffect(() => {
+    if (!pendingDeploy || !selectedDeployMachine) {
+      return;
+    }
+    if (deployTensorParallelFallback == null) {
+      setDeployTensorParallelSize("");
+      return;
+    }
+    const fallbackValue = String(deployTensorParallelFallback);
+    const allowedValues = deployTensorParallelOptions.length
+      ? deployTensorParallelOptions.map(String)
+      : [fallbackValue];
+    setDeployTensorParallelSize((current) => {
+      if (current && allowedValues.includes(current)) {
+        return current;
+      }
+      return fallbackValue;
+    });
+  }, [
+    deployTensorParallelFallback,
+    deployTensorParallelOptions,
+    pendingDeploy,
+    selectedDeployMachine
+  ]);
 
   useEffect(() => {
     if (feedback?.tone !== "success") {
@@ -505,8 +613,10 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     setDeployMachines([]);
     setDeployMachineId("");
     setDeployModelId(model.model_code ?? model.name);
+    setDeployTensorParallelSize("");
     setDeployMachineError(null);
     setIsDeployMachineLoading(true);
+    setIsDeployHintsLoading(false);
     void getInferenceMachines()
       .then((machines) => {
         const activeMachines = machines.filter((machine) => machine.status === "active");
@@ -519,6 +629,21 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
       .finally(() => {
         setIsDeployMachineLoading(false);
       });
+    if (shouldRefreshDeploymentHints(model)) {
+      setIsDeployHintsLoading(true);
+      void refreshRegistryModelDeploymentHints(model.id)
+        .then((updatedModel) => {
+          setPendingDeploy((current) => (current?.id === updatedModel.id ? updatedModel : current));
+        })
+        .catch((error: unknown) => {
+          setDeployMachineError(
+            error instanceof Error ? error.message : "读取模型 config.json 失败。"
+          );
+        })
+        .finally(() => {
+          setIsDeployHintsLoading(false);
+        });
+    }
   }
 
   function deployModel() {
@@ -533,13 +658,26 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
       setDeployMachineError("请填写 Model ID。");
       return;
     }
+    const tensorParallelSize = Number.parseInt(deployTensorParallelSize, 10);
+    if (!Number.isInteger(tensorParallelSize) || tensorParallelSize <= 0) {
+      setDeployMachineError("请选择 Tensor Parallel Size。");
+      return;
+    }
+    if (
+      deployTensorParallelOptions.length > 0 &&
+      !deployTensorParallelOptions.includes(tensorParallelSize)
+    ) {
+      setDeployMachineError("当前 Tensor Parallel Size 不在 config.json 支持的可选值中。");
+      return;
+    }
 
     const model = pendingDeploy;
     runAction(async () => {
       const deployment = await createDeploymentFromModel(model.id, {
         machine_id: deployMachineId,
         name: `${model.name} 部署`,
-        served_model_name: deployModelId.trim()
+        served_model_name: deployModelId.trim(),
+        tensor_parallel_size: tensorParallelSize
       });
       setPendingDeploy(null);
       refreshWithMessage("success", `${model.name} 已提交部署任务。`);
@@ -911,6 +1049,8 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           if (!open) {
             setPendingDeploy(null);
             setDeployModelId("");
+            setDeployTensorParallelSize("");
+            setIsDeployHintsLoading(false);
             setDeployMachineError(null);
           }
         }}
@@ -940,6 +1080,39 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                 placeholder="例如 Qwen2.5-1.5B"
                 value={deployModelId}
               />
+              <div className="flex flex-col gap-2">
+                <Label>Tensor Parallel Size</Label>
+                <Select
+                  disabled={isDeployHintsLoading || deployTensorParallelSelectOptions.length === 0}
+                  onValueChange={setDeployTensorParallelSize}
+                  value={deployTensorParallelSize}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择 TP" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deployTensorParallelSelectOptions.map((option) => (
+                      <SelectItem key={option} value={String(option)}>
+                        TP {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="text-xs leading-5 text-muted-foreground">
+                  {isDeployHintsLoading
+                    ? "正在读取模型 config.json..."
+                    : formatTensorParallelHint(pendingDeploy)}
+                  {deployTensorParallelOptions.length > 0 ? (
+                    <>
+                      {" "}
+                      当前机器可用：{deployTensorParallelOptions.join(" / ")}。
+                    </>
+                  ) : null}
+                  {hasDeployTensorParallelHints && deployTensorParallelOptions.length === 0 ? (
+                    <> 当前机器 GPU 数不足或未检查，未找到兼容 TP。</>
+                  ) : null}
+                </div>
+              </div>
               <div className="flex flex-col gap-2">
                 <Label>推理机器</Label>
                 <Select onValueChange={setDeployMachineId} value={deployMachineId}>
@@ -985,14 +1158,24 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           <DialogFooter>
             <Button
               disabled={isPending}
-              onClick={() => setPendingDeploy(null)}
+              onClick={() => {
+                setPendingDeploy(null);
+                setDeployTensorParallelSize("");
+                setIsDeployHintsLoading(false);
+              }}
               type="button"
               variant="outline"
             >
               取消
             </Button>
             <Button
-              disabled={isPending || isDeployMachineLoading || !deployMachines.length}
+              disabled={
+                isPending ||
+                isDeployMachineLoading ||
+                isDeployHintsLoading ||
+                !deployMachines.length ||
+                !deployTensorParallelSize
+              }
               onClick={deployModel}
               type="button"
             >

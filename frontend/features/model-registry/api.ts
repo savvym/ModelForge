@@ -132,6 +132,14 @@ export async function listHuggingFaceRevisions(
   });
 }
 
+export async function refreshRegistryModelDeploymentHints(
+  modelId: string
+): Promise<RegistryModelSummary> {
+  return apiFetch<RegistryModelSummary>(`/models/${modelId}/deployment-hints`, {
+    method: "POST"
+  });
+}
+
 export async function updateRegistryModel(
   modelId: string,
   payload: RegistryModelUpdateInput

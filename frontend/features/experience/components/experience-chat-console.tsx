@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Bot,
   Braces,
@@ -236,12 +236,18 @@ export function ExperienceChatConsole({
     reasoningDepth: "高" as ExperienceReasoningDepth,
   });
 
+  const selectedOptionId = useMemo(() => {
+    if (!modelOptions.length) {
+      return "";
+    }
+    return modelOptions.some((model) => model.id === selectedModelId)
+      ? selectedModelId
+      : modelOptions[0].id;
+  }, [modelOptions, selectedModelId]);
+
   const selectedModel = useMemo(
-    () =>
-      modelOptions.find((model) => model.id === selectedModelId) ??
-      modelOptions[0] ??
-      null,
-    [modelOptions, selectedModelId]
+    () => modelOptions.find((model) => model.id === selectedOptionId) ?? null,
+    [modelOptions, selectedOptionId]
   );
 
   requestOptionsRef.current = {
@@ -283,19 +289,6 @@ export function ExperienceChatConsole({
 
   const isPending = status === "submitted" || status === "streaming";
   const errorMessage = uiError ?? error?.message ?? null;
-
-  useEffect(() => {
-    if (!modelOptions.length) {
-      setSelectedModelId("");
-      return;
-    }
-
-    setSelectedModelId((current) =>
-      current && modelOptions.some((model) => model.id === current)
-        ? current
-        : modelOptions[0].id
-    );
-  }, [modelOptions]);
 
   function resetConversation() {
     stop();
@@ -519,7 +512,7 @@ export function ExperienceChatConsole({
                     onResetConversation={resetConversation}
                     onSelectModel={setSelectedModelId}
                     onSubmitPrompt={submitPrompt}
-                    selectedModelId={selectedModel?.id ?? ""}
+                    selectedModelId={selectedOptionId}
                     status={status}
                     stop={stop}
                   />

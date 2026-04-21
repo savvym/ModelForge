@@ -54,6 +54,16 @@ class ModelProviderSyncResult(BaseModel):
     last_synced_at: datetime
 
 
+class RegistryModelDeploymentHints(BaseModel):
+    model_type: str | None = None
+    architectures: list[str] = Field(default_factory=list)
+    num_attention_heads: int | None = None
+    num_key_value_heads: int | None = None
+    vocab_size: int | None = None
+    max_model_len: int | None = None
+    tensor_parallel_size_options: list[int] = Field(default_factory=list)
+
+
 class RegistryModelSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,6 +82,7 @@ class RegistryModelSummary(BaseModel):
     import_object_key: str | None = None
     import_repo_id: str | None = None
     import_revision: str | None = None
+    deployment_hints: RegistryModelDeploymentHints | None = None
     status: str
     provider_id: UUID | None = None
     provider_name: str | None = None

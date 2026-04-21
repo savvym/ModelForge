@@ -2,16 +2,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+from concurrent.futures import Future
+from contextlib import suppress
 from datetime import UTC, datetime
+from time import monotonic
 
 from nta_infer_agent.config import AgentSettings
 from nta_infer_agent.runtime.docker_runtime import DockerRuntime
 from nta_infer_agent.runtime.vllm_driver import VllmDriver
 from nta_infer_agent.schemas import DeploymentSpec, DeploymentStatus, ErrorDetail
 from nta_infer_agent.state import StateStore
-from nta_infer_agent.storage.object_store import ModelCache, ModelDownloader
+from nta_infer_agent.storage.object_store import DownloadProgress, ModelCache, ModelDownloader
 
 logger = logging.getLogger(__name__)
+
+DOWNLOAD_PROGRESS_START = 10
+DOWNLOAD_PROGRESS_END = 55
 
 
 class DeploymentReconciler:
@@ -34,8 +41,28 @@ class DeploymentReconciler:
 
     async def _run(self) -> None:
         while True:
+            self._kick.clear()
+            reconcile_task = asyncio.create_task(
+                self.reconcile_once(),
+                name="deployment-reconcile-once",
+            )
+            kick_task = asyncio.create_task(self._kick.wait(), name="deployment-reconcile-kick")
+            done, _ = await asyncio.wait(
+                {reconcile_task, kick_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if kick_task in done and not reconcile_task.done():
+                reconcile_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await reconcile_task
+                self._kick.clear()
+                continue
+
+            kick_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await kick_task
             try:
-                await self.reconcile_once()
+                await reconcile_task
             except Exception:
                 logger.exception("reconcile failed")
             try:
@@ -57,6 +84,8 @@ class DeploymentReconciler:
             return
 
         if spec.desired_phase == "stopped":
+            if status.phase == "stopped" and status.generation == spec.generation:
+                return
             await self._stop(spec)
             return
 
@@ -90,11 +119,21 @@ class DeploymentReconciler:
             await self._set_status(
                 spec,
                 phase="downloading",
-                progress=10,
+                progress=DOWNLOAD_PROGRESS_START,
                 last_event="prepare model",
             )
-            await self._event(spec, "artifact.cache_check", "检查本地模型缓存", progress=10)
-            local_path, cache_hit = await self.downloader.ensure_cached(spec.model)
+            await self._event(
+                spec,
+                "artifact.cache_check",
+                "检查本地模型缓存",
+                progress=DOWNLOAD_PROGRESS_START,
+            )
+            progress_reporter = _DownloadProgressReporter(self, spec)
+            local_path, cache_hit = await self.downloader.ensure_cached(
+                spec.model,
+                progress=progress_reporter.report,
+            )
+            await progress_reporter.drain()
             if cache_hit:
                 await self._event(
                     spec,
@@ -180,6 +219,15 @@ class DeploymentReconciler:
                 progress=100,
                 payload={"endpoint": self.vllm.endpoint(spec)},
             )
+        except asyncio.CancelledError:
+            await self._event(
+                spec,
+                "deployment.cancelled",
+                "检测到新的部署期望，取消当前部署流程",
+                level="warning",
+                progress=100,
+            )
+            raise
         except Exception as exc:
             await self._set_status(
                 spec,
@@ -246,3 +294,102 @@ class DeploymentReconciler:
             progress=progress,
             payload=payload,
         )
+
+
+class _DownloadProgressReporter:
+    def __init__(self, reconciler: DeploymentReconciler, spec: DeploymentSpec) -> None:
+        self.reconciler = reconciler
+        self.spec = spec
+        self.loop = asyncio.get_running_loop()
+        self._lock = threading.Lock()
+        self._futures: set[Future] = set()
+        self._last_progress = DOWNLOAD_PROGRESS_START
+        self._last_report_at = 0.0
+
+    def report(self, progress: DownloadProgress) -> None:
+        mapped_progress = self._map_progress(progress)
+        now = monotonic()
+        with self._lock:
+            if mapped_progress <= self._last_progress and now - self._last_report_at < 5:
+                return
+            self._last_progress = max(self._last_progress, mapped_progress)
+            self._last_report_at = now
+            future = asyncio.run_coroutine_threadsafe(
+                self._record(progress, mapped_progress),
+                self.loop,
+            )
+            self._futures.add(future)
+            future.add_done_callback(self._discard)
+
+    async def drain(self) -> None:
+        while True:
+            with self._lock:
+                futures = list(self._futures)
+            if not futures:
+                return
+            await asyncio.gather(
+                *(asyncio.wrap_future(future) for future in futures),
+                return_exceptions=True,
+            )
+
+    def _discard(self, future: Future) -> None:
+        with self._lock:
+            self._futures.discard(future)
+
+    def _map_progress(self, progress: DownloadProgress) -> int:
+        if progress.total and progress.total > 0:
+            fraction = min(1.0, max(0.0, progress.completed / progress.total))
+            return round(
+                DOWNLOAD_PROGRESS_START
+                + fraction * (DOWNLOAD_PROGRESS_END - DOWNLOAD_PROGRESS_START)
+            )
+        return min(DOWNLOAD_PROGRESS_END - 1, self._last_progress + 1)
+
+    async def _record(self, progress: DownloadProgress, mapped_progress: int) -> None:
+        message = self._format_message(progress)
+        await self.reconciler._set_status(
+            self.spec,
+            phase="downloading",
+            progress=mapped_progress,
+            last_event=message,
+        )
+        await self.reconciler._event(
+            self.spec,
+            "artifact.download_progress",
+            message,
+            progress=mapped_progress,
+            payload={
+                "completed": progress.completed,
+                "total": progress.total,
+                "unit": progress.unit,
+            },
+        )
+
+    def _format_message(self, progress: DownloadProgress) -> str:
+        if not progress.message:
+            return self._format_progress(progress)
+        if progress.unit != "bytes":
+            return progress.message
+        detail = self._format_progress(progress).removeprefix("下载模型文件 ")
+        return f"{progress.message}（{detail}）"
+
+    def _format_progress(self, progress: DownloadProgress) -> str:
+        if progress.unit == "bytes":
+            completed = _format_bytes(progress.completed)
+            if progress.total:
+                return f"下载模型文件 {completed} / {_format_bytes(progress.total)}"
+            return f"下载模型文件 {completed}"
+        if progress.total:
+            return f"下载模型文件 {progress.completed} / {progress.total} {progress.unit}"
+        return f"下载模型文件 {progress.completed} {progress.unit}"
+
+
+def _format_bytes(value: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(max(value, 0))
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024

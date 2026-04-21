@@ -28,6 +28,7 @@ from nta_backend.schemas.model_registry import (
     RegistryModelChatRequest,
     RegistryModelChatResponse,
     RegistryModelCreate,
+    RegistryModelDeploymentHints,
     RegistryModelHuggingFaceImport,
     RegistryModelHuggingFaceRevisionRequest,
     RegistryModelHuggingFaceRevisionResult,
@@ -43,6 +44,7 @@ from nta_backend.services.system_config_service import load_system_huggingface_c
 
 OBJECT_STORAGE_IMPORT_SOURCE = "object-storage-import"
 HUGGINGFACE_IMPORT_SOURCE = "huggingface-import"
+MAX_TENSOR_PARALLEL_HINT = 64
 
 
 def _now() -> datetime:
@@ -447,12 +449,165 @@ def _int_or_none(value: Any) -> int | None:
         return None
     if isinstance(value, int | float):
         return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
     return None
+
+
+def _positive_int_or_none(value: Any) -> int | None:
+    parsed = _int_or_none(value)
+    return parsed if parsed is not None and parsed > 0 else None
 
 
 def _str_or_none(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
+    return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _model_config_text_section(config: dict[str, Any]) -> dict[str, Any]:
+    if _positive_int_or_none(config.get("num_attention_heads") or config.get("n_head")):
+        return config
+    for key in ("text_config", "llm_config", "language_config"):
+        nested = config.get(key)
+        if isinstance(nested, dict) and _positive_int_or_none(
+            nested.get("num_attention_heads") or nested.get("n_head")
+        ):
+            return nested
+    return config
+
+
+def _first_positive_int(config: dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        value = _positive_int_or_none(config.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _tensor_parallel_options(*values: int | None) -> list[int]:
+    divisibility_values = [value for value in values if value is not None and value > 0]
+    if not divisibility_values:
+        return []
+    upper_bound = min(min(divisibility_values), MAX_TENSOR_PARALLEL_HINT)
+    return [
+        candidate
+        for candidate in range(1, upper_bound + 1)
+        if all(value % candidate == 0 for value in divisibility_values)
+    ]
+
+
+def _model_config_deployment_hints(config: dict[str, Any]) -> RegistryModelDeploymentHints:
+    text_config = _model_config_text_section(config)
+    num_attention_heads = _first_positive_int(
+        text_config,
+        ("num_attention_heads", "n_head", "num_heads", "n_heads"),
+    )
+    num_key_value_heads = _first_positive_int(
+        text_config,
+        ("num_key_value_heads", "num_kv_heads", "n_kv_heads"),
+    )
+    vocab_size = _first_positive_int(
+        text_config,
+        ("vocab_size", "padded_vocab_size"),
+    )
+    max_model_len = _first_positive_int(
+        text_config,
+        (
+            "max_model_len",
+            "max_position_embeddings",
+            "model_max_length",
+            "seq_length",
+            "n_positions",
+        ),
+    )
+    return RegistryModelDeploymentHints(
+        model_type=_str_or_none(text_config.get("model_type") or config.get("model_type")),
+        architectures=_string_list(config.get("architectures") or text_config.get("architectures")),
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=num_key_value_heads,
+        vocab_size=vocab_size,
+        max_model_len=max_model_len,
+        tensor_parallel_size_options=_tensor_parallel_options(num_attention_heads, vocab_size),
+    )
+
+
+async def _fetch_huggingface_model_config(
+    *,
+    repo_id: str,
+    revision: str,
+    token: str | None,
+    endpoint_url: str | None = None,
+) -> dict[str, Any]:
+    endpoint_url = _huggingface_endpoint_url(endpoint_url)
+    encoded_repo_id = quote(repo_id, safe="/")
+    encoded_revision = quote(revision, safe="")
+    config_url = f"{endpoint_url}/{encoded_repo_id}/resolve/{encoded_revision}/config.json"
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response = await client.get(
+            config_url,
+            headers=_huggingface_headers(token, accept_json=False),
+        )
+        if response.status_code >= 400:
+            _raise_huggingface_access_error(response, has_token=bool(token))
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "Hugging Face config.json 不是有效 JSON，无法计算 TP 可选值。"
+            ) from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Hugging Face config.json 响应格式不正确，无法计算 TP 可选值。")
+    return payload
+
+
+def _read_object_storage_model_config(parsed_uri: dict[str, str]) -> dict[str, Any] | None:
+    object_key = parsed_uri["object_key"]
+    if parsed_uri.get("target_type") == "directory":
+        config_key = f"{object_key.rstrip('/')}/config.json"
+    else:
+        parent = object_key.rsplit("/", maxsplit=1)[0] if "/" in object_key else ""
+        config_key = f"{parent}/config.json" if parent else "config.json"
+
+    try:
+        from nta_backend.core.object_store import get_object_bytes
+
+        payload = get_object_bytes(parsed_uri["bucket"], config_key)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+    try:
+        decoded = payload.body.decode("utf-8")
+        config = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return config if isinstance(config, dict) else None
+
+
+def _deployment_hints_from_import_metadata(model: Model) -> RegistryModelDeploymentHints | None:
+    if not isinstance(model.capabilities_json, dict):
+        return None
+    for metadata_key in ("huggingface_import", "object_storage_import"):
+        metadata = model.capabilities_json.get(metadata_key)
+        if not isinstance(metadata, dict):
+            continue
+        hints_payload = metadata.get("deployment_hints")
+        if not isinstance(hints_payload, dict):
+            continue
+        try:
+            return RegistryModelDeploymentHints.model_validate(hints_payload)
+        except ValueError:
+            continue
     return None
 
 
@@ -556,6 +711,7 @@ def _serialize_model(model: Model, provider_name: str | None) -> RegistryModelSu
         import_object_key=import_metadata.get("object_key"),
         import_repo_id=huggingface_metadata.get("repo_id"),
         import_revision=huggingface_metadata.get("revision"),
+        deployment_hints=_deployment_hints_from_import_metadata(model),
         status=model.status,
         provider_id=model.provider_id,
         provider_name=provider_name,
@@ -1397,6 +1553,57 @@ class ModelRegistryService:
             raise ValueError("该 Hugging Face 仓库没有可用 Revision。")
         return revisions
 
+    async def refresh_model_deployment_hints(self, model_id: UUID) -> RegistryModelSummary:
+        async with SessionLocal() as session:
+            await ensure_default_project(session)
+            project_id = await resolve_active_project_id(session)
+            model = await _get_model_or_raise(session, model_id, project_id)
+            capabilities = dict(model.capabilities_json or {})
+
+            huggingface_metadata = capabilities.get("huggingface_import")
+            if isinstance(huggingface_metadata, dict):
+                hf_config = await load_system_huggingface_config(session)
+                token = _str_or_none(huggingface_metadata.get("token")) or hf_config.get("token")
+                endpoint_url = hf_config.get("endpoint_url")
+                repo_id = _str_or_none(huggingface_metadata.get("repo_id"))
+                revision = _str_or_none(huggingface_metadata.get("revision")) or "main"
+                if not repo_id:
+                    raise ValueError("Hugging Face 模型缺少 repo_id，无法读取 config.json。")
+                config = await _fetch_huggingface_model_config(
+                    repo_id=repo_id,
+                    revision=revision,
+                    token=token,
+                    endpoint_url=endpoint_url,
+                )
+                updated_metadata = dict(huggingface_metadata)
+                updated_metadata["deployment_hints"] = _model_config_deployment_hints(
+                    config
+                ).model_dump(exclude_none=True)
+                capabilities["huggingface_import"] = updated_metadata
+            else:
+                object_storage_metadata = capabilities.get("object_storage_import")
+                if not isinstance(object_storage_metadata, dict):
+                    raise ValueError("只有 Hugging Face 或对象存储导入模型支持读取 config.json。")
+                config = _read_object_storage_model_config(
+                    {key: str(value) for key, value in object_storage_metadata.items()}
+                )
+                if config is None:
+                    raise ValueError("对象存储模型目录未找到可读取的 config.json。")
+                updated_metadata = dict(object_storage_metadata)
+                updated_metadata["deployment_hints"] = _model_config_deployment_hints(
+                    config
+                ).model_dump(exclude_none=True)
+                capabilities["object_storage_import"] = updated_metadata
+
+            model.capabilities_json = capabilities
+            await session.commit()
+            await session.refresh(model)
+            provider_name = None
+            if model.provider_id is not None:
+                provider = await session.get(ModelProvider, model.provider_id)
+                provider_name = provider.name if provider else None
+            return _serialize_model(model, provider_name)
+
     async def import_model_from_object_storage(
         self, payload: RegistryModelObjectStorageImport
     ) -> RegistryModelSummary:
@@ -1405,6 +1612,12 @@ class ModelRegistryService:
         )
         model_code = _build_imported_model_code(payload.name)
         imported_at = _now()
+        model_config = _read_object_storage_model_config(parsed_uri)
+        deployment_hints = (
+            _model_config_deployment_hints(model_config).model_dump(exclude_none=True)
+            if model_config is not None
+            else None
+        )
 
         async with SessionLocal() as session:
             await ensure_default_project(session)
@@ -1425,6 +1638,11 @@ class ModelRegistryService:
                     "object_storage_import": {
                         **parsed_uri,
                         "artifact_format": "safetensors",
+                        **(
+                            {"deployment_hints": deployment_hints}
+                            if deployment_hints is not None
+                            else {}
+                        ),
                         "imported_at": imported_at.isoformat(),
                     }
                 },
@@ -1462,6 +1680,15 @@ class ModelRegistryService:
                 token=hf_token,
                 endpoint_url=endpoint_url,
             )
+            model_config = await _fetch_huggingface_model_config(
+                repo_id=repo_id,
+                revision=revision,
+                token=hf_token,
+                endpoint_url=endpoint_url,
+            )
+            deployment_hints = _model_config_deployment_hints(model_config).model_dump(
+                exclude_none=True
+            )
 
             model = Model(
                 project_id=project_id,
@@ -1483,6 +1710,7 @@ class ModelRegistryService:
                         "repo_type": "model",
                         "artifact_format": "safetensors",
                         "safetensors_count": str(len(safetensor_files)),
+                        "deployment_hints": deployment_hints,
                         **({"token": explicit_hf_token} if explicit_hf_token else {}),
                         **(
                             {"token_source": "system"}

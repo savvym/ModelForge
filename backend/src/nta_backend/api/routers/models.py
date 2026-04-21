@@ -82,6 +82,21 @@ async def list_huggingface_revisions(
         raise HTTPException(status_code=502, detail=f"Hugging Face request failed: {exc}") from exc
 
 
+@router.post("/{model_id}/deployment-hints", response_model=RegistryModelSummary)
+async def refresh_model_deployment_hints(model_id: UUID) -> RegistryModelSummary:
+    try:
+        return await service.refresh_model_deployment_hints(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Model not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hugging Face request failed: {exc}",
+        ) from exc
+
+
 @router.get("/{model_id}", response_model=RegistryModelSummary)
 async def get_model(model_id: UUID) -> RegistryModelSummary:
     try:

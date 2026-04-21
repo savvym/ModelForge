@@ -30,7 +30,10 @@ from nta_backend.schemas.model_deployment import (
     ObjectStorageCredentials,
     ObjectStorageSource,
 )
-from nta_backend.schemas.model_registry import RegistryModelChatRequest
+from nta_backend.schemas.model_registry import (
+    RegistryModelChatRequest,
+    RegistryModelDeploymentHints,
+)
 from nta_backend.services.inference_machine_service import (
     InferenceMachineRuntimeConfig,
     agent_headers,
@@ -81,6 +84,23 @@ def _read_huggingface_import(model: Model) -> dict[str, str]:
     if not isinstance(metadata, dict):
         return {}
     return {key: value for key, value in metadata.items() if isinstance(value, str)}
+
+
+def _read_deployment_hints(model: Model) -> RegistryModelDeploymentHints | None:
+    if not isinstance(model.capabilities_json, dict):
+        return None
+    for metadata_key in ("huggingface_import", "object_storage_import"):
+        metadata = model.capabilities_json.get(metadata_key)
+        if not isinstance(metadata, dict):
+            continue
+        hints_payload = metadata.get("deployment_hints")
+        if not isinstance(hints_payload, dict):
+            continue
+        try:
+            return RegistryModelDeploymentHints.model_validate(hints_payload)
+        except ValueError:
+            continue
+    return None
 
 
 def _redact_spec(spec: AgentDeploymentSpec) -> dict[str, Any]:
@@ -638,6 +658,17 @@ class ModelDeploymentService:
         ]
         if not messages:
             raise ValueError("请输入至少一条有效消息。")
+        if not any(message["role"] == "system" for message in messages):
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一个简洁、可靠的助手。请直接回答用户问题，"
+                        "避免重复相同句子或无意义续写。"
+                    ),
+                },
+                *messages,
+            ]
 
         endpoint_url = agent_status.endpoint.rstrip("/")
         provider_name = machine.name
@@ -667,6 +698,8 @@ class ModelDeploymentService:
                 "stream": True,
                 "stream_options": {"include_usage": True},
                 "temperature": 0.6,
+                "top_p": 0.9,
+                "repetition_penalty": 1.08,
                 "max_tokens": 2048,
             }
             if payload.parameters:
@@ -817,6 +850,16 @@ class ModelDeploymentService:
         tensor_parallel_size = (
             payload.tensor_parallel_size or inference_machine.tensor_parallel_size
         )
+        deployment_hints = _read_deployment_hints(model)
+        tp_options = (
+            deployment_hints.tensor_parallel_size_options if deployment_hints is not None else []
+        )
+        if tp_options and tensor_parallel_size not in tp_options:
+            option_text = "、".join(str(option) for option in tp_options)
+            raise ValueError(
+                f"Tensor Parallel Size {tensor_parallel_size} 与模型 config.json 不匹配，"
+                f"可选值：{option_text}。"
+            )
         model_source = self._build_model_source(
             object_storage_metadata=object_storage_metadata,
             huggingface_metadata=huggingface_metadata,
