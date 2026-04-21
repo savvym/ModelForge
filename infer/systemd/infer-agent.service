@@ -1,0 +1,18 @@
+[Unit]
+Description=NTA Infer Agent
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nta-platform/infer
+EnvironmentFile=-/etc/infer-agent/env
+ExecStart=/usr/bin/env uv run nta-infer-agent
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

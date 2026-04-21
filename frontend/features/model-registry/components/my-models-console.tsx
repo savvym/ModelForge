@@ -1,8 +1,19 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Database, FolderOpen, Rocket, Search, Trash2, UploadCloud } from "lucide-react";
+import {
+  Database,
+  FolderOpen,
+  Globe2,
+  HardDrive,
+  Loader2,
+  Rocket,
+  Search,
+  Trash2,
+  UploadCloud
+} from "lucide-react";
 import {
   ConsoleListHeader,
   consoleListSearchInputClassName,
@@ -22,6 +33,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -32,6 +51,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -50,14 +76,29 @@ import {
 } from "@/components/ui/table";
 import { S3BrowserDialog } from "@/features/object-store/components/s3-browser-dialog";
 import {
+  createDeploymentFromModel,
+  getInferenceMachines
+} from "@/features/model-deployments/api";
+import {
   deleteRegistryModel,
-  importRegistryModelFromObjectStorage
+  importRegistryModelFromHuggingFace,
+  importRegistryModelFromObjectStorage,
+  listHuggingFaceRevisions,
+  refreshRegistryModelDeploymentHints,
+  searchHuggingFaceModels
 } from "@/features/model-registry/api";
 import { cn } from "@/lib/utils";
-import type { RegistryModelSummary } from "@/types/api";
+import type {
+  InferenceMachineSummary,
+  RegistryModelHuggingFaceRevisionResult,
+  RegistryModelHuggingFaceSearchResult,
+  RegistryModelSummary
+} from "@/types/api";
 
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type PendingDelete = { id: string; name: string } | null;
+type PendingDeploy = RegistryModelSummary | null;
+type ImportSourceType = "object-storage" | "huggingface";
 
 const MODEL_PAGE_SIZE = 12;
 
@@ -65,6 +106,9 @@ function createInitialImportForm() {
   return {
     base_model: "",
     name: "",
+    repo_id: "",
+    revision: "",
+    source_type: "huggingface" as ImportSourceType,
     source_uri: ""
   };
 }
@@ -124,6 +168,9 @@ function formatModelSource(model: RegistryModelSummary) {
   if (model.source === "object-storage-import") {
     return "对象存储";
   }
+  if (model.source === "huggingface-import") {
+    return "Hugging Face";
+  }
   if (model.source === "manual") {
     return "手动登记";
   }
@@ -133,19 +180,161 @@ function formatModelSource(model: RegistryModelSummary) {
   return model.source || "自定义";
 }
 
+function formatCount(value?: number | null) {
+  if (value == null) {
+    return null;
+  }
+  return new Intl.NumberFormat("zh-CN", { notation: "compact" }).format(value);
+}
+
+function repoDisplayName(repoId: string) {
+  return repoId.split("/").filter(Boolean).at(-1) || repoId;
+}
+
+function isHuggingFaceRepoCandidate(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value.trim());
+}
+
+function formatRevisionKind(kind: RegistryModelHuggingFaceRevisionResult["kind"]) {
+  if (kind === "branch") {
+    return "branch";
+  }
+  if (kind === "tag") {
+    return "tag";
+  }
+  return "convert";
+}
+
+function readMachineGpuString(machine: InferenceMachineSummary) {
+  const firstGpu = machine.last_gpus[0];
+  const gpuName =
+    typeof firstGpu?.name === "string" && firstGpu.name.trim() ? firstGpu.name : "GPU";
+  const gpuCount = machine.last_gpu_count ?? machine.last_gpus.length;
+  if (!gpuCount) {
+    return "GPU 未检查";
+  }
+  const memoryTotalMb =
+    typeof firstGpu?.memory_total_mb === "number" ? firstGpu.memory_total_mb : null;
+  const memoryText = memoryTotalMb == null ? "" : ` · ${Math.round(memoryTotalMb / 1024)} GB/卡`;
+  return `${gpuCount} x ${gpuName}${memoryText}`;
+}
+
+function readMachineGpuCount(machine: InferenceMachineSummary | null) {
+  if (!machine) {
+    return null;
+  }
+  const detectedCount = machine.last_gpu_count ?? machine.last_gpus.length;
+  if (detectedCount > 0) {
+    return detectedCount;
+  }
+  return machine.gpu_ids.length > 0 ? machine.gpu_ids.length : null;
+}
+
+function getModelTensorParallelOptions(
+  model: RegistryModelSummary | null,
+  machine: InferenceMachineSummary | null
+) {
+  const rawOptions = model?.deployment_hints?.tensor_parallel_size_options ?? [];
+  const normalized = Array.from(
+    new Set(rawOptions.filter((value) => Number.isInteger(value) && value > 0))
+  ).sort((left, right) => left - right);
+  const gpuCount = readMachineGpuCount(machine);
+  if (!gpuCount) {
+    return normalized;
+  }
+  return normalized.filter((value) => value <= gpuCount);
+}
+
+function getDefaultTensorParallelSize(
+  options: number[],
+  machine: InferenceMachineSummary | null
+) {
+  if (options.length > 0) {
+    if (machine && options.includes(machine.tensor_parallel_size)) {
+      return machine.tensor_parallel_size;
+    }
+    if (options.includes(1)) {
+      return 1;
+    }
+    return options[0];
+  }
+  return machine?.tensor_parallel_size ?? null;
+}
+
+function formatTensorParallelHint(model: RegistryModelSummary | null) {
+  const hints = model?.deployment_hints;
+  if (!hints?.num_attention_heads) {
+    return "未读取到 config.json 中的 attention heads，使用机器默认 TP。";
+  }
+  const architecture = hints.architectures[0] ?? hints.model_type ?? "模型";
+  const vocabText = hints.vocab_size ? ` · vocab ${hints.vocab_size}` : "";
+  return `${architecture} · attention heads ${hints.num_attention_heads}${vocabText}`;
+}
+
+function shouldRefreshDeploymentHints(model: RegistryModelSummary) {
+  const hasOptions = Boolean(model.deployment_hints?.tensor_parallel_size_options.length);
+  return !hasOptions && Boolean(model.import_repo_id || model.import_source_type);
+}
+
 export function MyModelsConsole({ initialModels }: { initialModels: RegistryModelSummary[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
+  const [pendingDeploy, setPendingDeploy] = useState<PendingDeploy>(null);
+  const [deployMachines, setDeployMachines] = useState<InferenceMachineSummary[]>([]);
+  const [deployMachineId, setDeployMachineId] = useState("");
+  const [deployModelId, setDeployModelId] = useState("");
+  const [deployTensorParallelSize, setDeployTensorParallelSize] = useState("");
+  const [isDeployMachineLoading, setIsDeployMachineLoading] = useState(false);
+  const [isDeployHintsLoading, setIsDeployHintsLoading] = useState(false);
+  const [deployMachineError, setDeployMachineError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelPage, setModelPage] = useState(1);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [importForm, setImportForm] = useState(createInitialImportForm);
+  const [isHfSearchOpen, setIsHfSearchOpen] = useState(false);
+  const [hfSearchResults, setHfSearchResults] = useState<RegistryModelHuggingFaceSearchResult[]>(
+    []
+  );
+  const [isHfSearching, setIsHfSearching] = useState(false);
+  const [hfSearchError, setHfSearchError] = useState<string | null>(null);
+  const [hfRevisionResults, setHfRevisionResults] = useState<
+    RegistryModelHuggingFaceRevisionResult[]
+  >([]);
+  const [isHfRevisionsLoading, setIsHfRevisionsLoading] = useState(false);
+  const [hfRevisionsError, setHfRevisionsError] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
 
   const myModels = useMemo(() => initialModels.filter(isMyModel), [initialModels]);
+  const selectedDeployMachine = useMemo(
+    () => deployMachines.find((machine) => machine.id === deployMachineId) ?? null,
+    [deployMachineId, deployMachines]
+  );
+  const deployTensorParallelOptions = useMemo(
+    () => getModelTensorParallelOptions(pendingDeploy, selectedDeployMachine),
+    [pendingDeploy, selectedDeployMachine]
+  );
+  const hasDeployTensorParallelHints = Boolean(
+    pendingDeploy?.deployment_hints?.tensor_parallel_size_options.length
+  );
+  const deployTensorParallelFallback = useMemo(
+    () =>
+      hasDeployTensorParallelHints && deployTensorParallelOptions.length === 0
+        ? null
+        : getDefaultTensorParallelSize(deployTensorParallelOptions, selectedDeployMachine),
+    [deployTensorParallelOptions, hasDeployTensorParallelHints, selectedDeployMachine]
+  );
+  const deployTensorParallelSelectOptions = useMemo(
+    () =>
+      deployTensorParallelOptions.length > 0
+        ? deployTensorParallelOptions
+        : deployTensorParallelFallback != null
+          ? [deployTensorParallelFallback]
+          : [],
+    [deployTensorParallelFallback, deployTensorParallelOptions]
+  );
 
   const filteredModels = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -154,7 +343,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     }
 
     return myModels.filter((model) =>
-      [model.name, model.base_model, model.source]
+      [model.name, model.base_model, model.source, model.import_repo_id]
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLowerCase().includes(normalizedQuery))
     );
@@ -172,6 +361,31 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   }, [deferredQuery]);
 
   useEffect(() => {
+    if (!pendingDeploy || !selectedDeployMachine) {
+      return;
+    }
+    if (deployTensorParallelFallback == null) {
+      setDeployTensorParallelSize("");
+      return;
+    }
+    const fallbackValue = String(deployTensorParallelFallback);
+    const allowedValues = deployTensorParallelOptions.length
+      ? deployTensorParallelOptions.map(String)
+      : [fallbackValue];
+    setDeployTensorParallelSize((current) => {
+      if (current && allowedValues.includes(current)) {
+        return current;
+      }
+      return fallbackValue;
+    });
+  }, [
+    deployTensorParallelFallback,
+    deployTensorParallelOptions,
+    pendingDeploy,
+    selectedDeployMachine
+  ]);
+
+  useEffect(() => {
     if (feedback?.tone !== "success") {
       return;
     }
@@ -183,19 +397,160 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     return () => window.clearTimeout(timeoutId);
   }, [feedback]);
 
+  useEffect(() => {
+    if (!isImportOpen || importForm.source_type !== "huggingface") {
+      setHfSearchResults([]);
+      setIsHfSearching(false);
+      setHfSearchError(null);
+      return;
+    }
+
+    const searchQuery = importForm.repo_id.trim();
+    if (searchQuery.length < 2) {
+      setHfSearchResults([]);
+      setIsHfSearching(false);
+      setHfSearchError(null);
+      return;
+    }
+
+    let isStale = false;
+    const timeoutId = window.setTimeout(() => {
+      setIsHfSearching(true);
+      setHfSearchError(null);
+      void searchHuggingFaceModels(
+        {
+          limit: 12,
+          query: searchQuery
+        }
+      )
+        .then((results) => {
+          if (!isStale) {
+            setHfSearchResults(results);
+          }
+        })
+        .catch((error: unknown) => {
+          if (isStale) {
+            return;
+          }
+          setHfSearchResults([]);
+          setHfSearchError(error instanceof Error ? error.message : "搜索 Hugging Face 失败");
+        })
+        .finally(() => {
+          if (!isStale) {
+            setIsHfSearching(false);
+          }
+        });
+    }, 320);
+
+    return () => {
+      isStale = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [importForm.repo_id, importForm.source_type, isImportOpen]);
+
+  useEffect(() => {
+    if (!isImportOpen || importForm.source_type !== "huggingface") {
+      setHfRevisionResults([]);
+      setIsHfRevisionsLoading(false);
+      setHfRevisionsError(null);
+      return;
+    }
+
+    const repoId = importForm.repo_id.trim();
+    if (!isHuggingFaceRepoCandidate(repoId)) {
+      setHfRevisionResults([]);
+      setIsHfRevisionsLoading(false);
+      setHfRevisionsError(null);
+      setImportForm((current) => (current.revision ? { ...current, revision: "" } : current));
+      return;
+    }
+
+    let isStale = false;
+    const timeoutId = window.setTimeout(() => {
+      setIsHfRevisionsLoading(true);
+      setHfRevisionsError(null);
+      void listHuggingFaceRevisions({ repo_id: repoId })
+        .then((results) => {
+          if (isStale) {
+            return;
+          }
+          setHfRevisionResults(results);
+          setImportForm((current) => {
+            if (current.repo_id.trim() !== repoId) {
+              return current;
+            }
+            if (current.revision && results.some((revision) => revision.name === current.revision)) {
+              return current;
+            }
+            const preferredRevision =
+              results.find((revision) => revision.name === "main") ?? results[0];
+            return { ...current, revision: preferredRevision?.name ?? "" };
+          });
+        })
+        .catch((error: unknown) => {
+          if (isStale) {
+            return;
+          }
+          setHfRevisionResults([]);
+          setImportForm((current) =>
+            current.repo_id.trim() === repoId ? { ...current, revision: "" } : current
+          );
+          setHfRevisionsError(error instanceof Error ? error.message : "读取 Revision 失败");
+        })
+        .finally(() => {
+          if (!isStale) {
+            setIsHfRevisionsLoading(false);
+          }
+        });
+    }, 320);
+
+    return () => {
+      isStale = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [importForm.repo_id, importForm.source_type, isImportOpen]);
+
   function updateImportField(key: keyof typeof importForm, value: string) {
-    setImportForm((current) => ({ ...current, [key]: value }));
+    setImportForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "repo_id" ? { revision: "" } : {})
+    }));
+    if (key === "repo_id") {
+      setHfRevisionResults([]);
+      setHfRevisionsError(null);
+    }
+  }
+
+  function selectHuggingFaceModel(result: RegistryModelHuggingFaceSearchResult) {
+    const displayName = repoDisplayName(result.repo_id);
+    setImportForm((current) => ({
+      ...current,
+      base_model: current.base_model.trim() ? current.base_model : displayName,
+      name: current.name.trim() ? current.name : displayName,
+      repo_id: result.repo_id,
+      revision: ""
+    }));
+    setIsHfSearchOpen(false);
   }
 
   function openImportSheet() {
     setImportForm(createInitialImportForm());
     setFeedback(null);
+    setHfSearchError(null);
+    setHfSearchResults([]);
+    setHfRevisionResults([]);
+    setHfRevisionsError(null);
+    setIsHfSearchOpen(false);
     setIsImportOpen(true);
   }
 
   function closeImportSheet() {
     setIsImportOpen(false);
     setIsBrowserOpen(false);
+    setIsHfSearchOpen(false);
+    setHfRevisionResults([]);
+    setHfRevisionsError(null);
   }
 
   function refreshWithMessage(tone: "success" | "error", text: string) {
@@ -213,24 +568,121 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   }
 
   function submitImport() {
-    if (!importForm.name.trim() || !importForm.base_model.trim() || !importForm.source_uri.trim()) {
-      setFeedback({ tone: "error", text: "请填写模型名称、基础模型和对象存储路径。" });
+    if (!importForm.name.trim() || !importForm.base_model.trim()) {
+      setFeedback({ tone: "error", text: "请填写模型名称和基础模型。" });
+      return;
+    }
+
+    if (importForm.source_type === "object-storage" && !importForm.source_uri.trim()) {
+      setFeedback({ tone: "error", text: "请填写对象存储路径。" });
+      return;
+    }
+
+    if (importForm.source_type === "huggingface" && !importForm.repo_id.trim()) {
+      setFeedback({ tone: "error", text: "请填写 Hugging Face Repo ID。" });
+      return;
+    }
+
+    if (importForm.source_type === "huggingface" && !importForm.revision.trim()) {
+      setFeedback({ tone: "error", text: "请选择模型 Revision。" });
       return;
     }
 
     runAction(async () => {
-      await importRegistryModelFromObjectStorage({
-        base_model: importForm.base_model.trim(),
-        name: importForm.name.trim(),
-        source_uri: importForm.source_uri.trim()
-      });
+      if (importForm.source_type === "huggingface") {
+        await importRegistryModelFromHuggingFace({
+          base_model: importForm.base_model.trim(),
+          name: importForm.name.trim(),
+          repo_id: importForm.repo_id.trim(),
+          revision: importForm.revision.trim()
+        });
+      } else {
+        await importRegistryModelFromObjectStorage({
+          base_model: importForm.base_model.trim(),
+          name: importForm.name.trim(),
+          source_uri: importForm.source_uri.trim()
+        });
+      }
       closeImportSheet();
       refreshWithMessage("success", `${importForm.name.trim()} 已导入到我的模型。`);
     });
   }
 
-  function deployModel(model: RegistryModelSummary) {
-    router.push(`/endpoint?modelId=${encodeURIComponent(model.id)}`);
+  function openDeployDialog(model: RegistryModelSummary) {
+    setPendingDeploy(model);
+    setDeployMachines([]);
+    setDeployMachineId("");
+    setDeployModelId(model.model_code ?? model.name);
+    setDeployTensorParallelSize("");
+    setDeployMachineError(null);
+    setIsDeployMachineLoading(true);
+    setIsDeployHintsLoading(false);
+    void getInferenceMachines()
+      .then((machines) => {
+        const activeMachines = machines.filter((machine) => machine.status === "active");
+        setDeployMachines(activeMachines);
+        setDeployMachineId(activeMachines[0]?.id ?? "");
+      })
+      .catch((error: unknown) => {
+        setDeployMachineError(error instanceof Error ? error.message : "读取推理机器失败。");
+      })
+      .finally(() => {
+        setIsDeployMachineLoading(false);
+      });
+    if (shouldRefreshDeploymentHints(model)) {
+      setIsDeployHintsLoading(true);
+      void refreshRegistryModelDeploymentHints(model.id)
+        .then((updatedModel) => {
+          setPendingDeploy((current) => (current?.id === updatedModel.id ? updatedModel : current));
+        })
+        .catch((error: unknown) => {
+          setDeployMachineError(
+            error instanceof Error ? error.message : "读取模型 config.json 失败。"
+          );
+        })
+        .finally(() => {
+          setIsDeployHintsLoading(false);
+        });
+    }
+  }
+
+  function deployModel() {
+    if (!pendingDeploy) {
+      return;
+    }
+    if (!deployMachineId) {
+      setDeployMachineError("请选择一台推理机器。");
+      return;
+    }
+    if (!deployModelId.trim()) {
+      setDeployMachineError("请填写 Model ID。");
+      return;
+    }
+    const tensorParallelSize = Number.parseInt(deployTensorParallelSize, 10);
+    if (!Number.isInteger(tensorParallelSize) || tensorParallelSize <= 0) {
+      setDeployMachineError("请选择 Tensor Parallel Size。");
+      return;
+    }
+    if (
+      deployTensorParallelOptions.length > 0 &&
+      !deployTensorParallelOptions.includes(tensorParallelSize)
+    ) {
+      setDeployMachineError("当前 Tensor Parallel Size 不在 config.json 支持的可选值中。");
+      return;
+    }
+
+    const model = pendingDeploy;
+    runAction(async () => {
+      const deployment = await createDeploymentFromModel(model.id, {
+        machine_id: deployMachineId,
+        name: `${model.name} 部署`,
+        served_model_name: deployModelId.trim(),
+        tensor_parallel_size: tensorParallelSize
+      });
+      setPendingDeploy(null);
+      refreshWithMessage("success", `${model.name} 已提交部署任务。`);
+      router.push(`/endpoint?deploymentId=${encodeURIComponent(deployment.id)}`);
+    });
   }
 
   function confirmDelete() {
@@ -255,7 +707,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
               导入模型
             </Button>
           }
-          description={`集中管理 ${myModels.length} 个自有模型资产，支持从 COS / S3 对象存储导入 safetensors checkpoint。`}
+          description={`集中管理 ${myModels.length} 个自有模型资产，支持从 Hugging Face 或 COS / S3 登记 safetensors checkpoint。`}
           title="我的模型"
         />
 
@@ -348,7 +800,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                           <div className="flex justify-end gap-2">
                             <Button
                               disabled={isPending}
-                              onClick={() => deployModel(model)}
+                              onClick={() => openDeployDialog(model)}
                               size="sm"
                               variant="outline"
                             >
@@ -416,7 +868,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                     </EmptyMedia>
                     <EmptyTitle className="text-base text-foreground">还没有我的模型</EmptyTitle>
                     <EmptyDescription className="text-sm leading-6 text-muted-foreground">
-                      从对象存储导入一个 safetensors checkpoint 后，会在这里统一管理。
+                      从 Hugging Face 或对象存储登记一个 safetensors checkpoint 后，会在这里统一管理。
                     </EmptyDescription>
                   </EmptyHeader>
                   <Button onClick={openImportSheet} size="sm">
@@ -443,7 +895,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
             <SheetHeader className="border-b border-border bg-card px-6 py-5 pr-12">
               <SheetTitle className="text-foreground">导入模型</SheetTitle>
               <SheetDescription className="text-muted-foreground">
-                从 COS / S3 对象存储导入 safetensors checkpoint。
+                从 Hugging Face 或 COS / S3 对象存储登记 safetensors checkpoint。
               </SheetDescription>
             </SheetHeader>
 
@@ -466,37 +918,75 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
 
                 <div className="flex flex-col gap-2">
                   <Label>导入来源</Label>
-                  <div className="flex h-10 items-center rounded-lg border border-border bg-background/50 px-3 text-sm text-foreground">
-                    从对象存储导入
+                  <div className="grid grid-cols-2 gap-2">
+                    <SourceTypeButton
+                      active={importForm.source_type === "huggingface"}
+                      icon={<Globe2 className="size-4" />}
+                      label="Hugging Face"
+                      onClick={() => updateImportField("source_type", "huggingface")}
+                    />
+                    <SourceTypeButton
+                      active={importForm.source_type === "object-storage"}
+                      icon={<HardDrive className="size-4" />}
+                      label="对象存储"
+                      onClick={() => updateImportField("source_type", "object-storage")}
+                    />
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="model-import-source-uri">Bucket / 对象路径</Label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      className="font-mono text-xs"
-                      id="model-import-source-uri"
-                      onChange={(event) => updateImportField("source_uri", event.target.value)}
-                      placeholder="s3://bucket/path/to/checkpoint/ 或 cos://bucket/path/to/checkpoint/"
-                      value={importForm.source_uri}
+                {importForm.source_type === "huggingface" ? (
+                  <div className="grid gap-4">
+                    <HuggingFaceRepoField
+                      error={hfSearchError}
+                      isLoading={isHfSearching}
+                      isOpen={isHfSearchOpen}
+                      onChange={(value) => updateImportField("repo_id", value)}
+                      onFocus={() => setIsHfSearchOpen(true)}
+                      onOpenChange={setIsHfSearchOpen}
+                      onSelect={selectHuggingFaceModel}
+                      placeholder="例如 Qwen/Qwen2.5-7B-Instruct"
+                      results={hfSearchResults}
+                      value={importForm.repo_id}
                     />
-                    <Button
-                      className="shrink-0"
-                      onClick={() => setIsBrowserOpen(true)}
-                      type="button"
-                      variant="outline"
-                    >
-                      <FolderOpen />
-                      浏览
-                    </Button>
+                    <HuggingFaceRevisionSelect
+                      error={hfRevisionsError}
+                      isLoading={isHfRevisionsLoading}
+                      onChange={(value) => updateImportField("revision", value)}
+                      repoId={importForm.repo_id}
+                      revisions={hfRevisionResults}
+                      value={importForm.revision}
+                    />
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="model-import-source-uri">Bucket / 对象路径</Label>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        className="font-mono text-xs"
+                        id="model-import-source-uri"
+                        onChange={(event) => updateImportField("source_uri", event.target.value)}
+                        placeholder="s3://bucket/path/to/checkpoint/ 或 cos://bucket/path/to/checkpoint/"
+                        value={importForm.source_uri}
+                      />
+                      <Button
+                        className="shrink-0"
+                        onClick={() => setIsBrowserOpen(true)}
+                        type="button"
+                        variant="outline"
+                      >
+                        <FolderOpen />
+                        浏览
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="rounded-lg border border-border bg-background/40 px-4 py-3">
                   <div className="text-sm font-medium text-foreground">格式要求</div>
                   <div className="mt-1 text-sm leading-6 text-muted-foreground">
-                    必须选择 Checkpoint 所在路径。当前仅支持 safetensors 格式文件。
+                    {importForm.source_type === "huggingface"
+                      ? "录入时会使用系统配置中的 Hugging Face 凭据校验 repo、revision 和 safetensors 权重权限。"
+                      : "必须选择 Checkpoint 所在路径。当前仅支持 safetensors 格式文件。"}
                   </div>
                   <pre className="mt-3 whitespace-pre-wrap rounded-md bg-card/80 px-3 py-2 font-mono text-xs leading-6 text-muted-foreground">
 {`|-- *.safetensors
@@ -554,6 +1044,147 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
         </AlertDialogContent>
       </AlertDialog>
 
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeploy(null);
+            setDeployModelId("");
+            setDeployTensorParallelSize("");
+            setIsDeployHintsLoading(false);
+            setDeployMachineError(null);
+          }
+        }}
+        open={Boolean(pendingDeploy)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择推理机器</DialogTitle>
+            <DialogDescription>
+              将 {pendingDeploy?.name ?? ""} 部署到已接入 infer-agent 的机器。
+            </DialogDescription>
+          </DialogHeader>
+
+          {deployMachineError ? (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {deployMachineError}
+            </div>
+          ) : null}
+
+          {isDeployMachineLoading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">正在读取推理机器...</div>
+          ) : deployMachines.length ? (
+            <div className="grid gap-4">
+              <FormField
+                label="Model ID"
+                onChange={setDeployModelId}
+                placeholder="例如 Qwen2.5-1.5B"
+                value={deployModelId}
+              />
+              <div className="flex flex-col gap-2">
+                <Label>Tensor Parallel Size</Label>
+                <Select
+                  disabled={isDeployHintsLoading || deployTensorParallelSelectOptions.length === 0}
+                  onValueChange={setDeployTensorParallelSize}
+                  value={deployTensorParallelSize}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择 TP" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deployTensorParallelSelectOptions.map((option) => (
+                      <SelectItem key={option} value={String(option)}>
+                        TP {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="text-xs leading-5 text-muted-foreground">
+                  {isDeployHintsLoading
+                    ? "正在读取模型 config.json..."
+                    : formatTensorParallelHint(pendingDeploy)}
+                  {deployTensorParallelOptions.length > 0 ? (
+                    <>
+                      {" "}
+                      当前机器可用：{deployTensorParallelOptions.join(" / ")}。
+                    </>
+                  ) : null}
+                  {hasDeployTensorParallelHints && deployTensorParallelOptions.length === 0 ? (
+                    <> 当前机器 GPU 数不足或未检查，未找到兼容 TP。</>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>推理机器</Label>
+                <Select onValueChange={setDeployMachineId} value={deployMachineId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deployMachines.map((machine) => (
+                      <SelectItem key={machine.id} value={machine.id}>
+                        {machine.name} · {readMachineGpuString(machine)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedDeployMachine ? (
+                  <div className="rounded-md border border-border bg-background/40 px-3 py-2">
+                    <div className="text-sm text-foreground">
+                      {readMachineGpuString(selectedDeployMachine)}
+                    </div>
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">
+                      {selectedDeployMachine.agent_base_url}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      状态：{selectedDeployMachine.last_health_status ?? "未检查"} · TP{" "}
+                      {selectedDeployMachine.tensor_parallel_size} · {selectedDeployMachine.dtype}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+              <div className="text-sm text-foreground">还没有可用的推理机器</div>
+              <div className="mt-1 text-xs leading-6 text-muted-foreground">
+                先在“在线推理”页面添加已部署 infer-agent 的 H20 机器。
+              </div>
+              <Button className="mt-4" onClick={() => router.push("/endpoint")} size="sm">
+                去添加机器
+              </Button>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              disabled={isPending}
+              onClick={() => {
+                setPendingDeploy(null);
+                setDeployTensorParallelSize("");
+                setIsDeployHintsLoading(false);
+              }}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={
+                isPending ||
+                isDeployMachineLoading ||
+                isDeployHintsLoading ||
+                !deployMachines.length ||
+                !deployTensorParallelSize
+              }
+              onClick={deployModel}
+              type="button"
+            >
+              {isPending ? "提交中..." : "部署"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <S3BrowserDialog
         description="浏览当前项目的 COS / S3 对象存储，进入 Checkpoint 所在路径后确认。"
         initialUri={importForm.source_uri}
@@ -571,17 +1202,218 @@ function FormField({
   label,
   value,
   onChange,
-  placeholder
+  placeholder,
+  type = "text"
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  type?: string;
 }) {
   return (
     <div className="flex flex-col gap-2">
       <Label>{label}</Label>
-      <Input onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
+      <Input
+        autoComplete={type === "password" ? "off" : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        type={type}
+        value={value}
+      />
     </div>
+  );
+}
+
+function HuggingFaceRepoField({
+  value,
+  onChange,
+  onSelect,
+  onFocus,
+  onOpenChange,
+  isOpen,
+  isLoading,
+  error,
+  results,
+  placeholder
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSelect: (result: RegistryModelHuggingFaceSearchResult) => void;
+  onFocus: () => void;
+  onOpenChange: (open: boolean) => void;
+  isOpen: boolean;
+  isLoading: boolean;
+  error: string | null;
+  results: RegistryModelHuggingFaceSearchResult[];
+  placeholder: string;
+}) {
+  const showPanel = isOpen && value.trim().length >= 2;
+
+  return (
+    <div className="relative flex flex-col gap-2">
+      <Label>Repo ID</Label>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          autoComplete="off"
+          className="pl-9 font-mono text-xs"
+          onBlur={() => {
+            window.setTimeout(() => onOpenChange(false), 120);
+          }}
+          onChange={(event) => {
+            onChange(event.target.value);
+            onOpenChange(true);
+          }}
+          onFocus={onFocus}
+          placeholder={placeholder}
+          value={value}
+        />
+      </div>
+
+      {showPanel ? (
+        <div className="absolute left-0 right-0 top-[74px] z-50 max-h-72 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl">
+          {isLoading ? (
+            <div className="flex h-16 items-center gap-2 px-3 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              搜索 Hugging Face...
+            </div>
+          ) : error ? (
+            <div className="px-3 py-3 text-sm text-destructive">{error}</div>
+          ) : results.length ? (
+            <div className="max-h-72 overflow-y-auto py-1">
+              {results.map((result) => {
+                const downloads = formatCount(result.downloads);
+                const likes = formatCount(result.likes);
+                return (
+                  <button
+                    className="flex w-full flex-col gap-1 px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    key={result.repo_id}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      onSelect(result);
+                    }}
+                    type="button"
+                  >
+                    <div className="flex w-full min-w-0 items-center justify-between gap-3">
+                      <span className="truncate font-mono text-xs font-medium">
+                        {result.repo_id}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {[downloads ? `${downloads} 下载` : null, likes ? `${likes} 喜欢` : null]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {result.pipeline_tag ? <span>{result.pipeline_tag}</span> : null}
+                      {result.library_name ? <span>{result.library_name}</span> : null}
+                      {result.is_gated ? <span>gated</span> : null}
+                      {result.is_private ? <span>private</span> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              没有找到匹配模型，也可以继续手动输入 Repo ID。
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function HuggingFaceRevisionSelect({
+  value,
+  onChange,
+  repoId,
+  revisions,
+  isLoading,
+  error
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  repoId: string;
+  revisions: RegistryModelHuggingFaceRevisionResult[];
+  isLoading: boolean;
+  error: string | null;
+}) {
+  const repoReady = isHuggingFaceRepoCandidate(repoId);
+  const disabled = !repoReady || isLoading || revisions.length === 0;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>Revision</Label>
+      <Select disabled={disabled} onValueChange={onChange} value={value || undefined}>
+        <SelectTrigger className="font-mono text-xs">
+          <SelectValue
+            placeholder={
+              repoReady
+                ? isLoading
+                  ? "正在读取 Revision..."
+                  : "请选择 Revision"
+                : "先选择 Repo ID"
+            }
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {revisions.map((revision) => (
+            <SelectItem key={`${revision.kind}:${revision.name}`} value={revision.name}>
+              <span className="font-mono text-xs">{revision.name}</span>
+              <span className="ml-2 text-[11px] text-muted-foreground">
+                {formatRevisionKind(revision.kind)}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          正在从 Hugging Face 获取可用 Revision
+        </div>
+      ) : error ? (
+        <div className="text-xs text-destructive">{error}</div>
+      ) : repoReady && revisions.length ? (
+        <div className="text-xs text-muted-foreground">
+          已获取 {revisions.length} 个可用 Revision，默认优先选择 main。
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground">
+          选择 Repo ID 后会自动从 Hugging Face 获取 branches 和 tags。
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceTypeButton({
+  active,
+  icon,
+  label,
+  onClick
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border bg-background/50 text-foreground hover:bg-card/80"
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

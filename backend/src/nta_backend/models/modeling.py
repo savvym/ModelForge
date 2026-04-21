@@ -87,3 +87,23 @@ class Endpoint(Base, UUIDPrimaryKeyMixin, CreatedByMixin, StatusMixin, Timestamp
     )
     purchase_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     config_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+
+class InferenceMachine(Base, UUIDPrimaryKeyMixin, CreatedByMixin, StatusMixin, TimestampMixin):
+    __tablename__ = "inference_machines"
+    __table_args__ = (
+        Index("ix_inference_machines_project_name", "project_id", "name", unique=True),
+    )
+
+    project_id: Mapped[PythonUUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    agent_base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    runtime_public_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

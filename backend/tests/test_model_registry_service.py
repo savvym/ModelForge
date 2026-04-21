@@ -7,6 +7,15 @@ from types import SimpleNamespace
 import pytest
 
 
+class _DeploymentHints(SimpleNamespace):
+    @classmethod
+    def model_validate(cls, payload):
+        return cls(**payload)
+
+    def model_dump(self, *args, **kwargs):
+        return vars(self)
+
+
 def _load_target_module():
     async def _noop(*args, **kwargs):
         return None
@@ -28,6 +37,11 @@ def _load_target_module():
         ensure_default_project=_noop,
         resolve_active_project_id=_noop,
     )
+    _register_module("nta_backend.services")
+    _register_module(
+        "nta_backend.services.system_config_service",
+        load_system_huggingface_config=_noop,
+    )
     _register_module("nta_backend.models")
     _register_module(
         "nta_backend.models.modeling",
@@ -44,6 +58,16 @@ def _load_target_module():
         RegistryModelChatRequest=type("RegistryModelChatRequest", (), {}),
         RegistryModelChatResponse=type("RegistryModelChatResponse", (), {}),
         RegistryModelCreate=type("RegistryModelCreate", (), {}),
+        RegistryModelDeploymentHints=_DeploymentHints,
+        RegistryModelHuggingFaceImport=type("RegistryModelHuggingFaceImport", (), {}),
+        RegistryModelHuggingFaceRevisionRequest=type(
+            "RegistryModelHuggingFaceRevisionRequest", (), {}
+        ),
+        RegistryModelHuggingFaceRevisionResult=SimpleNamespace,
+        RegistryModelHuggingFaceSearchRequest=type(
+            "RegistryModelHuggingFaceSearchRequest", (), {}
+        ),
+        RegistryModelHuggingFaceSearchResult=SimpleNamespace,
         RegistryModelObjectStorageImport=type("RegistryModelObjectStorageImport", (), {}),
         RegistryModelSummary=type("RegistryModelSummary", (), {}),
         RegistryModelTestRequest=type("RegistryModelTestRequest", (), {}),
@@ -226,6 +250,47 @@ def test_normalize_safetensors_import_target_rejects_unsupported_files(raw_value
         TARGET_MODULE._normalize_safetensors_import_target(
             TARGET_MODULE._parse_object_storage_uri(raw_value)
         )
+
+
+def test_model_config_deployment_hints_calculates_tensor_parallel_options() -> None:
+    hints = TARGET_MODULE._model_config_deployment_hints(
+        {
+            "architectures": ["Qwen2ForCausalLM"],
+            "model_type": "qwen2",
+            "num_attention_heads": 12,
+            "num_key_value_heads": 2,
+            "vocab_size": 151936,
+            "max_position_embeddings": 32768,
+        }
+    )
+
+    assert hints.model_type == "qwen2"
+    assert hints.architectures == ["Qwen2ForCausalLM"]
+    assert hints.num_attention_heads == 12
+    assert hints.num_key_value_heads == 2
+    assert hints.vocab_size == 151936
+    assert hints.max_model_len == 32768
+    assert hints.tensor_parallel_size_options == [1, 2, 4]
+
+
+def test_model_config_deployment_hints_reads_nested_text_config() -> None:
+    hints = TARGET_MODULE._model_config_deployment_hints(
+        {
+            "architectures": ["MultiModalForConditionalGeneration"],
+            "model_type": "multimodal",
+            "text_config": {
+                "model_type": "qwen2",
+                "num_attention_heads": "14",
+                "vocab_size": "100",
+                "max_position_embeddings": 8192,
+            },
+        }
+    )
+
+    assert hints.model_type == "qwen2"
+    assert hints.num_attention_heads == 14
+    assert hints.vocab_size == 100
+    assert hints.tensor_parallel_size_options == [1, 2]
 
 
 def test_google_payload_from_messages_uses_system_instruction() -> None:

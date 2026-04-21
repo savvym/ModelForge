@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     def s3_bucket_tmp(self) -> str:
         return self.s3_bucket_main
 
+    infer_agent_base_url: str | None = None
+    infer_agent_token: SecretStr | None = None
+    infer_runtime_public_host: str | None = None
+    infer_object_storage_endpoint_url: str | None = None
+    infer_vllm_image: str = "vllm/vllm-openai:latest"
+    infer_default_gpu_ids: str = ""
+    infer_default_tensor_parallel_size: int = 8
+    infer_default_dtype: str = "bfloat16"
+    infer_default_gpu_memory_utilization: float = 0.85
+    infer_default_max_model_len: int | None = None
+    infer_default_listen_port: int = 8000
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

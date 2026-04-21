@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Bot,
   Braces,
@@ -63,7 +63,7 @@ import type {
   ExperienceUIMessage,
 } from "@/features/experience/types";
 import { cn } from "@/lib/utils";
-import type { RegistryModelSummary } from "@/types/api";
+import type { ModelDeploymentSummary, RegistryModelSummary } from "@/types/api";
 import { z } from "zod";
 
 const starterPrompts = [
@@ -114,6 +114,12 @@ const experienceMessageMetadataSchema = z.object({
 
 function isLanguageModel(model: RegistryModelSummary) {
   if (model.status !== "active" || !model.provider_id) {
+    return false;
+  }
+  if (
+    model.provider_name?.startsWith("infer-agent /") ||
+    model.vendor?.startsWith("infer-agent /")
+  ) {
     return false;
   }
 
@@ -167,7 +173,7 @@ function getReasoningText(message: ExperienceUIMessage) {
 }
 
 type ComposerProps = {
-  chatModels: RegistryModelSummary[];
+  modelOptions: ExperienceModelOption[];
   messagesLength: number;
   onResetConversation: () => void;
   onSelectModel: (value: string) => void;
@@ -177,27 +183,77 @@ type ComposerProps = {
   stop: () => void;
 };
 
+type ExperienceModelOption = {
+  id: string;
+  name: string;
+  providerName: string;
+  source: "registry" | "deployment";
+  targetId: string;
+};
+
+function isReadyDeployment(deployment: ModelDeploymentSummary) {
+  return (deployment.phase ?? deployment.status) === "ready" && Boolean(deployment.endpoint_url);
+}
+
 export function ExperienceChatConsole({
+  deployments,
   models,
 }: {
+  deployments: ModelDeploymentSummary[];
   models: RegistryModelSummary[];
 }) {
   const chatModels = useMemo(() => models.filter(isLanguageModel), [models]);
-  const [selectedModelId, setSelectedModelId] = useState(chatModels[0]?.id ?? "");
+  const deploymentModels = useMemo(
+    () => deployments.filter(isReadyDeployment),
+    [deployments]
+  );
+  const modelOptions = useMemo<ExperienceModelOption[]>(
+    () => [
+      ...chatModels.map((model) => ({
+        id: `registry:${model.id}`,
+        name: model.name,
+        providerName: model.provider_name ?? "未绑定 Provider",
+        source: "registry" as const,
+        targetId: model.id,
+      })),
+      ...deploymentModels.map((deployment) => ({
+        id: `deployment:${deployment.id}`,
+        name: deployment.served_model_name ?? deployment.model_name ?? deployment.name,
+        providerName: deployment.machine_name ?? "我的部署",
+        source: "deployment" as const,
+        targetId: deployment.id,
+      })),
+    ],
+    [chatModels, deploymentModels]
+  );
+  const [selectedModelId, setSelectedModelId] = useState(modelOptions[0]?.id ?? "");
   const [uiError, setUiError] = useState<string | null>(null);
   const reasoningDepth: ExperienceReasoningDepth = "高";
   const requestOptionsRef = useRef({
     modelId: "",
+    targetId: "",
+    targetType: "registry" as ExperienceModelOption["source"],
     reasoningDepth: "高" as ExperienceReasoningDepth,
   });
 
+  const selectedOptionId = useMemo(() => {
+    if (!modelOptions.length) {
+      return "";
+    }
+    return modelOptions.some((model) => model.id === selectedModelId)
+      ? selectedModelId
+      : modelOptions[0].id;
+  }, [modelOptions, selectedModelId]);
+
   const selectedModel = useMemo(
-    () => chatModels.find((model) => model.id === selectedModelId) ?? chatModels[0] ?? null,
-    [chatModels, selectedModelId]
+    () => modelOptions.find((model) => model.id === selectedOptionId) ?? null,
+    [modelOptions, selectedOptionId]
   );
 
   requestOptionsRef.current = {
-    modelId: selectedModel?.id ?? "",
+    modelId: selectedModel?.targetId ?? "",
+    targetId: selectedModel?.targetId ?? "",
+    targetType: selectedModel?.source ?? "registry",
     reasoningDepth,
   };
 
@@ -234,19 +290,6 @@ export function ExperienceChatConsole({
   const isPending = status === "submitted" || status === "streaming";
   const errorMessage = uiError ?? error?.message ?? null;
 
-  useEffect(() => {
-    if (!chatModels.length) {
-      setSelectedModelId("");
-      return;
-    }
-
-    setSelectedModelId((current) =>
-      current && chatModels.some((model) => model.id === current)
-        ? current
-        : chatModels[0].id
-    );
-  }, [chatModels]);
-
   function resetConversation() {
     stop();
     setMessages([]);
@@ -260,7 +303,7 @@ export function ExperienceChatConsole({
 
   function submitPrompt(rawPrompt: string) {
     if (!selectedModel) {
-      setUiError("当前没有可用的语言模型，请先在模型广场中接入并启用模型。");
+      setUiError("当前没有可用的语言模型，请先在模型广场接入模型，或在我的部署中启动模型。");
       return;
     }
 
@@ -275,9 +318,9 @@ export function ExperienceChatConsole({
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] overflow-hidden">
-      <aside className="border-r border-border bg-card/80 px-2 py-6">
-        <div className="flex flex-col items-center gap-3">
+    <div className="grid h-full min-h-0 min-w-0 grid-cols-[52px_minmax(0,1fr)] overflow-hidden">
+      <aside className="border-r border-border bg-card/80 px-2 py-4">
+        <div className="flex flex-col items-center gap-2">
           {sideModes.map((mode) => (
             <button
               className={cn(
@@ -296,7 +339,7 @@ export function ExperienceChatConsole({
         </div>
       </aside>
 
-      <section className="flex min-h-0 flex-col bg-background/40">
+      <section className="flex min-h-0 min-w-0 flex-col bg-background/40">
         {!selectedModel ? (
           <div className="flex flex-1 items-center justify-center px-6 py-10">
             <div className="space-y-4 rounded-lg border border-dashed border-border bg-card/80 px-8 py-10 text-center">
@@ -307,7 +350,7 @@ export function ExperienceChatConsole({
                 当前没有可用的语言模型
               </div>
               <div className="text-sm leading-6 text-muted-foreground">
-                请先前往模型广场接入并启用至少一个可对话模型。
+                请先前往模型广场接入模型，或在我的部署中启动至少一个可对话模型。
               </div>
               <Link
                 className={cn(buttonVariants(), "rounded-full")}
@@ -319,9 +362,12 @@ export function ExperienceChatConsole({
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex flex-1 overflow-hidden">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
               <Conversation className="h-full min-h-0 w-full">
-                <ConversationContent className="mx-auto w-full max-w-[880px] gap-6 px-6 py-6 md:px-8">
+                <ConversationContent
+                  className="mx-auto w-full max-w-[900px] gap-5 px-5 py-5 md:px-8"
+                  scrollClassName="console-scrollbar-subtle"
+                >
                   {messages.length ? (
                     messages.map((message, index) => {
                       const text = getMessageText(message);
@@ -407,7 +453,7 @@ export function ExperienceChatConsole({
                     })
                   ) : (
                     <ConversationEmptyState
-                      description="保留模型切换，把界面收成更轻的对话区。"
+                      className="min-h-0 flex-1 px-0 py-6"
                       icon={
                         <div className="rounded-full border border-border bg-muted/40 p-3">
                           <Bot className="h-5 w-5" />
@@ -421,14 +467,14 @@ export function ExperienceChatConsole({
                             从一个简洁的问题开始
                           </div>
                           <div className="text-sm leading-6 text-muted-foreground">
-                            体验中心现在使用更轻的消息流和输入区，减少视觉噪音。
+                            选择一个场景，或直接输入问题。
                           </div>
                         </div>
 
                         <div className="grid gap-2 sm:grid-cols-2">
                           {starterPrompts.map((item) => (
                             <button
-                              className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                              className="rounded-md border border-border bg-muted/35 px-4 py-3 text-left transition-colors hover:bg-muted/55"
                               key={item.title}
                               onClick={() => submitPrompt(item.prompt)}
                               type="button"
@@ -457,16 +503,16 @@ export function ExperienceChatConsole({
               </Conversation>
             </div>
 
-            <div className="border-t border-border bg-card/90 px-6 py-4 backdrop-blur-xl">
-              <div className="mx-auto w-full max-w-[880px] space-y-3">
+            <div className="border-t border-border bg-card/90 px-5 py-3 backdrop-blur-xl md:px-8">
+              <div className="mx-auto w-full max-w-[900px] space-y-2.5">
                 <PromptInputProvider>
                   <ExperienceComposer
-                    chatModels={chatModels}
+                    modelOptions={modelOptions}
                     messagesLength={messages.length}
                     onResetConversation={resetConversation}
                     onSelectModel={setSelectedModelId}
                     onSubmitPrompt={submitPrompt}
-                    selectedModelId={selectedModel?.id ?? ""}
+                    selectedModelId={selectedOptionId}
                     status={status}
                     stop={stop}
                   />
@@ -484,7 +530,7 @@ export function ExperienceChatConsole({
 }
 
 function ExperienceComposer({
-  chatModels,
+  modelOptions,
   messagesLength,
   onResetConversation,
   onSelectModel,
@@ -495,7 +541,9 @@ function ExperienceComposer({
 }: ComposerProps) {
   const { value } = usePromptInputController();
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
-  const selectedModel = chatModels.find((model) => model.id === selectedModelId);
+  const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
+  const registryOptions = modelOptions.filter((model) => model.source === "registry");
+  const deploymentOptions = modelOptions.filter((model) => model.source === "deployment");
 
   function handleSelectModel(nextModelId: string) {
     setIsModelSelectorOpen(false);
@@ -509,7 +557,7 @@ function ExperienceComposer({
 
   return (
     <PromptInput
-      className="w-full"
+      className="experience-composer w-full"
       onSubmit={({ text }) => onSubmitPrompt(text)}
     >
       <PromptInputBody>
@@ -534,7 +582,7 @@ function ExperienceComposer({
             >
               <span className="min-w-0 truncate text-left">
                 {selectedModel
-                  ? `${selectedModel.name} · ${selectedModel.provider_name ?? "未绑定 Provider"}`
+                  ? `${selectedModel.name} · ${selectedModel.providerName}`
                   : "选择一个语言模型"}
               </span>
               <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -547,29 +595,56 @@ function ExperienceComposer({
               <ModelSelectorInput placeholder="搜索模型或 Provider" />
               <ModelSelectorList>
                 <ModelSelectorEmpty>没有找到匹配模型。</ModelSelectorEmpty>
-                <ModelSelectorGroup heading="可用模型">
-                  {chatModels.map((model) => {
-                    const isSelected = model.id === selectedModelId;
-                    return (
-                      <ModelSelectorItem
-                        className="mx-2 rounded-lg px-3 py-3"
-                        key={model.id}
-                        onSelect={() => handleSelectModel(model.id)}
-                        value={`${model.name} ${model.provider_name ?? ""}`}
-                      >
-                        <div className="flex min-w-0 flex-1 flex-col gap-1">
-                          <ModelSelectorName className="text-sm font-medium text-foreground">
-                            {model.name}
-                          </ModelSelectorName>
-                          <div className="text-xs text-muted-foreground">
-                            {model.provider_name ?? "未绑定 Provider"}
+                {registryOptions.length ? (
+                  <ModelSelectorGroup heading="模型广场">
+                    {registryOptions.map((model) => {
+                      const isSelected = model.id === selectedModelId;
+                      return (
+                        <ModelSelectorItem
+                          className="mx-2 rounded-lg px-3 py-3"
+                          key={model.id}
+                          onSelect={() => handleSelectModel(model.id)}
+                          value={`${model.name} ${model.providerName}`}
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <ModelSelectorName className="text-sm font-medium text-foreground">
+                              {model.name}
+                            </ModelSelectorName>
+                            <div className="text-xs text-muted-foreground">
+                              {model.providerName}
+                            </div>
                           </div>
-                        </div>
-                        {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                      </ModelSelectorItem>
-                    );
-                  })}
-                </ModelSelectorGroup>
+                          {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                        </ModelSelectorItem>
+                      );
+                    })}
+                  </ModelSelectorGroup>
+                ) : null}
+                {deploymentOptions.length ? (
+                  <ModelSelectorGroup heading="我的部署">
+                    {deploymentOptions.map((model) => {
+                      const isSelected = model.id === selectedModelId;
+                      return (
+                        <ModelSelectorItem
+                          className="mx-2 rounded-lg px-3 py-3"
+                          key={model.id}
+                          onSelect={() => handleSelectModel(model.id)}
+                          value={`${model.name} ${model.providerName}`}
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <ModelSelectorName className="text-sm font-medium text-foreground">
+                              {model.name}
+                            </ModelSelectorName>
+                            <div className="text-xs text-muted-foreground">
+                              {model.providerName}
+                            </div>
+                          </div>
+                          {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                        </ModelSelectorItem>
+                      );
+                    })}
+                  </ModelSelectorGroup>
+                ) : null}
               </ModelSelectorList>
             </ModelSelectorContent>
           </ModelSelector>
@@ -583,9 +658,7 @@ function ExperienceComposer({
               新对话
             </PromptInputButton>
           ) : (
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              Enter 发送，Shift + Enter 换行
-            </span>
+            <span />
           )}
         </PromptInputTools>
 

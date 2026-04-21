@@ -8,6 +8,11 @@ from nta_backend.schemas.model_registry import (
     RegistryModelChatRequest,
     RegistryModelChatResponse,
     RegistryModelCreate,
+    RegistryModelHuggingFaceImport,
+    RegistryModelHuggingFaceRevisionRequest,
+    RegistryModelHuggingFaceRevisionResult,
+    RegistryModelHuggingFaceSearchRequest,
+    RegistryModelHuggingFaceSearchResult,
     RegistryModelObjectStorageImport,
     RegistryModelSummary,
     RegistryModelTestRequest,
@@ -37,6 +42,59 @@ async def import_model_from_object_storage(
         return await service.import_model_from_object_storage(payload)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/import-huggingface",
+    response_model=RegistryModelSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_model_from_huggingface(
+    payload: RegistryModelHuggingFaceImport,
+) -> RegistryModelSummary:
+    try:
+        return await service.import_model_from_huggingface(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/huggingface/search", response_model=list[RegistryModelHuggingFaceSearchResult])
+async def search_huggingface_models(
+    payload: RegistryModelHuggingFaceSearchRequest,
+) -> list[RegistryModelHuggingFaceSearchResult]:
+    try:
+        return await service.search_huggingface_models(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Hugging Face request failed: {exc}") from exc
+
+
+@router.post("/huggingface/revisions", response_model=list[RegistryModelHuggingFaceRevisionResult])
+async def list_huggingface_revisions(
+    payload: RegistryModelHuggingFaceRevisionRequest,
+) -> list[RegistryModelHuggingFaceRevisionResult]:
+    try:
+        return await service.list_huggingface_revisions(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Hugging Face request failed: {exc}") from exc
+
+
+@router.post("/{model_id}/deployment-hints", response_model=RegistryModelSummary)
+async def refresh_model_deployment_hints(model_id: UUID) -> RegistryModelSummary:
+    try:
+        return await service.refresh_model_deployment_hints(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Model not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hugging Face request failed: {exc}",
+        ) from exc
 
 
 @router.get("/{model_id}", response_model=RegistryModelSummary)

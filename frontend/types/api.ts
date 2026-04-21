@@ -25,6 +25,18 @@ export interface ProjectCreateInput {
   description?: string | null;
 }
 
+export interface SystemHuggingFaceSettings {
+  endpoint_url?: string | null;
+  token?: string | null;
+  has_token: boolean;
+}
+
+export interface SystemHuggingFaceSettingsUpdateInput {
+  endpoint_url?: string | null;
+  token?: string | null;
+  clear_token?: boolean;
+}
+
 export interface DatasetSummary {
   id: string;
   name: string;
@@ -1104,6 +1116,9 @@ export interface RegistryModelSummary {
   import_source_uri?: string | null;
   import_bucket?: string | null;
   import_object_key?: string | null;
+  import_repo_id?: string | null;
+  import_revision?: string | null;
+  deployment_hints?: RegistryModelDeploymentHints | null;
   status: string;
   provider_id?: string | null;
   provider_name?: string | null;
@@ -1111,6 +1126,16 @@ export interface RegistryModelSummary {
   last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RegistryModelDeploymentHints {
+  model_type?: string | null;
+  architectures: string[];
+  num_attention_heads?: number | null;
+  num_key_value_heads?: number | null;
+  vocab_size?: number | null;
+  max_model_len?: number | null;
+  tensor_parallel_size_options: number[];
 }
 
 export interface RegistryModelCreateInput {
@@ -1129,6 +1154,43 @@ export interface RegistryModelObjectStorageImportInput {
   base_model: string;
   source_uri: string;
   description?: string | null;
+}
+
+export interface RegistryModelHuggingFaceImportInput {
+  name: string;
+  base_model: string;
+  repo_id: string;
+  revision?: string | null;
+  description?: string | null;
+}
+
+export interface RegistryModelHuggingFaceSearchInput {
+  query: string;
+  limit?: number;
+}
+
+export interface RegistryModelHuggingFaceSearchResult {
+  repo_id: string;
+  author?: string | null;
+  pipeline_tag?: string | null;
+  library_name?: string | null;
+  downloads?: number | null;
+  likes?: number | null;
+  is_private: boolean;
+  is_gated: boolean;
+  tags: string[];
+  last_modified?: string | null;
+}
+
+export interface RegistryModelHuggingFaceRevisionInput {
+  repo_id: string;
+}
+
+export interface RegistryModelHuggingFaceRevisionResult {
+  name: string;
+  kind: "branch" | "tag" | "convert";
+  ref?: string | null;
+  target_commit?: string | null;
 }
 
 export interface RegistryModelUpdateInput {
@@ -1183,6 +1245,101 @@ export interface RegistryModelChatResponse {
   input_tokens?: number | null;
   output_tokens?: number | null;
   total_tokens?: number | null;
+}
+
+export interface ModelDeploymentSummary {
+  id: string;
+  name: string;
+  model_id?: string | null;
+  model_name?: string | null;
+  machine_id?: string | null;
+  machine_name?: string | null;
+  experience_model_id?: string | null;
+  experience_provider_id?: string | null;
+  status: string;
+  endpoint_url?: string | null;
+  agent_base_url?: string | null;
+  served_model_name?: string | null;
+  is_current: boolean;
+  generation: number;
+  phase?: string | null;
+  progress: number;
+  last_event?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelDeploymentEvent {
+  id?: number | null;
+  deployment_id?: string | null;
+  generation: number;
+  event_type: string;
+  level: string;
+  message: string;
+  progress?: number | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DeployModelInput {
+  name?: string | null;
+  machine_id?: string | null;
+  served_model_name?: string | null;
+  gpu_ids?: number[] | null;
+  tensor_parallel_size?: number | null;
+  max_model_len?: number | null;
+  dtype?: string | null;
+}
+
+export interface InferenceMachineSummary {
+  id: string;
+  name: string;
+  agent_base_url: string;
+  runtime_public_host?: string | null;
+  description?: string | null;
+  status: string;
+  has_agent_token: boolean;
+  vllm_image: string;
+  gpu_ids: number[];
+  tensor_parallel_size: number;
+  dtype: string;
+  gpu_memory_utilization: number;
+  max_model_len?: number | null;
+  listen_port: number;
+  last_health_status?: string | null;
+  last_health_checked_at?: string | null;
+  last_health_error?: string | null;
+  last_node_name?: string | null;
+  last_gpu_count?: number | null;
+  last_gpus: Record<string, unknown>[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InferenceMachineCreateInput {
+  name: string;
+  agent_base_url: string;
+  agent_token?: string | null;
+  runtime_public_host?: string | null;
+  description?: string | null;
+  vllm_image: string;
+  gpu_ids?: number[] | null;
+  tensor_parallel_size: number;
+  dtype: string;
+  gpu_memory_utilization: number;
+  max_model_len?: number | null;
+  listen_port: number;
+}
+
+export interface InferenceMachineHealth {
+  machine_id: string;
+  status: string;
+  node_name?: string | null;
+  current?: Record<string, unknown> | null;
+  gpus: Record<string, unknown>[];
+  checked_at: string;
+  error?: string | null;
 }
 
 export interface ObjectStorePrefixEntry {

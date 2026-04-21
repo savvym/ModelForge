@@ -9,18 +9,20 @@ from nta_backend.api.routers import (
     auth,
     benchmarks,
     datasets,
+    eval_jobs,
+    eval_templates,
     evaluation_catalog_v2,
     evaluation_leaderboards_v2,
     evaluation_runs_v2,
-    eval_jobs,
-    eval_templates,
     health,
     lake,
+    model_deployments,
     model_providers,
     models,
     probes,
     projects,
     streams,
+    system_config,
     uploads,
     ws,
 )
@@ -60,6 +62,8 @@ def create_app() -> FastAPI:
     api_router.include_router(projects.router, tags=["projects"])
     api_router.include_router(model_providers.router, tags=["model-providers"])
     api_router.include_router(models.router, tags=["models"])
+    api_router.include_router(model_deployments.router, tags=["model-deployments"])
+    api_router.include_router(system_config.router, tags=["system-config"])
     api_router.include_router(datasets.router, tags=["datasets"])
     api_router.include_router(lake.router, tags=["lake"])
     api_router.include_router(eval_jobs.router, tags=["eval-jobs"])

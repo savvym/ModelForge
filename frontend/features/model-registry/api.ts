@@ -7,6 +7,11 @@ import type {
   ModelProviderSyncResult,
   ModelProviderUpdateInput,
   RegistryModelCreateInput,
+  RegistryModelHuggingFaceImportInput,
+  RegistryModelHuggingFaceRevisionInput,
+  RegistryModelHuggingFaceRevisionResult,
+  RegistryModelHuggingFaceSearchInput,
+  RegistryModelHuggingFaceSearchResult,
   RegistryModelObjectStorageImportInput,
   RegistryModelSummary,
   RegistryModelTestInput,
@@ -90,6 +95,48 @@ export async function importRegistryModelFromObjectStorage(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+export async function importRegistryModelFromHuggingFace(
+  payload: RegistryModelHuggingFaceImportInput
+): Promise<RegistryModelSummary> {
+  return apiFetch<RegistryModelSummary>("/models/import-huggingface", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function searchHuggingFaceModels(
+  payload: RegistryModelHuggingFaceSearchInput,
+  signal?: AbortSignal
+): Promise<RegistryModelHuggingFaceSearchResult[]> {
+  return apiFetch<RegistryModelHuggingFaceSearchResult[]>("/models/huggingface/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal
+  });
+}
+
+export async function listHuggingFaceRevisions(
+  payload: RegistryModelHuggingFaceRevisionInput,
+  signal?: AbortSignal
+): Promise<RegistryModelHuggingFaceRevisionResult[]> {
+  return apiFetch<RegistryModelHuggingFaceRevisionResult[]>("/models/huggingface/revisions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal
+  });
+}
+
+export async function refreshRegistryModelDeploymentHints(
+  modelId: string
+): Promise<RegistryModelSummary> {
+  return apiFetch<RegistryModelSummary>(`/models/${modelId}/deployment-hints`, {
+    method: "POST"
   });
 }
 

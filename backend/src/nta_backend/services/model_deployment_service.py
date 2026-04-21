@@ -1,0 +1,1104 @@
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from time import perf_counter
+from typing import Any
+from uuid import UUID
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from nta_backend.core.auth_context import get_current_user_id
+from nta_backend.core.config import get_settings
+from nta_backend.core.db import SessionLocal
+from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.models.modeling import Endpoint, Model
+from nta_backend.schemas.model_deployment import (
+    AgentDeploymentSpec,
+    AgentDeploymentStatus,
+    DeployModelRequest,
+    EngineSpec,
+    HuggingFaceSource,
+    ModelBinding,
+    ModelDeploymentEvent,
+    ModelDeploymentSummary,
+    ModelSource,
+    ObjectStorageCredentials,
+    ObjectStorageSource,
+)
+from nta_backend.schemas.model_registry import (
+    RegistryModelChatRequest,
+    RegistryModelDeploymentHints,
+)
+from nta_backend.services.inference_machine_service import (
+    InferenceMachineRuntimeConfig,
+    agent_headers,
+    load_inference_machine_runtime,
+    load_runtime_for_endpoint,
+)
+from nta_backend.services.system_config_service import load_system_huggingface_config
+
+DEPLOYMENT_ENDPOINT_TYPE = "infer-agent-vllm"
+DEFAULT_HUGGINGFACE_ALLOW_PATTERNS = [
+    "*.json",
+    "*.model",
+    "*.py",
+    "*.safetensors",
+    "*.txt",
+    "merges.txt",
+    "tokenizer*",
+    "vocab.*",
+]
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _deployment_config(endpoint: Endpoint) -> dict[str, Any]:
+    return endpoint.config_json if isinstance(endpoint.config_json, dict) else {}
+
+
+def _normalize_served_name(value: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value.strip()).strip("-")
+    return normalized or "model"
+
+
+def _read_object_storage_import(model: Model) -> dict[str, str]:
+    if not isinstance(model.capabilities_json, dict):
+        return {}
+    metadata = model.capabilities_json.get("object_storage_import")
+    if not isinstance(metadata, dict):
+        return {}
+    return {key: value for key, value in metadata.items() if isinstance(value, str)}
+
+
+def _read_huggingface_import(model: Model) -> dict[str, str]:
+    if not isinstance(model.capabilities_json, dict):
+        return {}
+    metadata = model.capabilities_json.get("huggingface_import")
+    if not isinstance(metadata, dict):
+        return {}
+    return {key: value for key, value in metadata.items() if isinstance(value, str)}
+
+
+def _read_deployment_hints(model: Model) -> RegistryModelDeploymentHints | None:
+    if not isinstance(model.capabilities_json, dict):
+        return None
+    for metadata_key in ("huggingface_import", "object_storage_import"):
+        metadata = model.capabilities_json.get(metadata_key)
+        if not isinstance(metadata, dict):
+            continue
+        hints_payload = metadata.get("deployment_hints")
+        if not isinstance(hints_payload, dict):
+            continue
+        try:
+            return RegistryModelDeploymentHints.model_validate(hints_payload)
+        except ValueError:
+            continue
+    return None
+
+
+def _redact_spec(spec: AgentDeploymentSpec) -> dict[str, Any]:
+    secret_keys = {"secret_access_key", "session_token", "token", "api_key"}
+
+    def redact(value: Any, key: str | None = None) -> Any:
+        if key in secret_keys and value is not None:
+            return "********"
+        if isinstance(value, dict):
+            return {
+                str(item_key): redact(item_value, str(item_key))
+                for item_key, item_value in value.items()
+            }
+        if isinstance(value, list):
+            return [redact(item) for item in value]
+        return value
+
+    return redact(spec.model_dump(mode="json"))
+
+
+def _deployment_served_model_name(
+    config: dict[str, Any],
+    model_name: str | None = None,
+) -> str | None:
+    spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
+    spec_model = spec.get("model") if isinstance(spec.get("model"), dict) else {}
+    served_name = spec_model.get("served_name")
+    if isinstance(served_name, str) and served_name.strip():
+        return served_name.strip()
+    return model_name.strip() if isinstance(model_name, str) and model_name.strip() else None
+
+
+def _is_unloaded_config(config: dict[str, Any]) -> bool:
+    return bool(config.get("unloaded_at"))
+
+
+def _is_superseded_config(config: dict[str, Any], endpoint_id: UUID) -> bool:
+    if config.get("superseded_by"):
+        return True
+    agent_status = (
+        config.get("agent_status") if isinstance(config.get("agent_status"), dict) else {}
+    )
+    status_deployment_id = agent_status.get("deployment_id")
+    return bool(status_deployment_id and str(status_deployment_id) != str(endpoint_id))
+
+
+def _extract_usage_tokens(payload: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return None, None, None
+
+    input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
+    output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
+    total_tokens = usage.get("total_tokens")
+    return (
+        int(input_tokens) if isinstance(input_tokens, int | float) else None,
+        int(output_tokens) if isinstance(output_tokens, int | float) else None,
+        int(total_tokens) if isinstance(total_tokens, int | float) else None,
+    )
+
+
+def _sse_payload(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+async def _iter_sse_events(response: httpx.Response) -> AsyncIterator[tuple[str | None, str]]:
+    event_name: str | None = None
+    data_lines: list[str] = []
+
+    async for raw_line in response.aiter_lines():
+        line = raw_line.rstrip("\r")
+        if not line:
+            if data_lines:
+                yield event_name, "\n".join(data_lines)
+                event_name = None
+                data_lines = []
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+
+    if data_lines:
+        yield event_name, "\n".join(data_lines)
+
+
+def _serialize_deployment(
+    endpoint: Endpoint,
+    model_name: str | None = None,
+) -> ModelDeploymentSummary:
+    config = _deployment_config(endpoint)
+    agent_status = (
+        config.get("agent_status") if isinstance(config.get("agent_status"), dict) else {}
+    )
+    status_deployment_id = agent_status.get("deployment_id")
+    is_superseded = _is_superseded_config(config, endpoint.id)
+    is_unloaded = _is_unloaded_config(config)
+    phase = str(agent_status.get("phase") or "") if agent_status.get("phase") else None
+    endpoint_url = agent_status.get("endpoint") or config.get("endpoint_url")
+    progress = int(agent_status.get("progress") or 0)
+    last_event = agent_status.get("last_event")
+    is_current = bool(status_deployment_id and str(status_deployment_id) == str(endpoint.id))
+    if is_unloaded:
+        phase = "unloaded"
+        endpoint_url = None
+        progress = 100
+        last_event = config.get("unloaded_reason") or "部署已卸载"
+        is_current = False
+    elif is_superseded:
+        phase = "superseded"
+        endpoint_url = None
+        progress = 100
+        last_event = config.get("superseded_reason") or "已被同一推理机器上的新部署替换"
+        is_current = False
+    return ModelDeploymentSummary(
+        id=endpoint.id,
+        name=endpoint.name,
+        model_id=endpoint.model_id,
+        model_name=model_name,
+        status=endpoint.status,
+        endpoint_url=endpoint_url,
+        machine_id=config.get("machine_id"),
+        machine_name=config.get("machine_name"),
+        experience_model_id=config.get("experience_model_id"),
+        experience_provider_id=config.get("experience_provider_id"),
+        agent_base_url=config.get("agent_base_url"),
+        served_model_name=_deployment_served_model_name(config, model_name),
+        is_current=is_current,
+        generation=int(config.get("generation") or agent_status.get("generation") or 0),
+        phase=phase,
+        progress=progress,
+        last_event=last_event,
+        error_message=(
+            agent_status.get("error", {}).get("message")
+            if not is_superseded and isinstance(agent_status.get("error"), dict)
+            else None
+        ),
+        created_at=endpoint.created_at,
+        updated_at=endpoint.updated_at,
+    )
+
+
+def _deployment_machine_key(deployment: ModelDeploymentSummary) -> str | None:
+    if deployment.machine_id is not None:
+        return str(deployment.machine_id)
+    return deployment.agent_base_url
+
+
+def _normalize_machine_active_deployments(
+    deployments: list[ModelDeploymentSummary],
+) -> list[ModelDeploymentSummary]:
+    latest_by_machine: dict[str, tuple[int, datetime, UUID]] = {}
+    for deployment in deployments:
+        if deployment.phase != "ready" and deployment.status != "active":
+            continue
+        machine_key = _deployment_machine_key(deployment)
+        if not machine_key:
+            continue
+        current_latest = latest_by_machine.get(machine_key)
+        if current_latest is None or (deployment.generation, deployment.updated_at) > (
+            current_latest[0],
+            current_latest[1],
+        ):
+            latest_by_machine[machine_key] = (
+                deployment.generation,
+                deployment.updated_at,
+                deployment.id,
+            )
+
+    for deployment in deployments:
+        machine_key = _deployment_machine_key(deployment)
+        if not machine_key or machine_key not in latest_by_machine:
+            continue
+        latest_generation, latest_updated_at, latest_id = latest_by_machine[machine_key]
+        if deployment.id == latest_id:
+            continue
+        if deployment.phase == "ready" or deployment.status == "active":
+            if (deployment.generation, deployment.updated_at) <= (
+                latest_generation,
+                latest_updated_at,
+            ):
+                deployment.phase = "superseded"
+                deployment.status = "stopped"
+                deployment.endpoint_url = None
+                deployment.progress = 100
+                deployment.last_event = "已被同一推理机器上的新部署替换"
+                deployment.error_message = None
+
+    return deployments
+
+
+class ModelDeploymentService:
+    async def list_deployments(self) -> list[ModelDeploymentSummary]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                    Endpoint.status != "deleted",
+                )
+                .order_by(Endpoint.updated_at.desc())
+            )
+            deployments = [
+                _serialize_deployment(endpoint, model_name) for endpoint, model_name in rows.all()
+            ]
+            return _normalize_machine_active_deployments(deployments)
+
+    async def list_my_deployments(self) -> list[ModelDeploymentSummary]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                    Endpoint.status != "deleted",
+                )
+                .order_by(Endpoint.updated_at.desc())
+            )
+            deployments: list[ModelDeploymentSummary] = []
+            for endpoint, model_name in rows.all():
+                config = _deployment_config(endpoint)
+                if _is_unloaded_config(config) or _is_superseded_config(config, endpoint.id):
+                    continue
+                agent_status = (
+                    config.get("agent_status")
+                    if isinstance(config.get("agent_status"), dict)
+                    else {}
+                )
+                phase = str(agent_status.get("phase") or "")
+                has_been_ready = bool(config.get("has_been_ready"))
+                if endpoint.status == "active" or phase in {"ready", "stopped"} or has_been_ready:
+                    deployments.append(_serialize_deployment(endpoint, model_name))
+            return deployments
+
+    async def deploy_model(
+        self,
+        model_id: UUID,
+        payload: DeployModelRequest,
+    ) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            model = await session.get(Model, model_id)
+            if model is None or model.project_id != project_id:
+                raise KeyError(str(model_id))
+
+            hf_config = await load_system_huggingface_config(session)
+            machine = await load_inference_machine_runtime(
+                session,
+                project_id,
+                payload.machine_id,
+            )
+            spec = self._build_spec(
+                model,
+                payload,
+                inference_machine=machine,
+                system_huggingface_config=hf_config,
+            )
+            redacted_spec = _redact_spec(spec)
+            endpoint = Endpoint(
+                project_id=project_id,
+                name=payload.name or f"{model.name} 部署",
+                endpoint_type=DEPLOYMENT_ENDPOINT_TYPE,
+                model_id=model.id,
+                purchase_type="local-h20",
+                status="deploying",
+                created_by=get_current_user_id(),
+                config_json={
+                    "machine_id": str(machine.id) if machine.id else None,
+                    "machine_name": machine.name,
+                    "agent_base_url": machine.agent_base_url,
+                    "generation": spec.generation,
+                    "spec": redacted_spec,
+                    "endpoint_url": None,
+                    "created_at": _now().isoformat(),
+                },
+            )
+            session.add(endpoint)
+            await session.flush()
+
+            current_agent_status = await self._get_agent_status(machine)
+            spec.deployment_id = str(endpoint.id)
+            spec.generation = max(1, current_agent_status.generation + 1)
+            endpoint.config_json = {
+                **_deployment_config(endpoint),
+                "generation": spec.generation,
+                "spec": _redact_spec(spec),
+            }
+            await session.commit()
+            await session.refresh(endpoint)
+
+        agent_status = await self._put_agent_spec(spec, machine)
+        await self._save_agent_status(endpoint.id, agent_status)
+        return await self.get_deployment(endpoint.id)
+
+    async def get_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(Endpoint.id == deployment_id, Endpoint.project_id == project_id)
+            )
+            row = rows.one_or_none()
+            if row is None:
+                raise KeyError(str(deployment_id))
+            endpoint, model_name = row
+            return _serialize_deployment(endpoint, model_name)
+
+    async def refresh_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None or endpoint.project_id != project_id:
+                raise KeyError(str(deployment_id))
+            machine = await load_runtime_for_endpoint(
+                session,
+                project_id,
+                _deployment_config(endpoint),
+            )
+
+        status = await self._get_agent_status(machine)
+        await self._save_agent_status(deployment_id, status)
+        return await self.get_deployment(deployment_id)
+
+    async def stop_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if (
+                endpoint is None
+                or endpoint.project_id != project_id
+                or endpoint.endpoint_type != DEPLOYMENT_ENDPOINT_TYPE
+            ):
+                raise KeyError(str(deployment_id))
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                raise ValueError("该部署已卸载。")
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+
+        agent_status = await self._get_agent_status(machine)
+        if agent_status.deployment_id != str(deployment_id):
+            raise ValueError("该部署不是当前运行中的部署。")
+        if agent_status.phase in {"idle", "stopped"}:
+            raise ValueError("该部署当前没有运行中的 vLLM 容器。")
+
+        stopped_status = await self._delete_agent_current(machine)
+        await self._save_agent_status(deployment_id, stopped_status)
+        return await self.get_deployment(deployment_id)
+
+    async def start_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.id == deployment_id,
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                )
+            )
+            row = rows.one_or_none()
+            if row is None:
+                raise KeyError(str(deployment_id))
+            endpoint, model = row
+            if model is None:
+                raise ValueError("部署任务没有关联模型，无法启动。")
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                raise ValueError("该部署已卸载，无法启动。")
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+            hf_config = await load_system_huggingface_config(session)
+
+            stored_spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
+            stored_model = (
+                stored_spec.get("model") if isinstance(stored_spec.get("model"), dict) else {}
+            )
+            stored_engine = (
+                stored_spec.get("engine") if isinstance(stored_spec.get("engine"), dict) else {}
+            )
+            spec = self._build_spec(
+                model,
+                DeployModelRequest(
+                    name=endpoint.name,
+                    machine_id=machine.id,
+                    served_model_name=(
+                        str(stored_model.get("served_name"))
+                        if stored_model.get("served_name")
+                        else model.model_code or model.name
+                    ),
+                    gpu_ids=(
+                        [
+                            int(gpu_id)
+                            for gpu_id in stored_engine.get("gpu_ids", [])
+                            if isinstance(gpu_id, int | float)
+                        ]
+                        if isinstance(stored_engine.get("gpu_ids"), list)
+                        else None
+                    ),
+                    tensor_parallel_size=(
+                        int(stored_engine["tensor_parallel_size"])
+                        if isinstance(stored_engine.get("tensor_parallel_size"), int | float)
+                        else None
+                    ),
+                    max_model_len=(
+                        int(stored_engine["max_model_len"])
+                        if isinstance(stored_engine.get("max_model_len"), int | float)
+                        else None
+                    ),
+                    dtype=(
+                        str(stored_engine["dtype"])
+                        if isinstance(stored_engine.get("dtype"), str)
+                        else None
+                    ),
+                ),
+                inference_machine=machine,
+                system_huggingface_config=hf_config,
+            )
+            current_agent_status = await self._get_agent_status(machine)
+            stored_generation = int(config.get("generation") or stored_spec.get("generation") or 0)
+            spec.deployment_id = str(endpoint.id)
+            spec.desired_phase = "running"
+            spec.generation = max(1, stored_generation + 1, current_agent_status.generation + 1)
+
+            next_config = {
+                key: value
+                for key, value in config.items()
+                if key
+                not in {
+                    "superseded_at",
+                    "superseded_by",
+                    "superseded_reason",
+                    "unloaded_at",
+                    "unloaded_reason",
+                }
+            }
+            endpoint.config_json = {
+                **next_config,
+                "endpoint_url": None,
+                "generation": spec.generation,
+                "spec": _redact_spec(spec),
+            }
+            endpoint.status = "deploying"
+            await session.commit()
+
+        agent_status = await self._put_agent_spec(spec, machine)
+        await self._save_agent_status(deployment_id, agent_status)
+        return await self.get_deployment(deployment_id)
+
+    async def unload_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if (
+                endpoint is None
+                or endpoint.project_id != project_id
+                or endpoint.endpoint_type != DEPLOYMENT_ENDPOINT_TYPE
+            ):
+                raise KeyError(str(deployment_id))
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                return _serialize_deployment(endpoint)
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+
+        agent_status: AgentDeploymentStatus | None = None
+        current_agent_status = await self._get_agent_status(machine)
+        if current_agent_status.deployment_id == str(deployment_id):
+            agent_status = await self._delete_agent_current(machine)
+
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None or endpoint.project_id != project_id:
+                raise KeyError(str(deployment_id))
+            config = _deployment_config(endpoint)
+            status_payload = (
+                agent_status.model_dump(mode="json")
+                if agent_status is not None
+                else (
+                    config.get("agent_status")
+                    if isinstance(config.get("agent_status"), dict)
+                    else {}
+                )
+            )
+            endpoint.config_json = {
+                **config,
+                "agent_status": {
+                    **status_payload,
+                    "phase": "unloaded",
+                    "progress": 100,
+                    "endpoint": None,
+                    "last_event": "deployment unloaded",
+                    "error": None,
+                },
+                "endpoint_url": None,
+                "unloaded_at": _now().isoformat(),
+                "unloaded_reason": "部署已卸载",
+            }
+            endpoint.status = "unloaded"
+            await self._unpublish_deployment_model(session, config)
+            await session.commit()
+            await session.refresh(endpoint)
+            return _serialize_deployment(endpoint)
+
+    async def stream_chat_deployment(
+        self,
+        deployment_id: UUID,
+        payload: RegistryModelChatRequest,
+    ) -> AsyncIterator[str]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.id == deployment_id,
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                )
+            )
+            row = rows.one_or_none()
+            if row is None:
+                raise KeyError(str(deployment_id))
+            endpoint, model_name = row
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config) or _is_superseded_config(config, endpoint.id):
+                raise ValueError("该部署当前不可用。")
+            served_model_name = _deployment_served_model_name(config, model_name)
+            if not served_model_name:
+                raise ValueError("部署缺少 Model ID，无法发起对话。")
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+
+        agent_status = await self._get_agent_status(machine)
+        await self._save_agent_status(deployment_id, agent_status)
+        if agent_status.deployment_id != str(deployment_id):
+            raise ValueError("该部署已被同一推理机器上的其他部署替换。")
+        if agent_status.phase != "ready" or not agent_status.endpoint:
+            raise ValueError("部署尚未 ready，暂不能发起体验。")
+
+        messages = [
+            {
+                "role": message.role,
+                "content": message.content.strip(),
+            }
+            for message in payload.messages
+            if message.content.strip()
+        ]
+        if not messages:
+            raise ValueError("请输入至少一条有效消息。")
+        if not any(message["role"] == "system" for message in messages):
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一个简洁、可靠的助手。请直接回答用户问题，"
+                        "避免重复相同句子或无意义续写。"
+                    ),
+                },
+                *messages,
+            ]
+
+        endpoint_url = agent_status.endpoint.rstrip("/")
+        provider_name = machine.name
+
+        async def generator() -> AsyncIterator[str]:
+            start_time = perf_counter()
+            usage_input_tokens: int | None = None
+            usage_output_tokens: int | None = None
+            usage_total_tokens: int | None = None
+            request_id: str | None = None
+            yielded_reasoning = False
+
+            yield _sse_payload(
+                {
+                    "type": "start",
+                    "model_name": served_model_name,
+                    "model_code": served_model_name,
+                    "provider_name": provider_name,
+                    "api_format": "chat-completions",
+                    "reasoning_depth": payload.reasoning_depth,
+                }
+            )
+
+            request_body: dict[str, Any] = {
+                "model": served_model_name,
+                "messages": messages,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+                "temperature": 0.6,
+                "top_p": 0.9,
+                "repetition_penalty": 1.08,
+                "max_tokens": 2048,
+            }
+            if payload.parameters:
+                protected_keys = {"model", "messages", "stream", "stream_options"}
+                request_body.update(
+                    {
+                        key: value
+                        for key, value in payload.parameters.items()
+                        if key not in protected_keys
+                    }
+                )
+
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{endpoint_url}/chat/completions",
+                        headers={
+                            "Accept": "text/event-stream",
+                            "Content-Type": "application/json",
+                        },
+                        json=request_body,
+                    ) as response:
+                        request_id = response.headers.get("x-request-id") or response.headers.get(
+                            "request-id"
+                        )
+                        if response.status_code >= 400:
+                            detail = (await response.aread()).decode("utf-8", errors="replace")
+                            yield _sse_payload(
+                                {
+                                    "type": "error",
+                                    "message": detail
+                                    or f"vLLM request failed: {response.status_code}",
+                                }
+                            )
+                            return
+
+                        async for _event_name, raw_data in _iter_sse_events(response):
+                            if raw_data == "[DONE]":
+                                break
+                            payload_data = json.loads(raw_data)
+                            choices = payload_data.get("choices")
+                            if isinstance(choices, list) and choices:
+                                choice = choices[0] if isinstance(choices[0], dict) else {}
+                                delta_data = choice.get("delta") if isinstance(choice, dict) else {}
+                                if isinstance(delta_data, dict):
+                                    content = delta_data.get("content")
+                                    if isinstance(content, str) and content:
+                                        yield _sse_payload(
+                                            {
+                                                "type": "text_delta",
+                                                "delta": content,
+                                            }
+                                        )
+                                    reasoning_delta = delta_data.get("reasoning_content")
+                                    if isinstance(reasoning_delta, str) and reasoning_delta:
+                                        yielded_reasoning = True
+                                        yield _sse_payload(
+                                            {
+                                                "type": "reasoning_delta",
+                                                "delta": reasoning_delta,
+                                            }
+                                        )
+
+                            input_tokens, output_tokens, total_tokens = _extract_usage_tokens(
+                                payload_data
+                            )
+                            usage_input_tokens = input_tokens or usage_input_tokens
+                            usage_output_tokens = output_tokens or usage_output_tokens
+                            usage_total_tokens = total_tokens or usage_total_tokens
+
+                yield _sse_payload(
+                    {
+                        "type": "done",
+                        "latency_ms": int((perf_counter() - start_time) * 1000),
+                        "request_id": request_id,
+                        "input_tokens": usage_input_tokens,
+                        "output_tokens": usage_output_tokens,
+                        "total_tokens": usage_total_tokens,
+                        "reasoning_available": yielded_reasoning,
+                        "streaming_mode": "deployment",
+                    }
+                )
+            except Exception as exc:
+                yield _sse_payload({"type": "error", "message": str(exc)})
+
+        return generator()
+
+    async def list_events(
+        self,
+        deployment_id: UUID,
+        limit: int = 200,
+    ) -> list[ModelDeploymentEvent]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None or endpoint.project_id != project_id:
+                raise KeyError(str(deployment_id))
+            machine = await load_runtime_for_endpoint(
+                session,
+                project_id,
+                _deployment_config(endpoint),
+            )
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{machine.agent_base_url}/v1/events/recent",
+                headers=agent_headers(machine),
+                params={"deployment_id": str(deployment_id), "limit": limit},
+            )
+            response.raise_for_status()
+            return [ModelDeploymentEvent.model_validate(item) for item in response.json()]
+
+    async def stop_current(self, machine_id: UUID | None = None) -> AgentDeploymentStatus:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            machine = await load_inference_machine_runtime(session, project_id, machine_id)
+
+        return await self._delete_agent_current(machine)
+
+    async def _delete_agent_current(
+        self,
+        machine: InferenceMachineRuntimeConfig,
+    ) -> AgentDeploymentStatus:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.delete(
+                f"{machine.agent_base_url}/v1/deployments/current",
+                headers=agent_headers(machine),
+            )
+            response.raise_for_status()
+            return AgentDeploymentStatus.model_validate(response.json())
+
+    def _build_spec(
+        self,
+        model: Model,
+        payload: DeployModelRequest,
+        *,
+        inference_machine: InferenceMachineRuntimeConfig,
+        system_huggingface_config: dict[str, str | None] | None = None,
+    ) -> AgentDeploymentSpec:
+        object_storage_metadata = _read_object_storage_import(model)
+        huggingface_metadata = _read_huggingface_import(model)
+
+        served_name = _normalize_served_name(
+            payload.served_model_name or model.model_code or model.name
+        )
+        gpu_ids = payload.gpu_ids or inference_machine.gpu_ids
+        tensor_parallel_size = (
+            payload.tensor_parallel_size or inference_machine.tensor_parallel_size
+        )
+        deployment_hints = _read_deployment_hints(model)
+        tp_options = (
+            deployment_hints.tensor_parallel_size_options if deployment_hints is not None else []
+        )
+        if tp_options and tensor_parallel_size not in tp_options:
+            option_text = "、".join(str(option) for option in tp_options)
+            raise ValueError(
+                f"Tensor Parallel Size {tensor_parallel_size} 与模型 config.json 不匹配，"
+                f"可选值：{option_text}。"
+            )
+        model_source = self._build_model_source(
+            object_storage_metadata=object_storage_metadata,
+            huggingface_metadata=huggingface_metadata,
+            system_huggingface_config=system_huggingface_config or {},
+        )
+        return AgentDeploymentSpec(
+            deployment_id="pending",
+            generation=1,
+            model=ModelBinding(
+                model_id=str(model.id),
+                name=model.name,
+                served_name=served_name,
+                source=model_source,
+            ),
+            engine=EngineSpec(
+                image=inference_machine.vllm_image,
+                gpu_ids=gpu_ids,
+                tensor_parallel_size=tensor_parallel_size,
+                listen_port=inference_machine.listen_port,
+                dtype=payload.dtype or inference_machine.dtype,
+                gpu_memory_utilization=inference_machine.gpu_memory_utilization,
+                max_model_len=payload.max_model_len or inference_machine.max_model_len,
+            ),
+        )
+
+    def _build_model_source(
+        self,
+        *,
+        object_storage_metadata: dict[str, str],
+        huggingface_metadata: dict[str, str],
+        system_huggingface_config: dict[str, str | None],
+    ) -> ModelSource:
+        settings = get_settings()
+        repo_id = huggingface_metadata.get("repo_id")
+        if repo_id:
+            revision = huggingface_metadata.get("revision") or "main"
+            uri = huggingface_metadata.get("source_uri") or f"hf://{repo_id}@{revision}"
+            token = huggingface_metadata.get("token") or (
+                system_huggingface_config.get("token")
+                if system_huggingface_config.get("token")
+                else None
+            )
+            endpoint_url = system_huggingface_config.get("endpoint_url")
+            huggingface_source = HuggingFaceSource(
+                repo_id=repo_id,
+                revision=revision,
+                repo_type=huggingface_metadata.get("repo_type") or "model",
+                allow_patterns=DEFAULT_HUGGINGFACE_ALLOW_PATTERNS,
+                token=token,
+                endpoint_url=endpoint_url,
+            )
+            return ModelSource(
+                type="huggingface",
+                uri=uri,
+                huggingface=huggingface_source,
+            )
+
+        source_uri = object_storage_metadata.get("source_uri")
+        if source_uri:
+            credentials = ObjectStorageCredentials(
+                access_key_id=settings.s3_access_key_id,
+                secret_access_key=settings.s3_secret_access_key.get_secret_value(),
+            )
+            object_source = ObjectStorageSource(
+                uri=source_uri,
+                endpoint_url=settings.infer_object_storage_endpoint_url or settings.s3_endpoint_url,
+                region=settings.s3_region,
+                addressing_style=settings.s3_addressing_style,
+                credentials=credentials,
+            )
+            return ModelSource(
+                type="object_storage",
+                uri=source_uri,
+                object_storage=object_source,
+            )
+
+        raise ValueError("当前模型缺少 Hugging Face 或对象存储导入路径，无法部署到 infer-agent。")
+
+    async def _put_agent_spec(
+        self,
+        spec: AgentDeploymentSpec,
+        machine: InferenceMachineRuntimeConfig,
+    ) -> AgentDeploymentStatus:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.put(
+                f"{machine.agent_base_url}/v1/deployments/current",
+                headers=agent_headers(machine),
+                json=spec.model_dump(mode="json"),
+            )
+            response.raise_for_status()
+            return AgentDeploymentStatus.model_validate(response.json())
+
+    async def _get_agent_status(
+        self,
+        machine: InferenceMachineRuntimeConfig,
+    ) -> AgentDeploymentStatus:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{machine.agent_base_url}/v1/deployments/current",
+                headers=agent_headers(machine),
+            )
+            response.raise_for_status()
+            return AgentDeploymentStatus.model_validate(response.json())
+
+    async def _save_agent_status(
+        self,
+        deployment_id: UUID,
+        agent_status: AgentDeploymentStatus,
+    ) -> None:
+        async with SessionLocal() as session:
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None:
+                return
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                return
+            if (
+                agent_status.deployment_id
+                and agent_status.deployment_id != str(endpoint.id)
+                and agent_status.phase == "ready"
+            ):
+                endpoint.config_json = {
+                    **config,
+                    "last_observed_agent_status": agent_status.model_dump(mode="json"),
+                    "superseded_by": agent_status.deployment_id,
+                    "superseded_at": _now().isoformat(),
+                    "superseded_reason": "已被同一推理机器上的新部署替换",
+                    "endpoint_url": None,
+                    "agent_status": {
+                        **(
+                            config.get("agent_status")
+                            if isinstance(config.get("agent_status"), dict)
+                            else {}
+                        ),
+                        "phase": "superseded",
+                        "progress": 100,
+                        "endpoint": None,
+                        "last_event": "已被同一推理机器上的新部署替换",
+                        "error": None,
+                    },
+                }
+                endpoint.status = "stopped"
+                await self._unpublish_deployment_model(session, config)
+                await session.commit()
+                return
+
+            endpoint.config_json = {
+                **config,
+                "agent_status": agent_status.model_dump(mode="json"),
+                "endpoint_url": agent_status.endpoint,
+                "has_been_ready": bool(config.get("has_been_ready"))
+                or agent_status.phase == "ready",
+                "updated_from_agent_at": _now().isoformat(),
+            }
+            if agent_status.phase == "ready":
+                endpoint.status = "active"
+            elif agent_status.phase == "error":
+                endpoint.status = "failed"
+            elif agent_status.phase == "stopped":
+                endpoint.status = "stopped"
+            elif agent_status.phase == "stopping":
+                endpoint.status = "stopping"
+            else:
+                endpoint.status = "deploying"
+            if agent_status.deployment_id == str(endpoint.id) and agent_status.phase == "ready":
+                await self._mark_sibling_deployments_superseded(session, endpoint)
+            await session.commit()
+
+    async def _mark_sibling_deployments_superseded(
+        self,
+        session: AsyncSession,
+        active_endpoint: Endpoint,
+    ) -> None:
+        active_config = _deployment_config(active_endpoint)
+        active_machine_id = active_config.get("machine_id")
+        active_agent_base_url = active_config.get("agent_base_url")
+        rows = await session.execute(
+            select(Endpoint).where(
+                Endpoint.project_id == active_endpoint.project_id,
+                Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                Endpoint.id != active_endpoint.id,
+                Endpoint.status != "deleted",
+            )
+        )
+        for endpoint in rows.scalars().all():
+            config = _deployment_config(endpoint)
+            is_same_machine = False
+            if active_machine_id and config.get("machine_id") == active_machine_id:
+                is_same_machine = True
+            elif (
+                not active_machine_id
+                and active_agent_base_url
+                and config.get("agent_base_url") == active_agent_base_url
+            ):
+                is_same_machine = True
+            if not is_same_machine:
+                continue
+            endpoint.config_json = {
+                **config,
+                "superseded_by": str(active_endpoint.id),
+                "superseded_at": _now().isoformat(),
+                "superseded_reason": "已被同一推理机器上的新部署替换",
+                "endpoint_url": None,
+                "agent_status": {
+                    **(
+                        config.get("agent_status")
+                        if isinstance(config.get("agent_status"), dict)
+                        else {}
+                    ),
+                    "phase": "superseded",
+                    "progress": 100,
+                    "endpoint": None,
+                    "last_event": "已被同一推理机器上的新部署替换",
+                    "error": None,
+                },
+            }
+            endpoint.status = "stopped"
+            await self._unpublish_deployment_model(session, config)
+
+    async def _unpublish_deployment_model(
+        self,
+        session: AsyncSession,
+        config: dict[str, Any],
+    ) -> None:
+        model_id = config.get("experience_model_id")
+        provider_id = config.get("experience_provider_id")
+        if not isinstance(model_id, str) or not isinstance(provider_id, str):
+            return
+        try:
+            model_uuid = UUID(model_id)
+        except ValueError:
+            return
+        model = await session.get(Model, model_uuid)
+        if model is None or str(model.provider_id) != provider_id:
+            return
+        model.provider_id = None
+        if isinstance(model.capabilities_json, dict):
+            model.capabilities_json = {
+                key: value
+                for key, value in model.capabilities_json.items()
+                if key != "local_deployment_publish"
+            }

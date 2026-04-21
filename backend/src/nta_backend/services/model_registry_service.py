@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 import httpx
@@ -27,14 +28,23 @@ from nta_backend.schemas.model_registry import (
     RegistryModelChatRequest,
     RegistryModelChatResponse,
     RegistryModelCreate,
+    RegistryModelDeploymentHints,
+    RegistryModelHuggingFaceImport,
+    RegistryModelHuggingFaceRevisionRequest,
+    RegistryModelHuggingFaceRevisionResult,
+    RegistryModelHuggingFaceSearchRequest,
+    RegistryModelHuggingFaceSearchResult,
     RegistryModelObjectStorageImport,
     RegistryModelSummary,
     RegistryModelTestRequest,
     RegistryModelTestResponse,
     RegistryModelUpdate,
 )
+from nta_backend.services.system_config_service import load_system_huggingface_config
 
 OBJECT_STORAGE_IMPORT_SOURCE = "object-storage-import"
+HUGGINGFACE_IMPORT_SOURCE = "huggingface-import"
+MAX_TENSOR_PARALLEL_HINT = 64
 
 
 def _now() -> datetime:
@@ -267,10 +277,10 @@ def _normalize_safetensors_import_target(parsed_uri: dict[str, str]) -> dict[str
     }
 
 
-def _build_imported_model_code(name: str) -> str:
+def _build_imported_model_code(name: str, prefix: str = "cos") -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
     normalized_slug = slug[:72].strip("-") or "model"
-    return f"cos-{normalized_slug}-{uuid4().hex[:8]}"
+    return f"{prefix}-{normalized_slug}-{uuid4().hex[:8]}"
 
 
 def _strip_optional_text(value: str | None) -> str | None:
@@ -300,6 +310,367 @@ def _object_storage_import_metadata(model: Model) -> dict[str, str | None]:
     }
 
 
+def _parse_huggingface_repo_id(raw_repo_id: str) -> tuple[str, str | None]:
+    value = raw_repo_id.strip()
+    revision: str | None = None
+
+    if value.startswith("hf://"):
+        value = value.removeprefix("hf://")
+    elif value.startswith("https://huggingface.co/") or value.startswith("http://huggingface.co/"):
+        value = value.split("huggingface.co/", maxsplit=1)[1]
+
+    parts = [part for part in value.strip("/").split("/") if part]
+    if "tree" in parts:
+        tree_index = parts.index("tree")
+        revision_parts = parts[tree_index + 1 :]
+        parts = parts[:tree_index]
+        revision = "/".join(revision_parts) if revision_parts else None
+
+    if len(parts) not in {1, 2}:
+        raise ValueError("请输入有效的 Hugging Face Repo ID，例如 Qwen/Qwen2.5-7B-Instruct。")
+
+    repo_id = "/".join(parts)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*(/[A-Za-z0-9][A-Za-z0-9_.-]*)?", repo_id):
+        raise ValueError(
+            "Hugging Face Repo ID 只能包含字母、数字、点、下划线、连字符和一个命名空间斜杠。"
+        )
+
+    return repo_id, revision
+
+
+def _huggingface_source_uri(repo_id: str, revision: str) -> str:
+    return f"hf://{repo_id}@{revision}"
+
+
+def _huggingface_endpoint_url(endpoint_url: str | None = None) -> str:
+    return (endpoint_url or "https://huggingface.co").rstrip("/")
+
+
+def _huggingface_headers(token: str | None, *, accept_json: bool = True) -> dict[str, str]:
+    headers = {"Accept": "application/json" if accept_json else "*/*"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _huggingface_error_message(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text.strip()
+
+    if isinstance(payload, dict):
+        for key in ("error", "message"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return response.text.strip()
+
+
+def _raise_huggingface_access_error(response: httpx.Response, *, has_token: bool) -> None:
+    detail = _huggingface_error_message(response)
+    suffix = f" Hugging Face 返回：{detail}" if detail else ""
+
+    if response.status_code in {401, 403}:
+        if has_token:
+            raise ValueError(
+                "HF Token 无效、已过期，或没有权限访问该模型；如果是 gated model，"
+                f"请先在 Hugging Face 接受模型协议。{suffix}"
+            )
+        raise ValueError(f"未录入 HF Token 时只能录入公开模型；当前模型无法匿名访问。{suffix}")
+
+    if response.status_code == 404:
+        if has_token:
+            raise ValueError(f"模型不存在，或当前 HF Token 对该模型不可见。{suffix}")
+        raise ValueError(
+            f"模型不存在，或它不是公开模型。未录入 HF Token 时只能录入公开模型。{suffix}"
+        )
+
+    raise ValueError(f"Hugging Face 权限校验失败：HTTP {response.status_code}。{suffix}")
+
+
+async def _verify_huggingface_access(
+    *,
+    repo_id: str,
+    revision: str,
+    token: str | None,
+    endpoint_url: str | None = None,
+) -> list[str]:
+    endpoint_url = _huggingface_endpoint_url(endpoint_url)
+    encoded_repo_id = quote(repo_id, safe="/")
+    encoded_revision = quote(revision, safe="")
+    api_url = f"{endpoint_url}/api/models/{encoded_repo_id}/revision/{encoded_revision}"
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+        response = await client.get(
+            api_url,
+            headers=_huggingface_headers(token),
+        )
+        if response.status_code >= 400:
+            _raise_huggingface_access_error(response, has_token=bool(token))
+
+        payload = response.json()
+        siblings = payload.get("siblings") if isinstance(payload, dict) else None
+        if not isinstance(siblings, list):
+            raise ValueError("Hugging Face 模型元信息缺少文件列表，无法确认模型格式。")
+
+        safetensor_files = sorted(
+            item["rfilename"]
+            for item in siblings
+            if isinstance(item, dict)
+            and isinstance(item.get("rfilename"), str)
+            and item["rfilename"].lower().endswith(".safetensors")
+        )
+        if not safetensor_files:
+            raise ValueError("该 Hugging Face 仓库未找到 safetensors 权重文件。")
+
+        sample_file = quote(safetensor_files[0], safe="/")
+        resolve_url = f"{endpoint_url}/{encoded_repo_id}/resolve/{encoded_revision}/{sample_file}"
+        access_response = await client.head(
+            resolve_url,
+            headers=_huggingface_headers(token, accept_json=False),
+        )
+        if access_response.status_code == 405:
+            access_response = await client.get(
+                resolve_url,
+                headers={
+                    **_huggingface_headers(token, accept_json=False),
+                    "Range": "bytes=0-0",
+                },
+            )
+        if access_response.status_code not in {200, 206, 302, 303, 307, 308}:
+            _raise_huggingface_access_error(access_response, has_token=bool(token))
+
+        return safetensor_files
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _positive_int_or_none(value: Any) -> int | None:
+    parsed = _int_or_none(value)
+    return parsed if parsed is not None and parsed > 0 else None
+
+
+def _str_or_none(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _model_config_text_section(config: dict[str, Any]) -> dict[str, Any]:
+    if _positive_int_or_none(config.get("num_attention_heads") or config.get("n_head")):
+        return config
+    for key in ("text_config", "llm_config", "language_config"):
+        nested = config.get(key)
+        if isinstance(nested, dict) and _positive_int_or_none(
+            nested.get("num_attention_heads") or nested.get("n_head")
+        ):
+            return nested
+    return config
+
+
+def _first_positive_int(config: dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        value = _positive_int_or_none(config.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _tensor_parallel_options(*values: int | None) -> list[int]:
+    divisibility_values = [value for value in values if value is not None and value > 0]
+    if not divisibility_values:
+        return []
+    upper_bound = min(min(divisibility_values), MAX_TENSOR_PARALLEL_HINT)
+    return [
+        candidate
+        for candidate in range(1, upper_bound + 1)
+        if all(value % candidate == 0 for value in divisibility_values)
+    ]
+
+
+def _model_config_deployment_hints(config: dict[str, Any]) -> RegistryModelDeploymentHints:
+    text_config = _model_config_text_section(config)
+    num_attention_heads = _first_positive_int(
+        text_config,
+        ("num_attention_heads", "n_head", "num_heads", "n_heads"),
+    )
+    num_key_value_heads = _first_positive_int(
+        text_config,
+        ("num_key_value_heads", "num_kv_heads", "n_kv_heads"),
+    )
+    vocab_size = _first_positive_int(
+        text_config,
+        ("vocab_size", "padded_vocab_size"),
+    )
+    max_model_len = _first_positive_int(
+        text_config,
+        (
+            "max_model_len",
+            "max_position_embeddings",
+            "model_max_length",
+            "seq_length",
+            "n_positions",
+        ),
+    )
+    return RegistryModelDeploymentHints(
+        model_type=_str_or_none(text_config.get("model_type") or config.get("model_type")),
+        architectures=_string_list(config.get("architectures") or text_config.get("architectures")),
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=num_key_value_heads,
+        vocab_size=vocab_size,
+        max_model_len=max_model_len,
+        tensor_parallel_size_options=_tensor_parallel_options(num_attention_heads, vocab_size),
+    )
+
+
+async def _fetch_huggingface_model_config(
+    *,
+    repo_id: str,
+    revision: str,
+    token: str | None,
+    endpoint_url: str | None = None,
+) -> dict[str, Any]:
+    endpoint_url = _huggingface_endpoint_url(endpoint_url)
+    encoded_repo_id = quote(repo_id, safe="/")
+    encoded_revision = quote(revision, safe="")
+    config_url = f"{endpoint_url}/{encoded_repo_id}/resolve/{encoded_revision}/config.json"
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response = await client.get(
+            config_url,
+            headers=_huggingface_headers(token, accept_json=False),
+        )
+        if response.status_code >= 400:
+            _raise_huggingface_access_error(response, has_token=bool(token))
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "Hugging Face config.json 不是有效 JSON，无法计算 TP 可选值。"
+            ) from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Hugging Face config.json 响应格式不正确，无法计算 TP 可选值。")
+    return payload
+
+
+def _read_object_storage_model_config(parsed_uri: dict[str, str]) -> dict[str, Any] | None:
+    object_key = parsed_uri["object_key"]
+    if parsed_uri.get("target_type") == "directory":
+        config_key = f"{object_key.rstrip('/')}/config.json"
+    else:
+        parent = object_key.rsplit("/", maxsplit=1)[0] if "/" in object_key else ""
+        config_key = f"{parent}/config.json" if parent else "config.json"
+
+    try:
+        from nta_backend.core.object_store import get_object_bytes
+
+        payload = get_object_bytes(parsed_uri["bucket"], config_key)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+    try:
+        decoded = payload.body.decode("utf-8")
+        config = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return config if isinstance(config, dict) else None
+
+
+def _deployment_hints_from_import_metadata(model: Model) -> RegistryModelDeploymentHints | None:
+    if not isinstance(model.capabilities_json, dict):
+        return None
+    for metadata_key in ("huggingface_import", "object_storage_import"):
+        metadata = model.capabilities_json.get(metadata_key)
+        if not isinstance(metadata, dict):
+            continue
+        hints_payload = metadata.get("deployment_hints")
+        if not isinstance(hints_payload, dict):
+            continue
+        try:
+            return RegistryModelDeploymentHints.model_validate(hints_payload)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_huggingface_gated(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "false", "none", "no"}
+    return bool(value)
+
+
+def _huggingface_revision_results(
+    payload: dict[str, Any],
+) -> list[RegistryModelHuggingFaceRevisionResult]:
+    result: list[RegistryModelHuggingFaceRevisionResult] = []
+    seen: set[str] = set()
+    collections = (
+        ("branches", "branch"),
+        ("tags", "tag"),
+        ("converts", "convert"),
+    )
+    for payload_key, kind in collections:
+        items = payload.get(payload_key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = _str_or_none(item.get("name"))
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            result.append(
+                RegistryModelHuggingFaceRevisionResult(
+                    name=name,
+                    kind=kind,
+                    ref=_str_or_none(item.get("ref")),
+                    target_commit=_str_or_none(item.get("targetCommit")),
+                )
+            )
+    return result
+
+
+def _huggingface_import_metadata(model: Model) -> dict[str, str | None]:
+    if not isinstance(model.capabilities_json, dict):
+        return {}
+
+    metadata = model.capabilities_json.get("huggingface_import")
+    if not isinstance(metadata, dict):
+        return {}
+
+    def read_text(key: str) -> str | None:
+        value = metadata.get(key)
+        return value if isinstance(value, str) else None
+
+    return {
+        "source_type": read_text("source_type"),
+        "source_uri": read_text("source_uri"),
+        "repo_id": read_text("repo_id"),
+        "revision": read_text("revision"),
+    }
+
+
 def _serialize_provider(provider: ModelProvider, model_count: int) -> ModelProviderSummary:
     return ModelProviderSummary(
         id=provider.id,
@@ -321,6 +692,7 @@ def _serialize_provider(provider: ModelProvider, model_count: int) -> ModelProvi
 
 def _serialize_model(model: Model, provider_name: str | None) -> RegistryModelSummary:
     import_metadata = _object_storage_import_metadata(model)
+    huggingface_metadata = _huggingface_import_metadata(model)
     return RegistryModelSummary(
         id=model.id,
         name=_serialize_model_name(model),
@@ -331,10 +703,15 @@ def _serialize_model(model: Model, provider_name: str | None) -> RegistryModelSu
         base_model=model.base_model,
         category=model.category,
         description=model.description,
-        import_source_type=import_metadata.get("source_type"),
-        import_source_uri=import_metadata.get("source_uri"),
+        import_source_type=import_metadata.get("source_type")
+        or huggingface_metadata.get("source_type"),
+        import_source_uri=import_metadata.get("source_uri")
+        or huggingface_metadata.get("source_uri"),
         import_bucket=import_metadata.get("bucket"),
         import_object_key=import_metadata.get("object_key"),
+        import_repo_id=huggingface_metadata.get("repo_id"),
+        import_revision=huggingface_metadata.get("revision"),
+        deployment_hints=_deployment_hints_from_import_metadata(model),
         status=model.status,
         provider_id=model.provider_id,
         provider_name=provider_name,
@@ -1087,6 +1464,146 @@ class ModelRegistryService:
             await session.refresh(model)
             return _serialize_model(model, provider_name)
 
+    async def search_huggingface_models(
+        self, payload: RegistryModelHuggingFaceSearchRequest
+    ) -> list[RegistryModelHuggingFaceSearchResult]:
+        query = payload.query.strip()
+        explicit_token = _strip_optional_text(payload.hf_token)
+        async with SessionLocal() as session:
+            hf_config = await load_system_huggingface_config(session)
+        token = explicit_token or hf_config.get("token")
+        endpoint_url = hf_config.get("endpoint_url")
+        params = {
+            "search": query,
+            "limit": str(min(payload.limit * 3, 50)),
+            "sort": "downloads",
+            "direction": "-1",
+            "full": "false",
+        }
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{_huggingface_endpoint_url(endpoint_url)}/api/models",
+                headers=_huggingface_headers(token),
+                params=params,
+            )
+            if response.status_code >= 400:
+                _raise_huggingface_access_error(response, has_token=bool(token))
+            payload_json = response.json()
+
+        if not isinstance(payload_json, list):
+            raise ValueError("Hugging Face 搜索响应格式不正确。")
+
+        results: list[RegistryModelHuggingFaceSearchResult] = []
+        seen_repo_ids: set[str] = set()
+        for item in payload_json:
+            if not isinstance(item, dict):
+                continue
+            repo_id = _str_or_none(item.get("id") or item.get("modelId"))
+            if not repo_id or repo_id in seen_repo_ids:
+                continue
+            seen_repo_ids.add(repo_id)
+
+            tags = [tag for tag in item.get("tags", []) if isinstance(tag, str) and tag.strip()][
+                :12
+            ]
+            if "safetensors" not in {tag.lower() for tag in tags}:
+                continue
+            results.append(
+                RegistryModelHuggingFaceSearchResult(
+                    repo_id=repo_id,
+                    author=_str_or_none(item.get("author")),
+                    pipeline_tag=_str_or_none(item.get("pipeline_tag")),
+                    library_name=_str_or_none(item.get("library_name")),
+                    downloads=_int_or_none(item.get("downloads")),
+                    likes=_int_or_none(item.get("likes")),
+                    is_private=bool(item.get("private")),
+                    is_gated=_is_huggingface_gated(item.get("gated")),
+                    tags=tags,
+                    last_modified=_str_or_none(item.get("lastModified")),
+                )
+            )
+            if len(results) >= payload.limit:
+                break
+
+        return results
+
+    async def list_huggingface_revisions(
+        self, payload: RegistryModelHuggingFaceRevisionRequest
+    ) -> list[RegistryModelHuggingFaceRevisionResult]:
+        repo_id, _ = _parse_huggingface_repo_id(payload.repo_id)
+        async with SessionLocal() as session:
+            hf_config = await load_system_huggingface_config(session)
+        token = hf_config.get("token")
+        endpoint_url = _huggingface_endpoint_url(hf_config.get("endpoint_url"))
+        encoded_repo_id = quote(repo_id, safe="/")
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{endpoint_url}/api/models/{encoded_repo_id}/refs",
+                headers=_huggingface_headers(token),
+            )
+            if response.status_code >= 400:
+                _raise_huggingface_access_error(response, has_token=bool(token))
+            payload_json = response.json()
+
+        if not isinstance(payload_json, dict):
+            raise ValueError("Hugging Face Revision 响应格式不正确。")
+
+        revisions = _huggingface_revision_results(payload_json)
+        if not revisions:
+            raise ValueError("该 Hugging Face 仓库没有可用 Revision。")
+        return revisions
+
+    async def refresh_model_deployment_hints(self, model_id: UUID) -> RegistryModelSummary:
+        async with SessionLocal() as session:
+            await ensure_default_project(session)
+            project_id = await resolve_active_project_id(session)
+            model = await _get_model_or_raise(session, model_id, project_id)
+            capabilities = dict(model.capabilities_json or {})
+
+            huggingface_metadata = capabilities.get("huggingface_import")
+            if isinstance(huggingface_metadata, dict):
+                hf_config = await load_system_huggingface_config(session)
+                token = _str_or_none(huggingface_metadata.get("token")) or hf_config.get("token")
+                endpoint_url = hf_config.get("endpoint_url")
+                repo_id = _str_or_none(huggingface_metadata.get("repo_id"))
+                revision = _str_or_none(huggingface_metadata.get("revision")) or "main"
+                if not repo_id:
+                    raise ValueError("Hugging Face 模型缺少 repo_id，无法读取 config.json。")
+                config = await _fetch_huggingface_model_config(
+                    repo_id=repo_id,
+                    revision=revision,
+                    token=token,
+                    endpoint_url=endpoint_url,
+                )
+                updated_metadata = dict(huggingface_metadata)
+                updated_metadata["deployment_hints"] = _model_config_deployment_hints(
+                    config
+                ).model_dump(exclude_none=True)
+                capabilities["huggingface_import"] = updated_metadata
+            else:
+                object_storage_metadata = capabilities.get("object_storage_import")
+                if not isinstance(object_storage_metadata, dict):
+                    raise ValueError("只有 Hugging Face 或对象存储导入模型支持读取 config.json。")
+                config = _read_object_storage_model_config(
+                    {key: str(value) for key, value in object_storage_metadata.items()}
+                )
+                if config is None:
+                    raise ValueError("对象存储模型目录未找到可读取的 config.json。")
+                updated_metadata = dict(object_storage_metadata)
+                updated_metadata["deployment_hints"] = _model_config_deployment_hints(
+                    config
+                ).model_dump(exclude_none=True)
+                capabilities["object_storage_import"] = updated_metadata
+
+            model.capabilities_json = capabilities
+            await session.commit()
+            await session.refresh(model)
+            provider_name = None
+            if model.provider_id is not None:
+                provider = await session.get(ModelProvider, model.provider_id)
+                provider_name = provider.name if provider else None
+            return _serialize_model(model, provider_name)
+
     async def import_model_from_object_storage(
         self, payload: RegistryModelObjectStorageImport
     ) -> RegistryModelSummary:
@@ -1095,6 +1612,12 @@ class ModelRegistryService:
         )
         model_code = _build_imported_model_code(payload.name)
         imported_at = _now()
+        model_config = _read_object_storage_model_config(parsed_uri)
+        deployment_hints = (
+            _model_config_deployment_hints(model_config).model_dump(exclude_none=True)
+            if model_config is not None
+            else None
+        )
 
         async with SessionLocal() as session:
             await ensure_default_project(session)
@@ -1115,6 +1638,85 @@ class ModelRegistryService:
                     "object_storage_import": {
                         **parsed_uri,
                         "artifact_format": "safetensors",
+                        **(
+                            {"deployment_hints": deployment_hints}
+                            if deployment_hints is not None
+                            else {}
+                        ),
+                        "imported_at": imported_at.isoformat(),
+                    }
+                },
+                is_provider_managed=False,
+                status="active",
+            )
+            session.add(model)
+            try:
+                await session.commit()
+            except IntegrityError as exc:
+                await session.rollback()
+                raise ValueError("模型 ID 已存在，请更换后重试。") from exc
+            await session.refresh(model)
+            return _serialize_model(model, None)
+
+    async def import_model_from_huggingface(
+        self, payload: RegistryModelHuggingFaceImport
+    ) -> RegistryModelSummary:
+        repo_id, revision_from_uri = _parse_huggingface_repo_id(payload.repo_id)
+        revision = (payload.revision or revision_from_uri or "main").strip() or "main"
+        explicit_hf_token = _strip_optional_text(payload.hf_token)
+        model_code = _build_imported_model_code(payload.name, prefix="hf")
+        imported_at = _now()
+
+        async with SessionLocal() as session:
+            await ensure_default_project(session)
+            project_id = await resolve_active_project_id(session)
+            hf_config = await load_system_huggingface_config(session)
+            inherited_hf_token = hf_config.get("token")
+            endpoint_url = hf_config.get("endpoint_url")
+            hf_token = explicit_hf_token or inherited_hf_token
+            safetensor_files = await _verify_huggingface_access(
+                repo_id=repo_id,
+                revision=revision,
+                token=hf_token,
+                endpoint_url=endpoint_url,
+            )
+            model_config = await _fetch_huggingface_model_config(
+                repo_id=repo_id,
+                revision=revision,
+                token=hf_token,
+                endpoint_url=endpoint_url,
+            )
+            deployment_hints = _model_config_deployment_hints(model_config).model_dump(
+                exclude_none=True
+            )
+
+            model = Model(
+                project_id=project_id,
+                provider_id=None,
+                name=payload.name.strip(),
+                model_code=model_code,
+                vendor="Hugging Face",
+                source=HUGGINGFACE_IMPORT_SOURCE,
+                api_format=None,
+                base_model=payload.base_model.strip(),
+                category="文本生成",
+                description=_strip_optional_text(payload.description),
+                capabilities_json={
+                    "huggingface_import": {
+                        "source_type": "huggingface",
+                        "source_uri": _huggingface_source_uri(repo_id, revision),
+                        "repo_id": repo_id,
+                        "revision": revision,
+                        "repo_type": "model",
+                        "artifact_format": "safetensors",
+                        "safetensors_count": str(len(safetensor_files)),
+                        "deployment_hints": deployment_hints,
+                        **({"token": explicit_hf_token} if explicit_hf_token else {}),
+                        **(
+                            {"token_source": "system"}
+                            if not explicit_hf_token and inherited_hf_token
+                            else {}
+                        ),
                         "imported_at": imported_at.isoformat(),
                     }
                 },
@@ -1155,9 +1757,7 @@ class ModelRegistryService:
                 model.model_code = changes["model_code"].strip()
             if "vendor" in changes:
                 model.vendor = (
-                    changes["vendor"].strip()
-                    if isinstance(changes["vendor"], str)
-                    else None
+                    changes["vendor"].strip() if isinstance(changes["vendor"], str) else None
                 ) or provider_name
             elif "provider_id" in changes:
                 model.vendor = provider_name
@@ -1165,9 +1765,7 @@ class ModelRegistryService:
                 model.api_format = _normalize_api_format(changes["api_format"])
             if "category" in changes:
                 model.category = (
-                    changes["category"].strip()
-                    if isinstance(changes["category"], str)
-                    else None
+                    changes["category"].strip() if isinstance(changes["category"], str) else None
                 ) or None
             if "status" in changes and changes["status"] is not None:
                 model.status = changes["status"]
@@ -1247,7 +1845,7 @@ class ModelRegistryService:
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are running a connectivity smoke test. Reply briefly."
+                            "content": "You are running a connectivity smoke test. Reply briefly.",
                         },
                         {
                             "role": "user",
@@ -1500,9 +2098,9 @@ class ModelRegistryService:
                     async with client.stream(
                         "POST", url, headers=headers, json=request_body
                     ) as response:
-                        request_id = response.headers.get(
-                            "x-request-id"
-                        ) or response.headers.get("request-id")
+                        request_id = response.headers.get("x-request-id") or response.headers.get(
+                            "request-id"
+                        )
 
                         if response.status_code >= 400:
                             sync_response = await self.chat_model(model_id, payload)
@@ -1555,9 +2153,8 @@ class ModelRegistryService:
                                                 "delta": delta,
                                             }
                                         )
-                                elif (
-                                    "reasoning" in payload_type
-                                    and payload_type.endswith(".delta")
+                                elif "reasoning" in payload_type and payload_type.endswith(
+                                    ".delta"
                                 ):
                                     delta = payload_data.get("delta")
                                     if isinstance(delta, str) and delta:
@@ -1578,10 +2175,8 @@ class ModelRegistryService:
                                             usage_total_tokens,
                                         ) = _extract_usage_tokens(completed_response)
                                         if not yielded_reasoning:
-                                            reasoning_text = (
-                                                _extract_responses_reasoning_text(
-                                                    completed_response
-                                                )
+                                            reasoning_text = _extract_responses_reasoning_text(
+                                                completed_response
                                             )
                                             if reasoning_text:
                                                 yielded_reasoning = True
@@ -1614,9 +2209,7 @@ class ModelRegistryService:
                                 if isinstance(choices, list) and choices:
                                     choice = choices[0] if isinstance(choices[0], dict) else {}
                                     delta_data = (
-                                        choice.get("delta")
-                                        if isinstance(choice, dict)
-                                        else {}
+                                        choice.get("delta") if isinstance(choice, dict) else {}
                                     )
                                     if isinstance(delta_data, dict):
                                         content = delta_data.get("content")
