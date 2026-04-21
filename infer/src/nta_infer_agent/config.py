@@ -4,10 +4,12 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+INFER_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
 
 class AgentSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env", "/etc/infer-agent/env"),
+        env_file=("../.env", ".env", INFER_ENV_FILE, "/etc/infer-agent/env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

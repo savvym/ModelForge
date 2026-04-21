@@ -41,14 +41,23 @@ uv sync
 本地试运行：
 
 ```bash
-INFER_AGENT_TOKEN='replace-with-a-long-random-token' \
-NODE_NAME='h20-node-01' \
-MODEL_CACHE_DIR='/data/model-cache' \
-RUNTIME_DIR='/data/nta-runtime' \
-RUNTIME_PUBLIC_HOST='10.0.0.12' \
-HF_TOKEN='hf_xxx_optional_for_private_repos' \
+cp .env.example .env
+vim .env
 uv run nta-infer-agent
 ```
+
+`.env` 至少需要确认这几项：
+
+```bash
+INFER_AGENT_TOKEN=replace-with-a-long-random-token
+NODE_NAME=h20-node-01
+MODEL_CACHE_DIR=/data/model-cache
+RUNTIME_DIR=/data/nta-runtime
+RUNTIME_PUBLIC_HOST=10.0.0.12
+HF_TOKEN=hf_xxx_optional_for_private_repos
+```
+
+`RUNTIME_PUBLIC_HOST` 必须填写控制面可访问到的 H20 地址。否则 agent 会把 vLLM endpoint 报成 `http://127.0.0.1:8000/v1`，控制面从自己的本机访问这个地址时会命中错误服务。
 
 默认监听：
 
@@ -69,10 +78,11 @@ http://10.0.0.12:9000
 ```bash
 sudo cp infer/systemd/infer-agent.service /etc/systemd/system/infer-agent.service
 sudo mkdir -p /etc/infer-agent
+sudo cp infer/.env.example /etc/infer-agent/env
 sudo vim /etc/infer-agent/env
 ```
 
-示例 `/etc/infer-agent/env`：
+`/etc/infer-agent/env` 使用和 `infer/.env` 相同的格式。最小示例：
 
 ```bash
 HOST=0.0.0.0
