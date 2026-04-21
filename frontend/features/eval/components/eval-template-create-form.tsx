@@ -32,9 +32,11 @@ import {
   TEXT_SIMILARITY_METRICS,
 } from "@/features/eval/eval-template-meta";
 import { cn } from "@/lib/utils";
-import type { EvalTemplateSummary } from "@/types/api";
+import type { EvalTemplateSummary, RegistryModelSummary } from "@/types/api";
 
 const TEMPLATE_VAR_PATTERN = /\{\{(\w+)\}\}/g;
+const FOLLOW_TASK_JUDGE_MODEL_VALUE = "__follow_task__";
+const CUSTOM_JUDGE_MODEL_VALUE = "__custom_judge_model__";
 
 type NumericState = {
   scoreMin: string;
@@ -45,11 +47,13 @@ type NumericState = {
 type EvalTemplateCreateFormProps = {
   initialTemplate?: EvalTemplateSummary | null;
   mode?: "create" | "edit";
+  models?: RegistryModelSummary[];
 };
 
 export function EvalTemplateCreateForm({
   initialTemplate = null,
   mode = "create",
+  models = [],
 }: EvalTemplateCreateFormProps) {
   const router = useRouter();
   const isEdit = mode === "edit" && initialTemplate != null;
@@ -58,6 +62,17 @@ export function EvalTemplateCreateForm({
 
   const initialTemplateType = readTemplateType(initialTemplate?.template_type);
   const initialOutputConfig = initialTemplate?.output_config ?? {};
+  const eligibleJudgeModels = models.filter(
+    (item) => item.status === "active" && Boolean(item.provider_id)
+  );
+  const initialJudgeModel = findJudgeModelByTemplateBinding(
+    eligibleJudgeModels,
+    initialTemplate?.model,
+    initialTemplate?.provider
+  );
+  const initialJudgeModelSelection =
+    initialJudgeModel?.id ??
+    ((initialTemplate?.model ?? "").trim() ? CUSTOM_JUDGE_MODEL_VALUE : FOLLOW_TASK_JUDGE_MODEL_VALUE);
 
   const [selectedTemplateType, setSelectedTemplateType] = React.useState<TemplateTypeId | null>(
     initialTemplateType
@@ -68,8 +83,11 @@ export function EvalTemplateCreateForm({
 
   const [name, setName] = React.useState(initialTemplate?.name ?? "");
   const [description, setDescription] = React.useState(initialTemplate?.description ?? "");
-  const [model, setModel] = React.useState(initialTemplate?.model ?? "");
-  const [provider, setProvider] = React.useState(initialTemplate?.provider ?? "");
+  const [model, setModel] = React.useState(initialJudgeModel?.name ?? initialTemplate?.model ?? "");
+  const [provider, setProvider] = React.useState(
+    initialJudgeModel?.provider_name ?? initialTemplate?.provider ?? ""
+  );
+  const [selectedJudgeModelId, setSelectedJudgeModelId] = React.useState(initialJudgeModelSelection);
   const [prompt, setPrompt] = React.useState(initialTemplate?.prompt ?? "");
 
   const [passLabelsText, setPassLabelsText] = React.useState(
@@ -124,6 +142,7 @@ export function EvalTemplateCreateForm({
     setPrompt("");
     setModel("");
     setProvider("");
+    setSelectedJudgeModelId(FOLLOW_TASK_JUDGE_MODEL_VALUE);
     setPassLabelsText(defaultPassTags());
     setFailLabelsText(defaultFailTags());
     setNumericState({
@@ -166,6 +185,25 @@ export function EvalTemplateCreateForm({
 
   function updateNumericState(key: keyof NumericState, value: string) {
     setNumericState((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateJudgeModelSelection(value: string) {
+    setSelectedJudgeModelId(value);
+    if (value === FOLLOW_TASK_JUDGE_MODEL_VALUE) {
+      setModel("");
+      setProvider("");
+      return;
+    }
+
+    if (value === CUSTOM_JUDGE_MODEL_VALUE) {
+      setModel(initialTemplate?.model ?? "");
+      setProvider(initialTemplate?.provider ?? "");
+      return;
+    }
+
+    const selected = eligibleJudgeModels.find((item) => item.id === value);
+    setModel(selected?.name ?? "");
+    setProvider(selected?.provider_name ?? "");
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -404,26 +442,32 @@ export function EvalTemplateCreateForm({
           </div>
 
           {selectedTypeMeta.requiresModel ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="model">Judge 模型（可选）</Label>
-                <Input
-                  id="model"
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="留空使用任务级 Judge 模型"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="provider">Provider（可选）</Label>
-                <Input
-                  id="provider"
-                  value={provider}
-                  onChange={(event) => setProvider(event.target.value)}
-                  placeholder="例如 openai-compatible"
-                />
-              </div>
-            </>
+            <div className="space-y-2 md:col-span-2">
+              <Label>教师打分模型 / Judge 模型（可选）</Label>
+              <Select value={selectedJudgeModelId} onValueChange={updateJudgeModelSelection}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FOLLOW_TASK_JUDGE_MODEL_VALUE}>
+                    跟随任务配置
+                  </SelectItem>
+                  {selectedJudgeModelId === CUSTOM_JUDGE_MODEL_VALUE && model.trim() ? (
+                    <SelectItem value={CUSTOM_JUDGE_MODEL_VALUE}>
+                      当前配置：{formatStoredJudgeModel(model, provider)}
+                    </SelectItem>
+                  ) : null}
+                  {eligibleJudgeModels.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {formatJudgeModelOption(item)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                选项来自模型广场中已绑定 Provider 的 active 模型。
+              </p>
+            </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
               当前类型不依赖 Judge 模型。
@@ -760,6 +804,41 @@ function stringifyConfigValue(value: unknown, fallback: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function findJudgeModelByTemplateBinding(
+  models: RegistryModelSummary[],
+  modelName?: string | null,
+  providerName?: string | null
+) {
+  const normalizedModel = (modelName ?? "").trim();
+  if (!normalizedModel) {
+    return null;
+  }
+  const normalizedProvider = (providerName ?? "").trim();
+  return (
+    models.find((item) => {
+      const modelMatches = item.name === normalizedModel || item.model_code === normalizedModel;
+      if (!modelMatches) {
+        return false;
+      }
+      return !normalizedProvider || item.provider_name === normalizedProvider;
+    }) ?? null
+  );
+}
+
+function formatJudgeModelOption(model: RegistryModelSummary) {
+  const provider = model.provider_name?.trim() || "Unknown Provider";
+  const code = model.model_code?.trim();
+  return code && code !== model.name
+    ? `${model.name} · ${provider} · ${code}`
+    : `${model.name} · ${provider}`;
+}
+
+function formatStoredJudgeModel(model: string, provider?: string | null) {
+  const normalizedModel = model.trim();
+  const normalizedProvider = (provider ?? "").trim();
+  return normalizedProvider ? `${normalizedModel} · ${normalizedProvider}` : normalizedModel;
 }
 
 function buildLabelGroups(passLabels: string[], failLabels: string[]) {

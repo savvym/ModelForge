@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { ConsoleBreadcrumb } from "@/components/console/console-breadcrumb";
 import { getEvalTemplate } from "@/features/eval/api";
 import { EvalTemplateCreateForm } from "@/features/eval/components/eval-template-create-form";
+import { getRegistryModels } from "@/features/model-registry/api";
+import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 
 export default async function EditEvalTemplatePage({
   params,
@@ -9,7 +11,11 @@ export default async function EditEvalTemplatePage({
   params: Promise<{ name: string }>;
 }) {
   const { name } = await params;
-  const template = await getEvalTemplate(name).catch(() => null);
+  const projectId = await getCurrentProjectIdFromCookie();
+  const [template, models] = await Promise.all([
+    getEvalTemplate(name).catch(() => null),
+    getRegistryModels(projectId).catch(() => []),
+  ]);
 
   if (!template) {
     notFound();
@@ -34,7 +40,7 @@ export default async function EditEvalTemplatePage({
         </div>
       </div>
 
-      <EvalTemplateCreateForm initialTemplate={template} mode="edit" />
+      <EvalTemplateCreateForm initialTemplate={template} mode="edit" models={models} />
     </div>
   );
 }

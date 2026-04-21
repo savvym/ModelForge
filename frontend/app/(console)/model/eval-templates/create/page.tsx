@@ -1,6 +1,11 @@
 import { EvalTemplateCreateForm } from "@/features/eval/components/eval-template-create-form";
+import { getRegistryModels } from "@/features/model-registry/api";
+import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 
-export default function CreateEvalTemplatePage() {
+export default async function CreateEvalTemplatePage() {
+  const projectId = await getCurrentProjectIdFromCookie();
+  const models = await getRegistryModels(projectId).catch(() => []);
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
@@ -10,7 +15,7 @@ export default function CreateEvalTemplatePage() {
         </p>
       </div>
 
-      <EvalTemplateCreateForm />
+      <EvalTemplateCreateForm models={models} />
     </div>
   );
 }
