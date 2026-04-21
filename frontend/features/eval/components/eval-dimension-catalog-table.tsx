@@ -1,5 +1,8 @@
+import Link from "next/link";
+import { Pencil } from "lucide-react";
 import { ConsoleListTableSurface } from "@/components/console/list-surface";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -28,12 +31,13 @@ export function EvalDimensionCatalogTable({
             <TableHead>评分器</TableHead>
             <TableHead>裁判模型</TableHead>
             <TableHead>创建时间</TableHead>
+            <TableHead className="w-[96px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={5}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={6}>
                 当前还没有评测维度。请先创建一个可复用的评测维度，再用于自定义 Benchmark。
               </TableCell>
             </TableRow>
@@ -59,10 +63,19 @@ export function EvalDimensionCatalogTable({
                   </div>
                 </TableCell>
                 <TableCell className="align-top text-foreground">
-                  {dimension.model || "跟随任务配置"}
+                  {formatJudgeModel(dimension)}
                 </TableCell>
                 <TableCell className="align-top text-muted-foreground">
                   {formatDateTime(dimension.created_at)}
+                </TableCell>
+                <TableCell className="align-top text-right">
+                  <Link
+                    className={buttonVariants({ size: "sm", variant: "outline" })}
+                    href={`/model/eval-templates/${encodeURIComponent(dimension.name)}/edit`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    编辑
+                  </Link>
                 </TableCell>
               </TableRow>
             ))
@@ -85,4 +98,11 @@ function formatDateTime(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatJudgeModel(dimension: EvalTemplateSummary) {
+  if (dimension.model && dimension.provider) {
+    return `${dimension.model} @ ${dimension.provider}`;
+  }
+  return dimension.model || dimension.provider || "跟随任务配置";
 }

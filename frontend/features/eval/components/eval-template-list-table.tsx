@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { Pencil } from "lucide-react";
 import { ConsoleListTableSurface } from "@/components/console/list-surface";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -36,12 +38,13 @@ export function EvalTemplateListTable({
             <TableHead>变量</TableHead>
             <TableHead>Judge 模型</TableHead>
             <TableHead>创建时间</TableHead>
+            <TableHead className="w-[96px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {empty ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={8}>
+              <TableCell className="py-16 text-center text-sm text-muted-foreground" colSpan={9}>
                 暂无评测模板。点击右上角「创建模板」开始。
               </TableCell>
             </TableRow>
@@ -82,10 +85,19 @@ export function EvalTemplateListTable({
                   </div>
                 </TableCell>
                 <TableCell className="align-top text-foreground">
-                  {template.model ?? "--"}
+                  {formatJudgeModel(template)}
                 </TableCell>
                 <TableCell className="align-top text-muted-foreground">
                   {formatDateTime(template.created_at)}
+                </TableCell>
+                <TableCell className="align-top text-right">
+                  <Link
+                    className={buttonVariants({ size: "sm", variant: "outline" })}
+                    href={`/model/eval-templates/${encodeURIComponent(template.name)}/edit`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    编辑
+                  </Link>
                 </TableCell>
               </TableRow>
             ))
@@ -105,4 +117,11 @@ function formatDateTime(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatJudgeModel(template: EvalTemplateSummary) {
+  if (template.model && template.provider) {
+    return `${template.model} @ ${template.provider}`;
+  }
+  return template.model || template.provider || "--";
 }

@@ -193,7 +193,7 @@ export function BenchmarkCreateForm({
             <TemplateSummaryItem label="评分器" value={getPresetLabel(selectedDimension.preset_id)} />
             <TemplateSummaryItem
               label="裁判模型"
-              value={selectedDimension.model || "跟随任务配置"}
+              value={formatJudgeModel(selectedDimension)}
             />
           </div>
         ) : (
@@ -230,4 +230,11 @@ function TemplateSummaryItem({ label, value }: { label: string; value: string })
       <div className="text-sm text-foreground">{value}</div>
     </div>
   );
+}
+
+function formatJudgeModel(template: EvalTemplateSummary) {
+  if (template.model && template.provider) {
+    return `${template.model} @ ${template.provider}`;
+  }
+  return template.model || template.provider || "跟随任务配置";
 }

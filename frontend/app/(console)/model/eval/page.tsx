@@ -314,7 +314,8 @@ function filterDimensions(dimensions: EvalTemplateSummary[], query: string) {
       dimension.description ?? "",
       dimension.template_type,
       dimension.preset_id ?? "",
-      dimension.model ?? ""
+      dimension.model ?? "",
+      dimension.provider ?? ""
     ]
       .join(" ")
       .toLowerCase()

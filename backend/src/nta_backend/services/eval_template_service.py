@@ -139,6 +139,7 @@ class EvalTemplateService:
                 raise KeyError(name)
 
             # Inherit unchanged fields from latest version
+            provided_fields = payload.model_fields_set
             new_prompt = payload.prompt if payload.prompt is not None else latest.prompt
             new_output_type = payload.output_type if payload.output_type is not None else latest.output_type
             new_template_type = (
@@ -146,12 +147,12 @@ class EvalTemplateService:
                 if payload.template_type is not None
                 else latest.template_type
             )
-            new_preset_id = payload.preset_id if payload.preset_id is not None else latest.preset_id
+            new_preset_id = payload.preset_id if "preset_id" in provided_fields else latest.preset_id
             new_output_config = payload.output_config if payload.output_config is not None else latest.output_config
-            new_model = payload.model if payload.model is not None else latest.model
-            new_provider = payload.provider if payload.provider is not None else latest.provider
-            new_model_params = payload.model_params if payload.model_params is not None else latest.model_params
-            new_description = payload.description if payload.description is not None else latest.description
+            new_model = payload.model if "model" in provided_fields else latest.model
+            new_provider = payload.provider if "provider" in provided_fields else latest.provider
+            new_model_params = payload.model_params if "model_params" in provided_fields else latest.model_params
+            new_description = payload.description if "description" in provided_fields else latest.description
 
             _validate_template_config(
                 template_type=new_template_type,

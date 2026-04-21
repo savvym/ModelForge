@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createEvalTemplate } from "@/features/eval/api";
+import { createEvalTemplate, updateEvalTemplate } from "@/features/eval/api";
 import {
   defaultFailTags,
   defaultPassTags,
@@ -24,6 +24,7 @@ import {
   LLM_CATEGORICAL_PRESETS,
   LLM_NUMERIC_PRESETS,
   parseTagList,
+  stringifyTagList,
   STRING_MATCH_OPERATORS,
   TEMPLATE_TYPES,
   type TemplatePresetMeta,
@@ -31,6 +32,7 @@ import {
   TEXT_SIMILARITY_METRICS,
 } from "@/features/eval/eval-template-meta";
 import { cn } from "@/lib/utils";
+import type { EvalTemplateSummary } from "@/types/api";
 
 const TEMPLATE_VAR_PATTERN = /\{\{(\w+)\}\}/g;
 
@@ -40,32 +42,59 @@ type NumericState = {
   passThreshold: string;
 };
 
-export function EvalTemplateCreateForm() {
+type EvalTemplateCreateFormProps = {
+  initialTemplate?: EvalTemplateSummary | null;
+  mode?: "create" | "edit";
+};
+
+export function EvalTemplateCreateForm({
+  initialTemplate = null,
+  mode = "create",
+}: EvalTemplateCreateFormProps) {
   const router = useRouter();
+  const isEdit = mode === "edit" && initialTemplate != null;
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [selectedTemplateType, setSelectedTemplateType] = React.useState<TemplateTypeId | null>(null);
-  const [selectedPresetId, setSelectedPresetId] = React.useState<string | null>(null);
+  const initialTemplateType = readTemplateType(initialTemplate?.template_type);
+  const initialOutputConfig = initialTemplate?.output_config ?? {};
 
-  const [name, setName] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [model, setModel] = React.useState("");
-  const [prompt, setPrompt] = React.useState("");
+  const [selectedTemplateType, setSelectedTemplateType] = React.useState<TemplateTypeId | null>(
+    initialTemplateType
+  );
+  const [selectedPresetId, setSelectedPresetId] = React.useState<string | null>(
+    initialTemplate?.preset_id ?? null
+  );
 
-  const [passLabelsText, setPassLabelsText] = React.useState(defaultPassTags());
-  const [failLabelsText, setFailLabelsText] = React.useState(defaultFailTags());
+  const [name, setName] = React.useState(initialTemplate?.name ?? "");
+  const [description, setDescription] = React.useState(initialTemplate?.description ?? "");
+  const [model, setModel] = React.useState(initialTemplate?.model ?? "");
+  const [provider, setProvider] = React.useState(initialTemplate?.provider ?? "");
+  const [prompt, setPrompt] = React.useState(initialTemplate?.prompt ?? "");
 
-  const [numericState, setNumericState] = React.useState<NumericState>({
-    scoreMin: "1",
-    scoreMax: "5",
-    passThreshold: "3",
-  });
+  const [passLabelsText, setPassLabelsText] = React.useState(
+    readLabelGroupText(initialOutputConfig, "pass", defaultPassTags())
+  );
+  const [failLabelsText, setFailLabelsText] = React.useState(
+    readLabelGroupText(initialOutputConfig, "fail", defaultFailTags())
+  );
 
-  const [leftTemplate, setLeftTemplate] = React.useState("{{output}}");
-  const [rightTemplate, setRightTemplate] = React.useState("{{target}}");
-  const [stringOperator, setStringOperator] = React.useState("equals");
-  const [similarityMetric, setSimilarityMetric] = React.useState("ROUGE_L");
+  const [numericState, setNumericState] = React.useState<NumericState>(
+    readNumericState(initialOutputConfig, initialTemplateType)
+  );
+
+  const [leftTemplate, setLeftTemplate] = React.useState(
+    readTextSource(initialOutputConfig, "left_template", "{{output}}")
+  );
+  const [rightTemplate, setRightTemplate] = React.useState(
+    readTextSource(initialOutputConfig, "right_template", "{{target}}")
+  );
+  const [stringOperator, setStringOperator] = React.useState(
+    readRuleConfigValue(initialOutputConfig, "operator", "equals")
+  );
+  const [similarityMetric, setSimilarityMetric] = React.useState(
+    readRuleConfigValue(initialOutputConfig, "metric", "ROUGE_L")
+  );
 
   const selectedTypeMeta = getTemplateTypeMeta(selectedTemplateType);
   const requiresPresetSelection = Boolean(selectedTypeMeta?.supportsPresets);
@@ -94,6 +123,7 @@ export function EvalTemplateCreateForm() {
   function resetTypeSpecificState(type: TemplateTypeId) {
     setPrompt("");
     setModel("");
+    setProvider("");
     setPassLabelsText(defaultPassTags());
     setFailLabelsText(defaultFailTags());
     setNumericState({
@@ -215,8 +245,10 @@ export function EvalTemplateCreateForm() {
 
     setSubmitting(true);
     try {
-      await createEvalTemplate({
-        name: name.trim().toLowerCase().replace(/\s+/g, "_"),
+      const modelValue = model.trim();
+      const providerValue = provider.trim();
+      const descriptionValue = description.trim();
+      const payload = {
         prompt: selectedTypeMeta.requiresModel ? prompt.trim() : "",
         template_type: selectedTemplateType,
         preset_id: selectedPresetId,
@@ -231,9 +263,23 @@ export function EvalTemplateCreateForm() {
           similarityMetric,
           stringOperator,
         }),
-        model: selectedTypeMeta.requiresModel ? model.trim() || undefined : undefined,
-        description: description.trim() || undefined,
-      });
+        model: selectedTypeMeta.requiresModel
+          ? modelValue || (isEdit ? null : undefined)
+          : isEdit ? null : undefined,
+        provider: selectedTypeMeta.requiresModel
+          ? providerValue || (isEdit ? null : undefined)
+          : isEdit ? null : undefined,
+        description: descriptionValue || (isEdit ? null : undefined),
+      };
+
+      if (isEdit && initialTemplate) {
+        await updateEvalTemplate(initialTemplate.name, payload);
+      } else {
+        await createEvalTemplate({
+          ...payload,
+          name: name.trim().toLowerCase().replace(/\s+/g, "_"),
+        });
+      }
       router.push("/model/eval?tab=dimensions");
       router.refresh();
     } catch (submitError) {
@@ -269,7 +315,7 @@ export function EvalTemplateCreateForm() {
     );
   }
 
-  if (requiresPresetSelection && !selectedPresetId) {
+  if (!isEdit && requiresPresetSelection && !selectedPresetId) {
     const presets = getPresetsForTemplateType(selectedTemplateType);
     return (
       <div className="space-y-4">
@@ -280,9 +326,11 @@ export function EvalTemplateCreateForm() {
               {getTemplateTypeLabel(selectedTemplateType)}
             </div>
           </div>
-          <Button type="button" variant="outline" onClick={() => setSelectedTemplateType(null)}>
-            重新选择类型
-          </Button>
+          {!isEdit ? (
+            <Button type="button" variant="outline" onClick={() => setSelectedTemplateType(null)}>
+              重新选择类型
+            </Button>
+          ) : null}
         </div>
 
         <p className="text-sm text-muted-foreground">
@@ -318,46 +366,64 @@ export function EvalTemplateCreateForm() {
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <span>评测类型：{getTemplateTypeLabel(selectedTemplateType)}</span>
         {requiresPresetSelection ? <span>预设：{getPresetLabel(selectedPresetId)}</span> : null}
-        <button
-          type="button"
-          className="text-primary hover:underline"
-          onClick={() => {
-            if (requiresPresetSelection) {
-              setSelectedPresetId(null);
-            } else {
-              setSelectedTemplateType(null);
-            }
-          }}
-        >
-          {requiresPresetSelection ? "重新选择预设" : "重新选择类型"}
-        </button>
+        {!isEdit ? (
+          <button
+            type="button"
+            className="text-primary hover:underline"
+            onClick={() => {
+              if (requiresPresetSelection) {
+                setSelectedPresetId(null);
+              } else {
+                setSelectedTemplateType(null);
+              }
+            }}
+          >
+            {requiresPresetSelection ? "重新选择预设" : "重新选择类型"}
+          </button>
+        ) : (
+          <span>保存后会生成新版本</span>
+        )}
       </div>
 
       <fieldset className="space-y-4 rounded-lg border border-border p-4">
         <legend className="px-2 text-sm font-medium">基础信息</legend>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="name">模板名称</Label>
             <Input
               id="name"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              disabled={isEdit}
               placeholder="如 answer_quality_v1"
             />
-            <p className="text-xs text-muted-foreground">作为模板 ID 保存，建议使用英文、数字和下划线。</p>
+            <p className="text-xs text-muted-foreground">
+              {isEdit ? "模板名称创建后不可修改。" : "作为模板 ID 保存，建议使用英文、数字和下划线。"}
+            </p>
           </div>
 
           {selectedTypeMeta.requiresModel ? (
-            <div className="space-y-2">
-              <Label htmlFor="model">Judge 模型（可选）</Label>
-              <Input
-                id="model"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="留空使用任务级 Judge 模型"
-              />
-            </div>
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="model">Judge 模型（可选）</Label>
+                <Input
+                  id="model"
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                  placeholder="留空使用任务级 Judge 模型"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="provider">Provider（可选）</Label>
+                <Input
+                  id="provider"
+                  value={provider}
+                  onChange={(event) => setProvider(event.target.value)}
+                  placeholder="例如 openai-compatible"
+                />
+              </div>
+            </>
           ) : (
             <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
               当前类型不依赖 Judge 模型。
@@ -564,7 +630,13 @@ export function EvalTemplateCreateForm() {
 
       <div className="flex gap-3">
         <Button type="submit" disabled={submitting}>
-          {submitting ? "创建中..." : "创建模板"}
+          {submitting
+            ? isEdit
+              ? "保存中..."
+              : "创建中..."
+            : isEdit
+              ? "保存新版本"
+              : "创建模板"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>
           取消
@@ -608,6 +680,86 @@ function extractTemplateVars(values: string[]) {
     }
   }
   return [...new Set(variables)];
+}
+
+function readTemplateType(value: string | null | undefined): TemplateTypeId | null {
+  return TEMPLATE_TYPES.some((type) => type.id === value) ? (value as TemplateTypeId) : null;
+}
+
+function readLabelGroupText(
+  outputConfig: Record<string, unknown>,
+  scorePolicy: "pass" | "fail",
+  fallback: string
+) {
+  const groups = outputConfig.label_groups;
+  if (!Array.isArray(groups)) {
+    return fallback;
+  }
+
+  const match = groups.find((group) => {
+    if (!isRecord(group)) {
+      return false;
+    }
+    return group.score_policy === scorePolicy || group.key === scorePolicy;
+  });
+  if (!isRecord(match) || !Array.isArray(match.labels)) {
+    return fallback;
+  }
+
+  const labels = match.labels.filter((label): label is string => typeof label === "string");
+  return labels.length > 0 ? stringifyTagList(labels) : fallback;
+}
+
+function readNumericState(
+  outputConfig: Record<string, unknown>,
+  templateType: TemplateTypeId | null
+): NumericState {
+  const numericRange = isRecord(outputConfig.numeric_range) ? outputConfig.numeric_range : {};
+  const defaultState =
+    templateType === "rule_text_similarity"
+      ? { scoreMin: "0", scoreMax: "1", passThreshold: "0.8" }
+      : { scoreMin: "1", scoreMax: "5", passThreshold: "3" };
+
+  return {
+    scoreMin: stringifyConfigValue(outputConfig.score_min ?? numericRange.min, defaultState.scoreMin),
+    scoreMax: stringifyConfigValue(outputConfig.score_max ?? numericRange.max, defaultState.scoreMax),
+    passThreshold: stringifyConfigValue(
+      outputConfig.pass_threshold ?? outputConfig.similarity_threshold ?? numericRange.pass_threshold,
+      defaultState.passThreshold
+    ),
+  };
+}
+
+function readTextSource(
+  outputConfig: Record<string, unknown>,
+  key: "left_template" | "right_template",
+  fallback: string
+) {
+  const textSources = isRecord(outputConfig.text_sources) ? outputConfig.text_sources : {};
+  return typeof textSources[key] === "string" ? textSources[key] : fallback;
+}
+
+function readRuleConfigValue(
+  outputConfig: Record<string, unknown>,
+  key: "operator" | "metric",
+  fallback: string
+) {
+  const ruleConfig = isRecord(outputConfig.rule_config) ? outputConfig.rule_config : {};
+  return typeof ruleConfig[key] === "string" ? ruleConfig[key] : fallback;
+}
+
+function stringifyConfigValue(value: unknown, fallback: string) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildLabelGroups(passLabels: string[], failLabels: string[]) {
