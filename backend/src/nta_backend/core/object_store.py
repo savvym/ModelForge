@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from hashlib import md5
 from pathlib import PurePosixPath
 
+from botocore.exceptions import ClientError
+
 from nta_backend.core.config import get_settings
 from nta_backend.core.s3 import get_s3_client
 
@@ -54,7 +56,13 @@ def create_object_prefix(bucket: str, prefix: str) -> None:
 
 def get_object_bytes(bucket: str, object_key: str) -> ObjectPayload:
     client = get_s3_client()
-    response = client.get_object(Bucket=bucket, Key=object_key)
+    try:
+        response = client.get_object(Bucket=bucket, Key=object_key)
+    except ClientError as exc:
+        error_code = str(exc.response.get("Error", {}).get("Code", ""))
+        if error_code in {"NoSuchKey", "404", "NotFound"}:
+            raise FileNotFoundError(object_key) from exc
+        raise
     body = response["Body"].read()
     return ObjectPayload(
         body=body,

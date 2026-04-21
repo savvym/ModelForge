@@ -6,7 +6,9 @@ import pytest
 from evalscope.api.model import ModelOutput, ModelUsage
 from sqlalchemy import delete, select
 
+from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
+from nta_backend.core.object_store import delete_object, put_object_bytes
 from nta_backend.core.project_context import resolve_active_project_id
 from nta_backend.evaluation.executors.evalscope_executor import NTAOpenAICompatibleAPI
 from nta_backend.evaluation_v2.execution import CanonicalExecutionResult
@@ -449,6 +451,9 @@ async def test_sync_spec_version_dataset_files_marks_file_available(tmp_path) ->
     created_spec_name = f"pytest_spec_{uuid4().hex[:8]}"
     local_file = tmp_path / "dataset.jsonl"
     local_file.write_text('{"input":"hello","target":"world"}\n', encoding="utf-8")
+    bucket = get_settings().s3_bucket_dataset_raw
+    object_key = f"nta-dev/tests/evaluation-v2/{created_spec_name}/dataset.jsonl"
+    put_object_bytes(bucket, object_key, local_file.read_bytes(), content_type="application/x-ndjson")
 
     try:
         spec = await catalog_service.create_spec(
@@ -466,7 +471,7 @@ async def test_sync_spec_version_dataset_files_marks_file_available(tmp_path) ->
                             display_name="主数据集",
                             file_name="dataset.jsonl",
                             format="jsonl",
-                            source_uri=str(local_file),
+                            source_uri=f"s3://{bucket}/{object_key}",
                         )
                     ],
                 ),
@@ -487,6 +492,7 @@ async def test_sync_spec_version_dataset_files_marks_file_available(tmp_path) ->
             if created_spec_id is not None:
                 await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
             await session.commit()
+        delete_object(bucket, object_key)
 
 
 async def test_create_run_rejects_spec_with_missing_required_dataset_file(
@@ -671,6 +677,9 @@ async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
         json.dumps({"id": "sample-1", "input": "Question?", "target": "A"}) + "\n",
         encoding="utf-8",
     )
+    bucket = get_settings().s3_bucket_dataset_raw
+    object_key = f"nta-dev/tests/evaluation-v2/{created_spec_name}/dataset.jsonl"
+    put_object_bytes(bucket, object_key, dataset_path.read_bytes(), content_type="application/x-ndjson")
 
     try:
         spec = await catalog_service.create_spec(
@@ -689,7 +698,7 @@ async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
                             display_name="主数据集",
                             file_name="dataset.jsonl",
                             format="jsonl",
-                            source_uri=str(dataset_path),
+                            source_uri=f"s3://{bucket}/{object_key}",
                         )
                     ],
                 ),
@@ -734,6 +743,7 @@ async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
             if created_spec_id is not None:
                 await session.execute(delete(EvalSpec).where(EvalSpec.id == created_spec_id))
             await session.commit()
+        delete_object(bucket, object_key)
 
 
 async def test_cancelled_run_short_circuits_item_execution(

@@ -26,7 +26,6 @@ from nta_backend.api.routers import (
 )
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import dispose_engine
-from nta_backend.core.redis import close_redis
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,6 @@ async def lifespan(_: FastAPI):
     )
     yield
     logger.info("API shutdown started")
-    await close_redis()
     await dispose_engine()
     logger.info("API shutdown completed")
 

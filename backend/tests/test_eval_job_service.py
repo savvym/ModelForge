@@ -9,14 +9,26 @@ from nta_backend.core.db import SessionLocal
 from nta_backend.core.project_context import resolve_active_project_id
 from nta_backend.models.jobs import EvalJob, EvalJobMetric
 from nta_backend.services import eval_service
-from nta_backend.services.eval_service import LOCAL_EVALRUNS_ROOT, EvalJobService
+from nta_backend.services.eval_service import EvalJobService
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-async def test_delete_eval_job_removes_metrics_and_local_artifacts() -> None:
+async def test_delete_eval_job_removes_metrics_and_s3_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     service = EvalJobService()
     job_uuid: UUID | None = None
-    artifact_dir = None
+    deleted_prefixes: list[tuple[str, str]] = []
+    deleted_objects: list[tuple[str, str]] = []
+
+    def _fake_delete_object(bucket: str, object_key: str) -> None:
+        deleted_objects.append((bucket, object_key))
+
+    def _fake_delete_object_prefix(bucket: str, prefix: str) -> None:
+        deleted_prefixes.append((bucket, prefix))
+
+    monkeypatch.setattr(eval_service, "delete_object", _fake_delete_object)
+    monkeypatch.setattr(eval_service, "delete_object_prefix", _fake_delete_object_prefix)
 
     try:
         async with SessionLocal() as session:
@@ -34,14 +46,14 @@ async def test_delete_eval_job_removes_metrics_and_local_artifacts() -> None:
             session.add(job)
             await session.flush()
 
-            artifact_dir = LOCAL_EVALRUNS_ROOT / f"pytest-delete-{job.id}"
-            artifact_dir.mkdir(parents=True, exist_ok=True)
-            report_path = artifact_dir / "report.json"
-            report_path.write_text("{}", encoding="utf-8")
+            artifact_prefix = f"projects/{project_id}/evals/{job.id}/artifacts"
+            samples_prefix = f"projects/{project_id}/evals/{job.id}/samples"
+            report_key = f"{artifact_prefix}/report.json"
 
-            job.artifact_prefix_uri = str(artifact_dir)
-            job.results_prefix_uri = str(artifact_dir)
-            job.report_object_uri = str(report_path)
+            job.artifact_prefix_uri = f"s3://{eval_service.EVAL_ARTIFACT_BUCKET}/{artifact_prefix}"
+            job.results_prefix_uri = f"s3://{eval_service.EVAL_ARTIFACT_BUCKET}/{artifact_prefix}"
+            job.samples_prefix_uri = f"s3://{eval_service.EVAL_ARTIFACT_BUCKET}/{samples_prefix}"
+            job.report_object_uri = f"s3://{eval_service.EVAL_ARTIFACT_BUCKET}/{report_key}"
             session.add(
                 EvalJobMetric(
                     eval_job_id=job.id,
@@ -66,14 +78,16 @@ async def test_delete_eval_job_removes_metrics_and_local_artifacts() -> None:
             ).scalar_one()
             assert metric_count == 0
 
-        assert artifact_dir is not None
-        assert artifact_dir.exists() is False
+        assert deleted_objects == [
+            (eval_service.EVAL_ARTIFACT_BUCKET, report_key),
+        ]
+        assert sorted(deleted_prefixes) == sorted(
+            [
+                (eval_service.EVAL_ARTIFACT_BUCKET, artifact_prefix),
+                (eval_service.EVAL_ARTIFACT_BUCKET, samples_prefix),
+            ]
+        )
     finally:
-        if artifact_dir is not None and artifact_dir.exists():
-            report_path = artifact_dir / "report.json"
-            if report_path.exists():
-                report_path.unlink()
-            artifact_dir.rmdir()
         if job_uuid is not None:
             async with SessionLocal() as session:
                 job = await session.get(EvalJob, job_uuid)

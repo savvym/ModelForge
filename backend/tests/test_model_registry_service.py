@@ -11,7 +11,10 @@ def _load_target_module():
     async def _noop(*args, **kwargs):
         return None
 
+    original_modules: dict[str, types.ModuleType | None] = {}
+
     def _register_module(name: str, **attrs: object) -> None:
+        original_modules.setdefault(name, sys.modules.get(name))
         module = types.ModuleType(name)
         for key, value in attrs.items():
             setattr(module, key, value)
@@ -57,7 +60,14 @@ def _load_target_module():
     spec = importlib.util.spec_from_file_location("test_model_registry_service_module", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, original in reversed(tuple(original_modules.items())):
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
     return module
 
 

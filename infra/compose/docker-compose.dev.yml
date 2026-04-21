@@ -31,20 +31,6 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:${REDIS_VERSION}
-    container_name: nta-redis
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${REDIS_PORT}:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   temporal:
     image: temporalio/auto-setup:${TEMPORAL_VERSION}
     container_name: nta-temporal
@@ -134,5 +120,4 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   rustfs_data:

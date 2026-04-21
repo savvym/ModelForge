@@ -127,10 +127,11 @@ async def test_benchmark_catalog_service_lists_only_custom_benchmarks() -> None:
         catalog_names = {item.name for item in catalog}
         assert benchmark_name in catalog_names
         assert "cl_bench" not in catalog_names
-        assert "mmlu" not in catalog_names
-        assert all(item.source_type == "custom" for item in catalog)
+        assert "mmlu" in catalog_names
+        assert next(item for item in catalog if item.name == "mmlu").source_type == "builtin"
 
         summary = next(item for item in catalog if item.name == benchmark_name)
+        assert summary.source_type == "custom"
         assert summary.version_count == 1
         assert summary.enabled_version_count == 1
         assert summary.eval_template_id == template_id

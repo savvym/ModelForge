@@ -20,7 +20,7 @@
 make infra.up
 ```
 
-默认会启动本地开发需要的基础依赖：`postgres / redis / temporal / temporal-ui / rustfs / gateway`，以及对应的初始化任务。
+默认会启动本地开发需要的基础依赖：`postgres / temporal / temporal-ui / rustfs / gateway`，以及对应的初始化任务。
 
 2. 执行数据库迁移
 
@@ -84,7 +84,6 @@ cp .env.example .env
 如果生产环境改用托管资源：
 
 - `DATABASE_URL` 改成外部 PostgreSQL 连接串
-- `REDIS_URL` 改成外部 Redis 连接串
 - COS 继续沿用现有 S3 兼容接入，只需要把
   - `S3_ENDPOINT_URL`
   - `S3_BROWSER_ENDPOINT_URL`

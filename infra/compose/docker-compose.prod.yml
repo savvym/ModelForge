@@ -50,7 +50,6 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
       CORS_ORIGINS: ${CORS_ORIGINS}
       DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
       TEMPORAL_HOST: ${TEMPORAL_HOST}
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE}
       TEMPORAL_TASK_QUEUE_EVAL: ${TEMPORAL_TASK_QUEUE_EVAL}
@@ -68,8 +67,6 @@ services:
       S3_STS_DURATION_SECONDS: ${S3_STS_DURATION_SECONDS}
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       temporal:
         condition: service_started
@@ -101,7 +98,6 @@ services:
       LOG_BACKUP_COUNT: ${LOG_BACKUP_COUNT}
       SECRET_KEY: ${SECRET_KEY}
       DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
       TEMPORAL_HOST: ${TEMPORAL_HOST}
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE}
       TEMPORAL_TASK_QUEUE_EVAL: ${TEMPORAL_TASK_QUEUE_EVAL}
@@ -119,8 +115,6 @@ services:
       S3_STS_DURATION_SECONDS: ${S3_STS_DURATION_SECONDS}
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       temporal:
         condition: service_started
@@ -142,19 +136,6 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  redis:
-    image: redis:${REDIS_VERSION}
-    container_name: nta-redis
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
       retries: 10
     restart: unless-stopped
 
@@ -216,4 +197,3 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:

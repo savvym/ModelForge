@@ -6,7 +6,7 @@
 
 - `apps/api`：FastAPI 入口
 - `apps/worker`：Temporal Worker 入口
-- `src/nta_backend/core`：配置、数据库、Redis、S3、Temporal 接入
+- `src/nta_backend/core`：配置、数据库、S3、Temporal 接入
 - `src/nta_backend/models`：SQLAlchemy 模型
 - `src/nta_backend/schemas`：Pydantic schema
 - `src/nta_backend/api/routers`：REST / SSE / WebSocket 路由

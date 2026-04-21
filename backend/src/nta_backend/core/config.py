@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://nta:nta@localhost:5432/model_forge"
-    redis_url: str = "redis://localhost:6379/0"
 
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "nta-platform-dev"

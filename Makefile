@@ -8,7 +8,7 @@ DOCKER ?= docker
 COMPOSE_FILE ?= infra/compose/docker-compose.dev.yml
 PROD_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
 ENV_FILE := .env
-DEV_INFRA_SERVICES ?= postgres redis temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
+DEV_INFRA_SERVICES ?= postgres temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
 
 .PHONY: \
 	help \
