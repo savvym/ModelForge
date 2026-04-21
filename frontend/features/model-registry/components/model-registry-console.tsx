@@ -149,6 +149,10 @@ function formatModelCategory(value?: string | null) {
   return value;
 }
 
+function isLocalDeploymentProviderName(value?: string | null) {
+  return Boolean(value?.startsWith("infer-agent /"));
+}
+
 export function ModelRegistryConsole({
   initialProviders,
   initialModels,
@@ -177,7 +181,11 @@ export function ModelRegistryConsole({
   const deferredModelQuery = useDeferredValue(modelQuery);
 
   const providerOptions = useMemo(
-    () => initialProviders.filter((provider) => provider.status !== "deleted"),
+    () =>
+      initialProviders.filter(
+        (provider) =>
+          provider.status !== "deleted" && !isLocalDeploymentProviderName(provider.name)
+      ),
     [initialProviders]
   );
 
@@ -193,6 +201,12 @@ export function ModelRegistryConsole({
 
     const query = deferredModelQuery.trim().toLowerCase();
     return initialModels.filter((model) => {
+      if (
+        isLocalDeploymentProviderName(model.provider_name) ||
+        isLocalDeploymentProviderName(model.vendor)
+      ) {
+        return false;
+      }
       if (model.provider_id !== selectedProviderId) {
         return false;
       }

@@ -3,6 +3,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 
 from nta_backend.schemas.model_deployment import (
     AgentDeploymentStatus,
@@ -13,7 +14,7 @@ from nta_backend.schemas.model_deployment import (
     ModelDeploymentEvent,
     ModelDeploymentSummary,
 )
-from nta_backend.schemas.model_registry import RegistryModelSummary
+from nta_backend.schemas.model_registry import RegistryModelChatRequest
 from nta_backend.services.inference_machine_service import InferenceMachineService
 from nta_backend.services.model_deployment_service import ModelDeploymentService
 
@@ -25,6 +26,11 @@ machine_service = InferenceMachineService()
 @router.get("", response_model=list[ModelDeploymentSummary])
 async def list_deployments() -> list[ModelDeploymentSummary]:
     return await service.list_deployments()
+
+
+@router.get("/my", response_model=list[ModelDeploymentSummary])
+async def list_my_deployments() -> list[ModelDeploymentSummary]:
+    return await service.list_my_deployments()
 
 
 @router.get("/machines", response_model=list[InferenceMachineSummary])
@@ -98,16 +104,65 @@ async def refresh_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/{deployment_id}/publish", response_model=RegistryModelSummary)
-async def publish_deployment_to_experience(deployment_id: UUID) -> RegistryModelSummary:
+@router.post("/{deployment_id}/stop", response_model=ModelDeploymentSummary)
+async def stop_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
     try:
-        return await service.publish_to_experience(deployment_id)
+        return await service.stop_deployment(deployment_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Deployment not found") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"infer-agent request failed: {exc}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/start", response_model=ModelDeploymentSummary)
+async def start_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
+    try:
+        return await service.start_deployment(deployment_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Deployment not found") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"infer-agent request failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/unload", response_model=ModelDeploymentSummary)
+async def unload_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
+    try:
+        return await service.unload_deployment(deployment_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Deployment not found") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"infer-agent request failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/chat/stream")
+async def stream_deployment_chat(
+    deployment_id: UUID,
+    payload: RegistryModelChatRequest,
+) -> StreamingResponse:
+    try:
+        stream = await service.stream_chat_deployment(deployment_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Deployment not found") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"infer-agent request failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return StreamingResponse(
+        stream,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/{deployment_id}/events", response_model=list[ModelDeploymentEvent])

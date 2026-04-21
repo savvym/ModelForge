@@ -1,20 +1,22 @@
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nta_backend.core.auth_context import get_current_user_id
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import SessionLocal
 from nta_backend.core.project_context import resolve_active_project_id
-from nta_backend.models.modeling import Endpoint, Model, ModelProvider
+from nta_backend.models.modeling import Endpoint, Model
 from nta_backend.schemas.model_deployment import (
     AgentDeploymentSpec,
     AgentDeploymentStatus,
@@ -28,7 +30,7 @@ from nta_backend.schemas.model_deployment import (
     ObjectStorageCredentials,
     ObjectStorageSource,
 )
-from nta_backend.schemas.model_registry import RegistryModelSummary
+from nta_backend.schemas.model_registry import RegistryModelChatRequest
 from nta_backend.services.inference_machine_service import (
     InferenceMachineRuntimeConfig,
     agent_headers,
@@ -38,7 +40,6 @@ from nta_backend.services.inference_machine_service import (
 from nta_backend.services.system_config_service import load_system_huggingface_config
 
 DEPLOYMENT_ENDPOINT_TYPE = "infer-agent-vllm"
-LOCAL_DEPLOYMENT_PROVIDER_PREFIX = "infer-agent / "
 DEFAULT_HUGGINGFACE_ALLOW_PATTERNS = [
     "*.json",
     "*.model",
@@ -100,6 +101,75 @@ def _redact_spec(spec: AgentDeploymentSpec) -> dict[str, Any]:
     return redact(spec.model_dump(mode="json"))
 
 
+def _deployment_served_model_name(
+    config: dict[str, Any],
+    model_name: str | None = None,
+) -> str | None:
+    spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
+    spec_model = spec.get("model") if isinstance(spec.get("model"), dict) else {}
+    served_name = spec_model.get("served_name")
+    if isinstance(served_name, str) and served_name.strip():
+        return served_name.strip()
+    return model_name.strip() if isinstance(model_name, str) and model_name.strip() else None
+
+
+def _is_unloaded_config(config: dict[str, Any]) -> bool:
+    return bool(config.get("unloaded_at"))
+
+
+def _is_superseded_config(config: dict[str, Any], endpoint_id: UUID) -> bool:
+    if config.get("superseded_by"):
+        return True
+    agent_status = (
+        config.get("agent_status") if isinstance(config.get("agent_status"), dict) else {}
+    )
+    status_deployment_id = agent_status.get("deployment_id")
+    return bool(status_deployment_id and str(status_deployment_id) != str(endpoint_id))
+
+
+def _extract_usage_tokens(payload: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return None, None, None
+
+    input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
+    output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
+    total_tokens = usage.get("total_tokens")
+    return (
+        int(input_tokens) if isinstance(input_tokens, int | float) else None,
+        int(output_tokens) if isinstance(output_tokens, int | float) else None,
+        int(total_tokens) if isinstance(total_tokens, int | float) else None,
+    )
+
+
+def _sse_payload(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+async def _iter_sse_events(response: httpx.Response) -> AsyncIterator[tuple[str | None, str]]:
+    event_name: str | None = None
+    data_lines: list[str] = []
+
+    async for raw_line in response.aiter_lines():
+        line = raw_line.rstrip("\r")
+        if not line:
+            if data_lines:
+                yield event_name, "\n".join(data_lines)
+                event_name = None
+                data_lines = []
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+            continue
+        if line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+
+    if data_lines:
+        yield event_name, "\n".join(data_lines)
+
+
 def _serialize_deployment(
     endpoint: Endpoint,
     model_name: str | None = None,
@@ -108,21 +178,26 @@ def _serialize_deployment(
     agent_status = (
         config.get("agent_status") if isinstance(config.get("agent_status"), dict) else {}
     )
-    spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
-    model = spec.get("model") if isinstance(spec.get("model"), dict) else {}
     status_deployment_id = agent_status.get("deployment_id")
-    is_superseded = bool(config.get("superseded_by"))
-    if status_deployment_id and str(status_deployment_id) != str(endpoint.id):
-        is_superseded = True
+    is_superseded = _is_superseded_config(config, endpoint.id)
+    is_unloaded = _is_unloaded_config(config)
     phase = str(agent_status.get("phase") or "") if agent_status.get("phase") else None
     endpoint_url = agent_status.get("endpoint") or config.get("endpoint_url")
     progress = int(agent_status.get("progress") or 0)
     last_event = agent_status.get("last_event")
-    if is_superseded:
+    is_current = bool(status_deployment_id and str(status_deployment_id) == str(endpoint.id))
+    if is_unloaded:
+        phase = "unloaded"
+        endpoint_url = None
+        progress = 100
+        last_event = config.get("unloaded_reason") or "部署已卸载"
+        is_current = False
+    elif is_superseded:
         phase = "superseded"
         endpoint_url = None
         progress = 100
         last_event = config.get("superseded_reason") or "已被同一推理机器上的新部署替换"
+        is_current = False
     return ModelDeploymentSummary(
         id=endpoint.id,
         name=endpoint.name,
@@ -135,7 +210,8 @@ def _serialize_deployment(
         experience_model_id=config.get("experience_model_id"),
         experience_provider_id=config.get("experience_provider_id"),
         agent_base_url=config.get("agent_base_url"),
-        served_model_name=model.get("served_name"),
+        served_model_name=_deployment_served_model_name(config, model_name),
+        is_current=is_current,
         generation=int(config.get("generation") or agent_status.get("generation") or 0),
         phase=phase,
         progress=progress,
@@ -199,45 +275,6 @@ def _normalize_machine_active_deployments(
     return deployments
 
 
-def _local_provider_name(machine_name: str | None) -> str:
-    suffix = (machine_name or "local").strip() or "local"
-    return f"{LOCAL_DEPLOYMENT_PROVIDER_PREFIX}{suffix}"[:120]
-
-
-def _serialize_registry_model(
-    model: Model,
-    provider_name: str | None,
-) -> RegistryModelSummary:
-    object_storage_metadata = _read_object_storage_import(model)
-    huggingface_metadata = _read_huggingface_import(model)
-    return RegistryModelSummary(
-        id=model.id,
-        name=model.name,
-        model_code=model.model_code,
-        vendor=model.vendor,
-        source=model.source,
-        api_format=model.api_format,
-        base_model=model.base_model,
-        category=model.category,
-        description=model.description,
-        import_source_type=object_storage_metadata.get("source_type")
-        or huggingface_metadata.get("source_type"),
-        import_source_uri=object_storage_metadata.get("source_uri")
-        or huggingface_metadata.get("source_uri"),
-        import_bucket=object_storage_metadata.get("bucket"),
-        import_object_key=object_storage_metadata.get("object_key"),
-        import_repo_id=huggingface_metadata.get("repo_id"),
-        import_revision=huggingface_metadata.get("revision"),
-        status=model.status,
-        provider_id=model.provider_id,
-        provider_name=provider_name,
-        is_provider_managed=model.is_provider_managed,
-        last_synced_at=model.last_synced_at,
-        created_at=model.created_at,
-        updated_at=model.updated_at,
-    )
-
-
 class ModelDeploymentService:
     async def list_deployments(self) -> list[ModelDeploymentSummary]:
         async with SessionLocal() as session:
@@ -256,6 +293,35 @@ class ModelDeploymentService:
                 _serialize_deployment(endpoint, model_name) for endpoint, model_name in rows.all()
             ]
             return _normalize_machine_active_deployments(deployments)
+
+    async def list_my_deployments(self) -> list[ModelDeploymentSummary]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                    Endpoint.status != "deleted",
+                )
+                .order_by(Endpoint.updated_at.desc())
+            )
+            deployments: list[ModelDeploymentSummary] = []
+            for endpoint, model_name in rows.all():
+                config = _deployment_config(endpoint)
+                if _is_unloaded_config(config) or _is_superseded_config(config, endpoint.id):
+                    continue
+                agent_status = (
+                    config.get("agent_status")
+                    if isinstance(config.get("agent_status"), dict)
+                    else {}
+                )
+                phase = str(agent_status.get("phase") or "")
+                has_been_ready = bool(config.get("has_been_ready"))
+                if endpoint.status == "active" or phase in {"ready", "stopped"} or has_been_ready:
+                    deployments.append(_serialize_deployment(endpoint, model_name))
+            return deployments
 
     async def deploy_model(
         self,
@@ -347,7 +413,32 @@ class ModelDeploymentService:
         await self._save_agent_status(deployment_id, status)
         return await self.get_deployment(deployment_id)
 
-    async def publish_to_experience(self, deployment_id: UUID) -> RegistryModelSummary:
+    async def stop_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if (
+                endpoint is None
+                or endpoint.project_id != project_id
+                or endpoint.endpoint_type != DEPLOYMENT_ENDPOINT_TYPE
+            ):
+                raise KeyError(str(deployment_id))
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                raise ValueError("该部署已卸载。")
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+
+        agent_status = await self._get_agent_status(machine)
+        if agent_status.deployment_id != str(deployment_id):
+            raise ValueError("该部署不是当前运行中的部署。")
+        if agent_status.phase in {"idle", "stopped"}:
+            raise ValueError("该部署当前没有运行中的 vLLM 容器。")
+
+        stopped_status = await self._delete_agent_current(machine)
+        await self._save_agent_status(deployment_id, stopped_status)
+        return await self.get_deployment(deployment_id)
+
+    async def start_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
             rows = await session.execute(
@@ -364,130 +455,305 @@ class ModelDeploymentService:
                 raise KeyError(str(deployment_id))
             endpoint, model = row
             if model is None:
-                raise ValueError("部署任务没有关联模型，无法接入体验中心。")
+                raise ValueError("部署任务没有关联模型，无法启动。")
             config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                raise ValueError("该部署已卸载，无法启动。")
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+            hf_config = await load_system_huggingface_config(session)
+
+            stored_spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
+            stored_model = (
+                stored_spec.get("model") if isinstance(stored_spec.get("model"), dict) else {}
+            )
+            stored_engine = (
+                stored_spec.get("engine") if isinstance(stored_spec.get("engine"), dict) else {}
+            )
+            spec = self._build_spec(
+                model,
+                DeployModelRequest(
+                    name=endpoint.name,
+                    machine_id=machine.id,
+                    served_model_name=(
+                        str(stored_model.get("served_name"))
+                        if stored_model.get("served_name")
+                        else model.model_code or model.name
+                    ),
+                    gpu_ids=(
+                        [
+                            int(gpu_id)
+                            for gpu_id in stored_engine.get("gpu_ids", [])
+                            if isinstance(gpu_id, int | float)
+                        ]
+                        if isinstance(stored_engine.get("gpu_ids"), list)
+                        else None
+                    ),
+                    tensor_parallel_size=(
+                        int(stored_engine["tensor_parallel_size"])
+                        if isinstance(stored_engine.get("tensor_parallel_size"), int | float)
+                        else None
+                    ),
+                    max_model_len=(
+                        int(stored_engine["max_model_len"])
+                        if isinstance(stored_engine.get("max_model_len"), int | float)
+                        else None
+                    ),
+                    dtype=(
+                        str(stored_engine["dtype"])
+                        if isinstance(stored_engine.get("dtype"), str)
+                        else None
+                    ),
+                ),
+                inference_machine=machine,
+                system_huggingface_config=hf_config,
+            )
+            current_agent_status = await self._get_agent_status(machine)
+            stored_generation = int(config.get("generation") or stored_spec.get("generation") or 0)
+            spec.deployment_id = str(endpoint.id)
+            spec.desired_phase = "running"
+            spec.generation = max(1, stored_generation + 1, current_agent_status.generation + 1)
+
+            next_config = {
+                key: value
+                for key, value in config.items()
+                if key
+                not in {
+                    "superseded_at",
+                    "superseded_by",
+                    "superseded_reason",
+                    "unloaded_at",
+                    "unloaded_reason",
+                }
+            }
+            endpoint.config_json = {
+                **next_config,
+                "endpoint_url": None,
+                "generation": spec.generation,
+                "spec": _redact_spec(spec),
+            }
+            endpoint.status = "deploying"
+            await session.commit()
+
+        agent_status = await self._put_agent_spec(spec, machine)
+        await self._save_agent_status(deployment_id, agent_status)
+        return await self.get_deployment(deployment_id)
+
+    async def unload_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if (
+                endpoint is None
+                or endpoint.project_id != project_id
+                or endpoint.endpoint_type != DEPLOYMENT_ENDPOINT_TYPE
+            ):
+                raise KeyError(str(deployment_id))
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                return _serialize_deployment(endpoint)
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+
+        agent_status: AgentDeploymentStatus | None = None
+        current_agent_status = await self._get_agent_status(machine)
+        if current_agent_status.deployment_id == str(deployment_id):
+            agent_status = await self._delete_agent_current(machine)
+
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None or endpoint.project_id != project_id:
+                raise KeyError(str(deployment_id))
+            config = _deployment_config(endpoint)
+            status_payload = (
+                agent_status.model_dump(mode="json")
+                if agent_status is not None
+                else (
+                    config.get("agent_status")
+                    if isinstance(config.get("agent_status"), dict)
+                    else {}
+                )
+            )
+            endpoint.config_json = {
+                **config,
+                "agent_status": {
+                    **status_payload,
+                    "phase": "unloaded",
+                    "progress": 100,
+                    "endpoint": None,
+                    "last_event": "deployment unloaded",
+                    "error": None,
+                },
+                "endpoint_url": None,
+                "unloaded_at": _now().isoformat(),
+                "unloaded_reason": "部署已卸载",
+            }
+            endpoint.status = "unloaded"
+            await self._unpublish_deployment_model(session, config)
+            await session.commit()
+            await session.refresh(endpoint)
+            return _serialize_deployment(endpoint)
+
+    async def stream_chat_deployment(
+        self,
+        deployment_id: UUID,
+        payload: RegistryModelChatRequest,
+    ) -> AsyncIterator[str]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.id == deployment_id,
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                )
+            )
+            row = rows.one_or_none()
+            if row is None:
+                raise KeyError(str(deployment_id))
+            endpoint, model_name = row
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config) or _is_superseded_config(config, endpoint.id):
+                raise ValueError("该部署当前不可用。")
+            served_model_name = _deployment_served_model_name(config, model_name)
+            if not served_model_name:
+                raise ValueError("部署缺少 Model ID，无法发起对话。")
             machine = await load_runtime_for_endpoint(session, project_id, config)
 
         agent_status = await self._get_agent_status(machine)
         await self._save_agent_status(deployment_id, agent_status)
-        if agent_status.deployment_id and agent_status.deployment_id != str(deployment_id):
-            raise ValueError("当前部署已被同一推理机器上的新部署替换，不能接入体验中心。")
+        if agent_status.deployment_id != str(deployment_id):
+            raise ValueError("该部署已被同一推理机器上的其他部署替换。")
         if agent_status.phase != "ready" or not agent_status.endpoint:
-            raise ValueError("部署尚未可用，请等待 vLLM ready 后再接入体验中心。")
+            raise ValueError("部署尚未 ready，暂不能发起体验。")
 
-        async with SessionLocal() as session:
-            project_id = await resolve_active_project_id(session)
-            rows = await session.execute(
-                select(Endpoint, Model)
-                .join(Model, Endpoint.model_id == Model.id, isouter=True)
-                .where(
-                    Endpoint.id == deployment_id,
-                    Endpoint.project_id == project_id,
-                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
-                )
+        messages = [
+            {
+                "role": message.role,
+                "content": message.content.strip(),
+            }
+            for message in payload.messages
+            if message.content.strip()
+        ]
+        if not messages:
+            raise ValueError("请输入至少一条有效消息。")
+
+        endpoint_url = agent_status.endpoint.rstrip("/")
+        provider_name = machine.name
+
+        async def generator() -> AsyncIterator[str]:
+            start_time = perf_counter()
+            usage_input_tokens: int | None = None
+            usage_output_tokens: int | None = None
+            usage_total_tokens: int | None = None
+            request_id: str | None = None
+            yielded_reasoning = False
+
+            yield _sse_payload(
+                {
+                    "type": "start",
+                    "model_name": served_model_name,
+                    "model_code": served_model_name,
+                    "provider_name": provider_name,
+                    "api_format": "chat-completions",
+                    "reasoning_depth": payload.reasoning_depth,
+                }
             )
-            row = rows.one_or_none()
-            if row is None:
-                raise KeyError(str(deployment_id))
-            endpoint, model = row
-            if model is None:
-                raise ValueError("部署任务没有关联模型，无法接入体验中心。")
 
-            config = _deployment_config(endpoint)
-            spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
-            spec_model = spec.get("model") if isinstance(spec.get("model"), dict) else {}
-            served_model_name = str(
-                spec_model.get("served_name") or model.model_code or model.name
-            ).strip()
-            if not served_model_name:
-                raise ValueError("部署任务缺少 served model name。")
-
-            provider_name = _local_provider_name(config.get("machine_name"))
-            provider_rows = await session.execute(
-                select(ModelProvider).where(
-                    ModelProvider.project_id == project_id,
-                    ModelProvider.name == provider_name,
-                )
-            )
-            provider = provider_rows.scalar_one_or_none()
-            if provider is None:
-                provider = ModelProvider(
-                    project_id=project_id,
-                    name=provider_name,
-                    provider_type="openai-compatible",
-                    adapter="litellm",
-                    api_format="chat-completions",
-                    base_url=agent_status.endpoint.rstrip("/"),
-                    api_key=None,
-                    organization=None,
-                    description=f"由 infer-agent 部署任务 {endpoint.name} 自动接入。",
-                    headers_json=None,
-                    status="active",
-                    created_by=get_current_user_id(),
-                )
-                session.add(provider)
-                await session.flush()
-            else:
-                provider.provider_type = "openai-compatible"
-                provider.adapter = "litellm"
-                provider.api_format = "chat-completions"
-                provider.base_url = agent_status.endpoint.rstrip("/")
-                provider.api_key = None
-                provider.status = "active"
-                provider.description = f"由 infer-agent 部署任务 {endpoint.name} 自动接入。"
-
-            other_model_rows = await session.execute(
-                select(Model).where(
-                    Model.project_id == project_id,
-                    Model.provider_id == provider.id,
-                    Model.id != model.id,
-                )
-            )
-            for previous_model in other_model_rows.scalars().all():
-                previous_model.provider_id = None
-                if previous_model.vendor == provider.name:
-                    previous_model.vendor = None
-                if isinstance(previous_model.capabilities_json, dict):
-                    previous_model.capabilities_json = {
+            request_body: dict[str, Any] = {
+                "model": served_model_name,
+                "messages": messages,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+                "temperature": 0.6,
+                "max_tokens": 2048,
+            }
+            if payload.parameters:
+                protected_keys = {"model", "messages", "stream", "stream_options"}
+                request_body.update(
+                    {
                         key: value
-                        for key, value in previous_model.capabilities_json.items()
-                        if key != "local_deployment_publish"
+                        for key, value in payload.parameters.items()
+                        if key not in protected_keys
                     }
-
-            capabilities = (
-                model.capabilities_json if isinstance(model.capabilities_json, dict) else {}
-            )
-            model.provider_id = provider.id
-            model.model_code = served_model_name
-            model.vendor = provider.name
-            model.api_format = "chat-completions"
-            model.category = model.category or "chat-model"
-            model.status = "active"
-            model.capabilities_json = {
-                **capabilities,
-                "local_deployment_publish": {
-                    "deployment_id": str(endpoint.id),
-                    "provider_id": str(provider.id),
-                    "endpoint_url": agent_status.endpoint,
-                    "served_model_name": served_model_name,
-                    "published_at": _now().isoformat(),
-                },
-            }
-            endpoint.config_json = {
-                **config,
-                "experience_model_id": str(model.id),
-                "experience_provider_id": str(provider.id),
-                "endpoint_url": agent_status.endpoint,
-                "published_at": _now().isoformat(),
-            }
+                )
 
             try:
-                await session.commit()
-            except IntegrityError as exc:
-                await session.rollback()
-                raise ValueError("接入体验中心失败：Provider 或模型编码已存在。") from exc
-            await session.refresh(model)
-            return _serialize_registry_model(model, provider.name)
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{endpoint_url}/chat/completions",
+                        headers={
+                            "Accept": "text/event-stream",
+                            "Content-Type": "application/json",
+                        },
+                        json=request_body,
+                    ) as response:
+                        request_id = response.headers.get("x-request-id") or response.headers.get(
+                            "request-id"
+                        )
+                        if response.status_code >= 400:
+                            detail = (await response.aread()).decode("utf-8", errors="replace")
+                            yield _sse_payload(
+                                {
+                                    "type": "error",
+                                    "message": detail
+                                    or f"vLLM request failed: {response.status_code}",
+                                }
+                            )
+                            return
+
+                        async for _event_name, raw_data in _iter_sse_events(response):
+                            if raw_data == "[DONE]":
+                                break
+                            payload_data = json.loads(raw_data)
+                            choices = payload_data.get("choices")
+                            if isinstance(choices, list) and choices:
+                                choice = choices[0] if isinstance(choices[0], dict) else {}
+                                delta_data = choice.get("delta") if isinstance(choice, dict) else {}
+                                if isinstance(delta_data, dict):
+                                    content = delta_data.get("content")
+                                    if isinstance(content, str) and content:
+                                        yield _sse_payload(
+                                            {
+                                                "type": "text_delta",
+                                                "delta": content,
+                                            }
+                                        )
+                                    reasoning_delta = delta_data.get("reasoning_content")
+                                    if isinstance(reasoning_delta, str) and reasoning_delta:
+                                        yielded_reasoning = True
+                                        yield _sse_payload(
+                                            {
+                                                "type": "reasoning_delta",
+                                                "delta": reasoning_delta,
+                                            }
+                                        )
+
+                            input_tokens, output_tokens, total_tokens = _extract_usage_tokens(
+                                payload_data
+                            )
+                            usage_input_tokens = input_tokens or usage_input_tokens
+                            usage_output_tokens = output_tokens or usage_output_tokens
+                            usage_total_tokens = total_tokens or usage_total_tokens
+
+                yield _sse_payload(
+                    {
+                        "type": "done",
+                        "latency_ms": int((perf_counter() - start_time) * 1000),
+                        "request_id": request_id,
+                        "input_tokens": usage_input_tokens,
+                        "output_tokens": usage_output_tokens,
+                        "total_tokens": usage_total_tokens,
+                        "reasoning_available": yielded_reasoning,
+                        "streaming_mode": "deployment",
+                    }
+                )
+            except Exception as exc:
+                yield _sse_payload({"type": "error", "message": str(exc)})
+
+        return generator()
 
     async def list_events(
         self,
@@ -519,6 +785,12 @@ class ModelDeploymentService:
             project_id = await resolve_active_project_id(session)
             machine = await load_inference_machine_runtime(session, project_id, machine_id)
 
+        return await self._delete_agent_current(machine)
+
+    async def _delete_agent_current(
+        self,
+        machine: InferenceMachineRuntimeConfig,
+    ) -> AgentDeploymentStatus:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.delete(
                 f"{machine.agent_base_url}/v1/deployments/current",
@@ -659,6 +931,8 @@ class ModelDeploymentService:
             if endpoint is None:
                 return
             config = _deployment_config(endpoint)
+            if _is_unloaded_config(config):
+                return
             if (
                 agent_status.deployment_id
                 and agent_status.deployment_id != str(endpoint.id)
@@ -693,6 +967,8 @@ class ModelDeploymentService:
                 **config,
                 "agent_status": agent_status.model_dump(mode="json"),
                 "endpoint_url": agent_status.endpoint,
+                "has_been_ready": bool(config.get("has_been_ready"))
+                or agent_status.phase == "ready",
                 "updated_from_agent_at": _now().isoformat(),
             }
             if agent_status.phase == "ready":
@@ -701,6 +977,8 @@ class ModelDeploymentService:
                 endpoint.status = "failed"
             elif agent_status.phase == "stopped":
                 endpoint.status = "stopped"
+            elif agent_status.phase == "stopping":
+                endpoint.status = "stopping"
             else:
                 endpoint.status = "deploying"
             if agent_status.deployment_id == str(endpoint.id) and agent_status.phase == "ready":

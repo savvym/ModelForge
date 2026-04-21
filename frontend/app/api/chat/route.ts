@@ -13,6 +13,8 @@ const API_BASE_URL =
 type ExperienceChatRouteRequest = {
   messages?: UIMessage[];
   modelId?: string;
+  targetId?: string;
+  targetType?: "registry" | "deployment";
   reasoningDepth?: "高" | "中" | "关闭";
   networkEnabled?: boolean;
   mcpEnabled?: boolean;
@@ -97,10 +99,11 @@ async function* iterateSsePayloads(stream: ReadableStream<Uint8Array>) {
 
 export async function POST(request: Request) {
   const body = (await request.json()) as ExperienceChatRouteRequest;
-  const modelId = body.modelId?.trim();
+  const targetType = body.targetType === "deployment" ? "deployment" : "registry";
+  const targetId = (body.targetId ?? body.modelId)?.trim();
   const messages = Array.isArray(body.messages) ? body.messages : [];
 
-  if (!modelId) {
+  if (!targetId) {
     return new Response("Model id is required.", { status: 400 });
   }
 
@@ -122,7 +125,12 @@ export async function POST(request: Request) {
     .find((part) => part.startsWith(`${CURRENT_PROJECT_COOKIE}=`))
     ?.split("=")[1];
 
-  const backendResponse = await fetch(`${API_BASE_URL}/models/${modelId}/chat/stream`, {
+  const backendPath =
+    targetType === "deployment"
+      ? `/model-deployments/${targetId}/chat/stream`
+      : `/models/${targetId}/chat/stream`;
+
+  const backendResponse = await fetch(`${API_BASE_URL}${backendPath}`, {
     method: "POST",
     cache: "no-store",
     headers: {

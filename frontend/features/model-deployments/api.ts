@@ -5,14 +5,19 @@ import type {
   InferenceMachineHealth,
   InferenceMachineSummary,
   ModelDeploymentEvent,
-  ModelDeploymentSummary,
-  RegistryModelSummary
+  ModelDeploymentSummary
 } from "@/types/api";
 
 export async function getModelDeployments(
   projectId?: string | null
 ): Promise<ModelDeploymentSummary[]> {
   return apiFetch<ModelDeploymentSummary[]>("/model-deployments", { projectId });
+}
+
+export async function getMyDeployments(
+  projectId?: string | null
+): Promise<ModelDeploymentSummary[]> {
+  return apiFetch<ModelDeploymentSummary[]>("/model-deployments/my", { projectId });
 }
 
 export async function createDeploymentFromModel(
@@ -34,10 +39,26 @@ export async function refreshModelDeployment(
   });
 }
 
-export async function publishDeploymentToExperience(
+export async function stopModelDeployment(
   deploymentId: string
-): Promise<RegistryModelSummary> {
-  return apiFetch<RegistryModelSummary>(`/model-deployments/${deploymentId}/publish`, {
+): Promise<ModelDeploymentSummary> {
+  return apiFetch<ModelDeploymentSummary>(`/model-deployments/${deploymentId}/stop`, {
+    method: "POST"
+  });
+}
+
+export async function startModelDeployment(
+  deploymentId: string
+): Promise<ModelDeploymentSummary> {
+  return apiFetch<ModelDeploymentSummary>(`/model-deployments/${deploymentId}/start`, {
+    method: "POST"
+  });
+}
+
+export async function unloadModelDeployment(
+  deploymentId: string
+): Promise<ModelDeploymentSummary> {
+  return apiFetch<ModelDeploymentSummary>(`/model-deployments/${deploymentId}/unload`, {
     method: "POST"
   });
 }

@@ -226,6 +226,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const [pendingDeploy, setPendingDeploy] = useState<PendingDeploy>(null);
   const [deployMachines, setDeployMachines] = useState<InferenceMachineSummary[]>([]);
   const [deployMachineId, setDeployMachineId] = useState("");
+  const [deployModelId, setDeployModelId] = useState("");
   const [isDeployMachineLoading, setIsDeployMachineLoading] = useState(false);
   const [deployMachineError, setDeployMachineError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -503,6 +504,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     setPendingDeploy(model);
     setDeployMachines([]);
     setDeployMachineId("");
+    setDeployModelId(model.model_code ?? model.name);
     setDeployMachineError(null);
     setIsDeployMachineLoading(true);
     void getInferenceMachines()
@@ -527,13 +529,17 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
       setDeployMachineError("请选择一台推理机器。");
       return;
     }
+    if (!deployModelId.trim()) {
+      setDeployMachineError("请填写 Model ID。");
+      return;
+    }
 
     const model = pendingDeploy;
     runAction(async () => {
       const deployment = await createDeploymentFromModel(model.id, {
         machine_id: deployMachineId,
         name: `${model.name} 部署`,
-        served_model_name: model.model_code ?? model.name
+        served_model_name: deployModelId.trim()
       });
       setPendingDeploy(null);
       refreshWithMessage("success", `${model.name} 已提交部署任务。`);
@@ -904,6 +910,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
         onOpenChange={(open) => {
           if (!open) {
             setPendingDeploy(null);
+            setDeployModelId("");
             setDeployMachineError(null);
           }
         }}
@@ -926,32 +933,42 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           {isDeployMachineLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">正在读取推理机器...</div>
           ) : deployMachines.length ? (
-            <div className="flex flex-col gap-2">
-              <Label>推理机器</Label>
-              <Select onValueChange={setDeployMachineId} value={deployMachineId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="请选择" />
-                </SelectTrigger>
-                <SelectContent>
-                  {deployMachines.map((machine) => (
-                    <SelectItem key={machine.id} value={machine.id}>
-                      {machine.name} · {readMachineGpuString(machine)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedDeployMachine ? (
-                <div className="rounded-md border border-border bg-background/40 px-3 py-2">
-                  <div className="text-sm text-foreground">{readMachineGpuString(selectedDeployMachine)}</div>
-                  <div className="mt-1 font-mono text-xs text-muted-foreground">
-                    {selectedDeployMachine.agent_base_url}
+            <div className="grid gap-4">
+              <FormField
+                label="Model ID"
+                onChange={setDeployModelId}
+                placeholder="例如 Qwen2.5-1.5B"
+                value={deployModelId}
+              />
+              <div className="flex flex-col gap-2">
+                <Label>推理机器</Label>
+                <Select onValueChange={setDeployMachineId} value={deployMachineId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deployMachines.map((machine) => (
+                      <SelectItem key={machine.id} value={machine.id}>
+                        {machine.name} · {readMachineGpuString(machine)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedDeployMachine ? (
+                  <div className="rounded-md border border-border bg-background/40 px-3 py-2">
+                    <div className="text-sm text-foreground">
+                      {readMachineGpuString(selectedDeployMachine)}
+                    </div>
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">
+                      {selectedDeployMachine.agent_base_url}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      状态：{selectedDeployMachine.last_health_status ?? "未检查"} · TP{" "}
+                      {selectedDeployMachine.tensor_parallel_size} · {selectedDeployMachine.dtype}
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    状态：{selectedDeployMachine.last_health_status ?? "未检查"} · TP{" "}
-                    {selectedDeployMachine.tensor_parallel_size} · {selectedDeployMachine.dtype}
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">

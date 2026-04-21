@@ -2,18 +2,18 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import {
   Activity,
   ChevronDown,
   Cpu,
   ExternalLink,
   KeyRound,
+  Play,
   Plus,
   RefreshCw,
-  Rocket,
   Server,
   SlidersHorizontal,
+  Square,
   Terminal,
   Trash2
 } from "lucide-react";
@@ -52,11 +52,14 @@ import {
   checkInferenceMachineHealth,
   createInferenceMachine,
   deleteInferenceMachine,
+  getMyDeployments,
   getModelDeployments,
   getModelDeploymentEvents,
   getInferenceMachines,
-  publishDeploymentToExperience,
-  refreshModelDeployment
+  refreshModelDeployment,
+  startModelDeployment,
+  stopModelDeployment,
+  unloadModelDeployment
 } from "@/features/model-deployments/api";
 import { cn } from "@/lib/utils";
 import type {
@@ -98,9 +101,11 @@ function formatPhase(value?: string | null) {
     ready: "可用",
     smoke_testing: "测试中",
     starting: "启动中",
+    stopping: "停止中",
     stopped: "已停止",
     stopping_previous: "切换中",
     superseded: "已替换",
+    unloaded: "已卸载",
     warming: "预热中"
   };
   return labels[value ?? ""] ?? value ?? "--";
@@ -113,7 +118,7 @@ function phaseVariant(value?: string | null): "default" | "secondary" | "destruc
   if (value === "error" || value === "failed") {
     return "destructive";
   }
-  if (value === "stopped" || value === "superseded") {
+  if (value === "stopped" || value === "superseded" || value === "unloaded") {
     return "secondary";
   }
   return "outline";
@@ -140,9 +145,24 @@ function shouldPollDeployment(deployment: ModelDeploymentSummary) {
     "pending",
     "smoke_testing",
     "starting",
+    "stopping",
     "stopping_previous",
     "warming"
   ].includes(phase);
+}
+
+function isDeploymentRunning(deployment: ModelDeploymentSummary) {
+  const phase = deployment.phase ?? deployment.status;
+  return ["ready", "active"].includes(phase);
+}
+
+function isDeploymentStopped(deployment: ModelDeploymentSummary) {
+  const phase = deployment.phase ?? deployment.status;
+  return phase === "stopped";
+}
+
+function isDeploymentBusy(deployment: ModelDeploymentSummary) {
+  return shouldPollDeployment(deployment);
 }
 
 function parseRequiredNumber(value: string, label: string) {
@@ -199,15 +219,17 @@ function applyMachineHealth(
 
 export function ModelDeploymentsConsole({
   initialDeployments,
+  initialMyDeployments,
   initialMachines,
   selectedDeploymentId
 }: {
   initialDeployments: ModelDeploymentSummary[];
+  initialMyDeployments: ModelDeploymentSummary[];
   initialMachines: InferenceMachineSummary[];
   selectedDeploymentId?: string | null;
 }) {
-  const router = useRouter();
   const [deployments, setDeployments] = useState(initialDeployments);
+  const [myDeployments, setMyDeployments] = useState(initialMyDeployments);
   const [machines, setMachines] = useState(initialMachines);
   const [events, setEvents] = useState<ModelDeploymentEvent[]>([]);
   const [selectedId, setSelectedId] = useState(
@@ -226,31 +248,30 @@ export function ModelDeploymentsConsole({
     tone: "success" | "error";
     text: string;
   } | null>(null);
-  const selected = useMemo(
+  const selectedTask = useMemo(
     () => deployments.find((deployment) => deployment.id === selectedId) ?? deployments[0] ?? null,
     [deployments, selectedId]
   );
-  const selectedPhase = selected?.phase ?? selected?.status ?? null;
-  const canPublishSelected = selectedPhase === "ready";
   const pollingDeploymentIds = useMemo(
     () =>
-      deployments
+      [...deployments, ...myDeployments]
         .filter(shouldPollDeployment)
         .map((deployment) => deployment.id)
+        .filter((deploymentId, index, deploymentIds) => deploymentIds.indexOf(deploymentId) === index)
         .sort()
         .join("|"),
-    [deployments]
+    [deployments, myDeployments]
   );
 
   useEffect(() => {
-    if (!selected?.id) {
+    if (!selectedTask?.id) {
       setEvents([]);
       return;
     }
-    void getModelDeploymentEvents(selected.id)
+    void getModelDeploymentEvents(selectedTask.id)
       .then(setEvents)
       .catch(() => setEvents([]));
-  }, [selected?.id]);
+  }, [selectedTask?.id]);
 
   useEffect(() => {
     if (!pollingDeploymentIds) {
@@ -270,11 +291,15 @@ export function ModelDeploymentsConsole({
         await Promise.allSettled(
           deploymentIds.map((deploymentId) => refreshModelDeployment(deploymentId))
         );
-        const updatedDeployments = await getModelDeployments();
+        const [updatedDeployments, updatedMyDeployments] = await Promise.all([
+          getModelDeployments(),
+          getMyDeployments()
+        ]);
         if (isCancelled) {
           return;
         }
         setDeployments(updatedDeployments);
+        setMyDeployments(updatedMyDeployments);
         if (selectedId) {
           void getModelDeploymentEvents(selectedId).then(setEvents).catch(() => setEvents([]));
         }
@@ -295,47 +320,74 @@ export function ModelDeploymentsConsole({
   }, [pollingDeploymentIds, selectedId]);
 
   function refreshSelected() {
-    if (!selected?.id) {
+    if (!selectedTask?.id) {
       return;
     }
     startTransition(() => {
-      void refreshModelDeployment(selected.id)
-        .then(() => getModelDeployments())
-        .then((updatedDeployments) => {
+      void refreshModelDeployment(selectedTask.id)
+        .then(() => Promise.all([getModelDeployments(), getMyDeployments()]))
+        .then(([updatedDeployments, updatedMyDeployments]) => {
           setDeployments(updatedDeployments);
-          void getModelDeploymentEvents(selected.id).then(setEvents).catch(() => setEvents([]));
+          setMyDeployments(updatedMyDeployments);
+          void getModelDeploymentEvents(selectedTask.id)
+            .then(setEvents)
+            .catch(() => setEvents([]));
         });
     });
   }
 
-  function publishSelectedToExperience() {
-    if (!selected?.id) {
+  function refreshDeploymentLists() {
+    startTransition(() => {
+      void Promise.all([getModelDeployments(), getMyDeployments()])
+        .then(([updatedDeployments, updatedMyDeployments]) => {
+          setDeployments(updatedDeployments);
+          setMyDeployments(updatedMyDeployments);
+        })
+        .catch((error: unknown) => {
+          setDeploymentFeedback({
+            tone: "error",
+            text: error instanceof Error ? error.message : "刷新部署列表失败。"
+          });
+        });
+    });
+  }
+
+  function runDeploymentAction(
+    deployment: ModelDeploymentSummary,
+    action: "start" | "stop" | "unload"
+  ) {
+    if (action === "unload" && !window.confirm(`确认卸载部署 ${deployment.name}？`)) {
       return;
     }
     setDeploymentFeedback(null);
+    const actionLabels = {
+      start: "启动",
+      stop: "停止",
+      unload: "卸载"
+    };
+    const actionMap = {
+      start: startModelDeployment,
+      stop: stopModelDeployment,
+      unload: unloadModelDeployment
+    };
     startTransition(() => {
-      void publishDeploymentToExperience(selected.id)
-        .then((model) => {
-          setDeployments((current) =>
-            current.map((item) =>
-              item.id === selected.id
-                ? {
-                    ...item,
-                    experience_model_id: model.id,
-                    experience_provider_id: model.provider_id ?? null
-                  }
-                : item
-            )
-          );
+      void actionMap[action](deployment.id)
+        .then(() => Promise.all([getModelDeployments(), getMyDeployments()]))
+        .then(([updatedDeployments, updatedMyDeployments]) => {
+          setDeployments(updatedDeployments);
+          setMyDeployments(updatedMyDeployments);
           setDeploymentFeedback({
             tone: "success",
-            text: `${model.name} 已接入体验中心。`
+            text: `${deployment.name} 已提交${actionLabels[action]}。`
           });
         })
         .catch((error: unknown) => {
           setDeploymentFeedback({
             tone: "error",
-            text: error instanceof Error ? error.message : "接入体验中心失败。"
+            text:
+              error instanceof Error
+                ? error.message
+                : `${deployment.name} ${actionLabels[action]}失败。`
           });
         });
     });
@@ -592,7 +644,12 @@ export function ModelDeploymentsConsole({
                 {deployments.length} 个在线推理部署记录
               </div>
             </div>
-            <Button disabled={!selected || isPending} onClick={refreshSelected} size="sm" variant="outline">
+            <Button
+              disabled={!selectedTask || isPending}
+              onClick={refreshSelected}
+              size="sm"
+              variant="outline"
+            >
               <RefreshCw className={cn(isPending ? "animate-spin" : "")} />
               刷新状态
             </Button>
@@ -615,7 +672,7 @@ export function ModelDeploymentsConsole({
                   deployments.map((deployment) => (
                     <TableRow
                       className="cursor-pointer"
-                      data-state={deployment.id === selected?.id ? "selected" : undefined}
+                      data-state={deployment.id === selectedTask?.id ? "selected" : undefined}
                       key={deployment.id}
                       onClick={() => setSelectedId(deployment.id)}
                     >
@@ -661,108 +718,187 @@ export function ModelDeploymentsConsole({
               </TableBody>
             </Table>
           </ConsoleListTableSurface>
+
+          <div className="border-t border-border p-4">
+            <div className="rounded-lg border border-border bg-background/40">
+              <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Terminal />
+                    部署事件
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {selectedTask?.name ?? "选择一个部署任务查看事件"}
+                  </div>
+                </div>
+              </div>
+              <ScrollArea className="h-[300px]">
+                <div className="flex flex-col gap-3 p-3">
+                  {events.length ? (
+                    events.map((event) => (
+                      <div
+                        className="rounded-md border border-border bg-card/80 px-3 py-2"
+                        key={event.id ?? event.created_at}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-sm text-foreground">{event.message}</div>
+                          <Badge variant={event.level === "error" ? "destructive" : "outline"}>
+                            {event.event_type}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {formatDateTime(event.created_at)}
+                          {typeof event.progress === "number" ? ` · ${event.progress}%` : ""}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-12 text-center text-sm text-muted-foreground">
+                      暂无事件，刷新状态后再试。
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
         </section>
 
         <section className="overflow-hidden rounded-lg border border-border bg-card/80">
-          <div className="border-b border-border px-4 py-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Server />
-              当前部署
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Server />
+                我的部署
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {myDeployments.length} 个可管理部署
+              </div>
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {selected?.name ?? "选择一个部署记录查看详情"}
-            </div>
+            <Button disabled={isPending} onClick={refreshDeploymentLists} size="sm" variant="outline">
+              <RefreshCw className={cn(isPending ? "animate-spin" : "")} />
+              刷新
+            </Button>
           </div>
 
-          {selected ? (
-            <div className="flex flex-col gap-4 p-4">
-              {deploymentFeedback ? (
-                <div
-                  className={cn(
-                    "rounded-md border px-3 py-2 text-sm",
-                    deploymentFeedback.tone === "success"
-                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                      : "border-destructive/20 bg-destructive/10 text-destructive"
-                  )}
-                >
-                  {deploymentFeedback.text}
-                </div>
-              ) : null}
-
-              <div className="grid gap-3 text-sm">
-                <InfoRow label="模型" value={selected.served_model_name ?? selected.model_name ?? "--"} />
-                <InfoRow label="机器" value={selected.machine_name ?? "--"} />
-                <InfoRow label="Agent" value={selected.agent_base_url ?? "--"} />
-                <InfoRow label="最近事件" value={selected.last_event ?? "--"} />
-                <InfoRow label="错误" value={selected.error_message ?? "--"} tone="danger" />
+          <div className="flex flex-col gap-3 p-4">
+            {deploymentFeedback ? (
+              <div
+                className={cn(
+                  "rounded-md border px-3 py-2 text-sm",
+                  deploymentFeedback.tone === "success"
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : "border-destructive/20 bg-destructive/10 text-destructive"
+                )}
+              >
+                {deploymentFeedback.text}
               </div>
+            ) : null}
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={isPending || !canPublishSelected}
-                  onClick={publishSelectedToExperience}
-                  size="sm"
-                  type="button"
-                >
-                  <Rocket />
-                  {selected.experience_model_id ? "重新接入体验中心" : "接入体验中心"}
-                </Button>
-                {selected.experience_model_id ? (
-                  <Button
-                    onClick={() => router.push("/experience")}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    去体验
-                  </Button>
-                ) : null}
-              </div>
+            {myDeployments.length ? (
+              <ScrollArea className="max-h-[620px] pr-1">
+                <div className="flex flex-col gap-3">
+                  {myDeployments.map((deployment) => {
+                    const phase = deployment.phase ?? deployment.status;
+                    const canStop = isDeploymentRunning(deployment);
+                    const canStart = isDeploymentStopped(deployment);
+                    const isBusy = isDeploymentBusy(deployment);
 
-              {selected.endpoint_url ? (
-                <a
-                  className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
-                  href={selected.endpoint_url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink />
-                  {selected.endpoint_url}
-                </a>
-              ) : null}
-
-              <div className="rounded-lg border border-border bg-background/40">
-                <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm font-medium">
-                  <Terminal />
-                  部署事件
-                </div>
-                <ScrollArea className="h-[380px]">
-                  <div className="flex flex-col gap-3 p-3">
-                    {events.length ? (
-                      events.map((event) => (
-                        <div className="rounded-md border border-border bg-card/80 px-3 py-2" key={event.id ?? event.created_at}>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="text-sm text-foreground">{event.message}</div>
-                            <Badge variant={event.level === "error" ? "destructive" : "outline"}>
-                              {event.event_type}
-                            </Badge>
+                    return (
+                      <div
+                        className="rounded-lg border border-border bg-background/40 p-4"
+                        key={deployment.id}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-foreground">
+                              {deployment.served_model_name ?? deployment.model_name ?? deployment.name}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {deployment.machine_name ?? "--"} · generation {deployment.generation}
+                            </div>
                           </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {formatDateTime(event.created_at)}
-                            {typeof event.progress === "number" ? ` · ${event.progress}%` : ""}
-                          </div>
+                          <Badge variant={phaseVariant(phase)}>{formatPhase(phase)}</Badge>
                         </div>
-                      ))
-                    ) : (
-                      <div className="py-12 text-center text-sm text-muted-foreground">
-                        暂无事件，刷新状态后再试。
+
+                        <div className="mt-3 grid gap-2 text-sm">
+                          <InfoRow label="任务" value={deployment.name} />
+                          <InfoRow label="Agent" value={deployment.agent_base_url ?? "--"} />
+                          <InfoRow label="最近事件" value={deployment.last_event ?? "--"} />
+                          <InfoRow
+                            label="错误"
+                            tone="danger"
+                            value={deployment.error_message ?? "--"}
+                          />
+                        </div>
+
+                        <div className="mt-4 flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${deployment.progress}%` }}
+                            />
+                          </div>
+                          <span className="w-9 text-right text-xs text-muted-foreground">
+                            {deployment.progress}%
+                          </span>
+                        </div>
+
+                        {deployment.endpoint_url ? (
+                          <a
+                            className="mt-3 inline-flex max-w-full items-center gap-2 truncate rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                            href={deployment.endpoint_url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            <ExternalLink className="shrink-0" />
+                            <span className="truncate">{deployment.endpoint_url}</span>
+                          </a>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-wrap justify-end gap-2">
+                          <Button
+                            disabled={isPending || !canStart || isBusy}
+                            onClick={() => runDeploymentAction(deployment, "start")}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            <Play />
+                            启动
+                          </Button>
+                          <Button
+                            disabled={isPending || !canStop || isBusy}
+                            onClick={() => runDeploymentAction(deployment, "stop")}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            <Square />
+                            停止
+                          </Button>
+                          <Button
+                            className="text-destructive hover:text-destructive"
+                            disabled={isPending || isBusy}
+                            onClick={() => runDeploymentAction(deployment, "unload")}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <Trash2 />
+                            卸载
+                          </Button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-background/40 px-4 py-10 text-center text-sm text-muted-foreground">
+                暂无可管理部署。模型完成部署后会出现在这里。
               </div>
-            </div>
-          ) : null}
+            )}
+          </div>
         </section>
       </div>
 

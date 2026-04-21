@@ -1249,6 +1249,7 @@ export interface ModelDeploymentSummary {
   endpoint_url?: string | null;
   agent_base_url?: string | null;
   served_model_name?: string | null;
+  is_current: boolean;
   generation: number;
   phase?: string | null;
   progress: number;

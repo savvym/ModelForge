@@ -112,6 +112,7 @@ class ModelDeploymentSummary(BaseModel):
     endpoint_url: str | None = None
     agent_base_url: str | None = None
     served_model_name: str | None = None
+    is_current: bool = False
     generation: int = 0
     phase: str | None = None
     progress: int = 0
