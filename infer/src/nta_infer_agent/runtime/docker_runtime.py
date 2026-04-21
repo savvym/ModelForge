@@ -19,7 +19,6 @@ class DockerRuntime:
 
     async def start_vllm(self, spec: DeploymentSpec, model_path: Path) -> str:
         await self.stop_current()
-        gpu_devices = ",".join(str(gpu_id) for gpu_id in spec.engine.gpu_ids)
         command = [
             self.settings.docker_bin,
             "run",
@@ -29,7 +28,7 @@ class DockerRuntime:
             "--restart",
             "unless-stopped",
             "--gpus",
-            f"device={gpu_devices}",
+            "all",
             "--ipc=host",
             "-p",
             f"{spec.engine.listen_port}:{self.settings.vllm_container_port}",

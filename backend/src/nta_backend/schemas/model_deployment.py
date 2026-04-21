@@ -104,6 +104,8 @@ class ModelDeploymentSummary(BaseModel):
     name: str
     model_id: UUID | None = None
     model_name: str | None = None
+    machine_id: UUID | None = None
+    machine_name: str | None = None
     status: str
     endpoint_url: str | None = None
     agent_base_url: str | None = None
@@ -131,8 +133,59 @@ class ModelDeploymentEvent(BaseModel):
 
 class DeployModelRequest(BaseModel):
     name: str | None = Field(default=None, max_length=120)
+    machine_id: UUID | None = None
     served_model_name: str | None = Field(default=None, max_length=160)
     gpu_ids: list[int] | None = None
     tensor_parallel_size: int | None = Field(default=None, ge=1, le=16)
     max_model_len: int | None = Field(default=None, ge=1)
     dtype: str | None = None
+
+
+class InferenceMachineSummary(BaseModel):
+    id: UUID
+    name: str
+    agent_base_url: str
+    runtime_public_host: str | None = None
+    description: str | None = None
+    status: str
+    has_agent_token: bool = False
+    vllm_image: str
+    gpu_ids: list[int] = Field(default_factory=list)
+    tensor_parallel_size: int
+    dtype: str
+    gpu_memory_utilization: float
+    max_model_len: int | None = None
+    listen_port: int
+    last_health_status: str | None = None
+    last_health_checked_at: datetime | None = None
+    last_health_error: str | None = None
+    last_node_name: str | None = None
+    last_gpu_count: int | None = None
+    last_gpus: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class InferenceMachineCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    agent_base_url: str = Field(min_length=8, max_length=500)
+    agent_token: str | None = Field(default=None, max_length=4000)
+    runtime_public_host: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=500)
+    vllm_image: str = Field(default="vllm/vllm-openai:latest", min_length=1, max_length=255)
+    gpu_ids: list[int] = Field(default_factory=list)
+    tensor_parallel_size: int = Field(default=8, ge=1, le=64)
+    dtype: str = Field(default="bfloat16", min_length=1, max_length=32)
+    gpu_memory_utilization: float = Field(default=0.85, ge=0.1, le=1.0)
+    max_model_len: int | None = Field(default=None, ge=1)
+    listen_port: int = Field(default=8000, ge=1, le=65535)
+
+
+class InferenceMachineHealth(BaseModel):
+    machine_id: UUID
+    status: str
+    node_name: str | None = None
+    current: dict[str, Any] | None = None
+    gpus: list[dict[str, Any]] = Field(default_factory=list)
+    checked_at: datetime
+    error: str | None = None

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +17,10 @@ class AgentSettings(BaseSettings):
     log_level: str = "INFO"
 
     node_name: str = "h20-node-01"
-    agent_token: SecretStr | None = None
+    agent_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_TOKEN", "INFER_AGENT_TOKEN"),
+    )
 
     state_path: Path = Path("/var/lib/infer-agent/state.db")
     model_cache_dir: Path = Path("/data/model-cache")
@@ -27,9 +30,18 @@ class AgentSettings(BaseSettings):
     container_name: str = "nta-vllm"
     default_vllm_image: str = "vllm/vllm-openai:latest"
     vllm_container_port: int = 8000
-    runtime_public_host: str | None = None
-    huggingface_token: SecretStr | None = None
-    huggingface_endpoint_url: str | None = None
+    runtime_public_host: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RUNTIME_PUBLIC_HOST", "INFER_RUNTIME_PUBLIC_HOST"),
+    )
+    huggingface_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("HF_TOKEN", "HUGGINGFACE_TOKEN", "HUGGINGFACE_HUB_TOKEN"),
+    )
+    huggingface_endpoint_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("HUGGINGFACE_ENDPOINT_URL", "HF_ENDPOINT"),
+    )
 
     reconcile_interval_seconds: float = 2.0
     health_timeout_seconds: int = 900

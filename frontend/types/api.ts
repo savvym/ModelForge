@@ -1241,6 +1241,8 @@ export interface ModelDeploymentSummary {
   name: string;
   model_id?: string | null;
   model_name?: string | null;
+  machine_id?: string | null;
+  machine_name?: string | null;
   status: string;
   endpoint_url?: string | null;
   agent_base_url?: string | null;
@@ -1268,11 +1270,62 @@ export interface ModelDeploymentEvent {
 
 export interface DeployModelInput {
   name?: string | null;
+  machine_id?: string | null;
   served_model_name?: string | null;
   gpu_ids?: number[] | null;
   tensor_parallel_size?: number | null;
   max_model_len?: number | null;
   dtype?: string | null;
+}
+
+export interface InferenceMachineSummary {
+  id: string;
+  name: string;
+  agent_base_url: string;
+  runtime_public_host?: string | null;
+  description?: string | null;
+  status: string;
+  has_agent_token: boolean;
+  vllm_image: string;
+  gpu_ids: number[];
+  tensor_parallel_size: number;
+  dtype: string;
+  gpu_memory_utilization: number;
+  max_model_len?: number | null;
+  listen_port: number;
+  last_health_status?: string | null;
+  last_health_checked_at?: string | null;
+  last_health_error?: string | null;
+  last_node_name?: string | null;
+  last_gpu_count?: number | null;
+  last_gpus: Record<string, unknown>[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InferenceMachineCreateInput {
+  name: string;
+  agent_base_url: string;
+  agent_token?: string | null;
+  runtime_public_host?: string | null;
+  description?: string | null;
+  vllm_image: string;
+  gpu_ids?: number[] | null;
+  tensor_parallel_size: number;
+  dtype: string;
+  gpu_memory_utilization: number;
+  max_model_len?: number | null;
+  listen_port: number;
+}
+
+export interface InferenceMachineHealth {
+  machine_id: string;
+  status: string;
+  node_name?: string | null;
+  current?: Record<string, unknown> | null;
+  gpus: Record<string, unknown>[];
+  checked_at: string;
+  error?: string | null;
 }
 
 export interface ObjectStorePrefixEntry {

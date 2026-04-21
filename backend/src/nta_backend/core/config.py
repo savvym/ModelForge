@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     infer_runtime_public_host: str | None = None
     infer_object_storage_endpoint_url: str | None = None
     infer_vllm_image: str = "vllm/vllm-openai:latest"
-    infer_default_gpu_ids: str = "0,1,2,3,4,5,6,7"
+    infer_default_gpu_ids: str = ""
     infer_default_tensor_parallel_size: int = 8
     infer_default_dtype: str = "bfloat16"
     infer_default_gpu_memory_utilization: float = 0.85

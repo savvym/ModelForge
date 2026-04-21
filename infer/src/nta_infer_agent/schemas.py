@@ -49,7 +49,7 @@ class ModelBinding(BaseModel):
 class EngineSpec(BaseModel):
     name: Literal["vllm"] = "vllm"
     image: str
-    gpu_ids: list[int] = Field(default_factory=lambda: list(range(8)))
+    gpu_ids: list[int] = Field(default_factory=list)
     tensor_parallel_size: int = 8
     pipeline_parallel_size: int = 1
     listen_host: str = "0.0.0.0"

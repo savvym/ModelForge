@@ -22,7 +22,7 @@ from nta_backend.models.evaluation_v2 import (
 )
 from nta_backend.models.jobs import BatchJob, EvalJob, EvalJobMetric, JobLog
 from nta_backend.models.lake import LakeAsset, LakeBatch
-from nta_backend.models.modeling import Endpoint, Model, ModelProvider
+from nta_backend.models.modeling import Endpoint, InferenceMachine, Model, ModelProvider
 from nta_backend.models.probe import Probe, ProbeHeartbeat, ProbeTask
 from nta_backend.models.security import SecurityEvent, VpcBinding
 from nta_backend.models.system import SystemSetting
@@ -37,6 +37,7 @@ __all__ = [
     "DatasetFile",
     "DatasetVersion",
     "Endpoint",
+    "InferenceMachine",
     "EvalSpec",
     "EvalSpecVersion",
     "EvalSuite",

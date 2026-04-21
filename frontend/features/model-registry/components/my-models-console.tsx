@@ -33,6 +33,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -67,7 +75,10 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { S3BrowserDialog } from "@/features/object-store/components/s3-browser-dialog";
-import { createDeploymentFromModel } from "@/features/model-deployments/api";
+import {
+  createDeploymentFromModel,
+  getInferenceMachines
+} from "@/features/model-deployments/api";
 import {
   deleteRegistryModel,
   importRegistryModelFromHuggingFace,
@@ -77,6 +88,7 @@ import {
 } from "@/features/model-registry/api";
 import { cn } from "@/lib/utils";
 import type {
+  InferenceMachineSummary,
   RegistryModelHuggingFaceRevisionResult,
   RegistryModelHuggingFaceSearchResult,
   RegistryModelSummary
@@ -84,6 +96,7 @@ import type {
 
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type PendingDelete = { id: string; name: string } | null;
+type PendingDeploy = RegistryModelSummary | null;
 type ImportSourceType = "object-storage" | "huggingface";
 
 const MODEL_PAGE_SIZE = 12;
@@ -191,11 +204,30 @@ function formatRevisionKind(kind: RegistryModelHuggingFaceRevisionResult["kind"]
   return "convert";
 }
 
+function readMachineGpuString(machine: InferenceMachineSummary) {
+  const firstGpu = machine.last_gpus[0];
+  const gpuName =
+    typeof firstGpu?.name === "string" && firstGpu.name.trim() ? firstGpu.name : "GPU";
+  const gpuCount = machine.last_gpu_count ?? machine.last_gpus.length;
+  if (!gpuCount) {
+    return "GPU 未检查";
+  }
+  const memoryTotalMb =
+    typeof firstGpu?.memory_total_mb === "number" ? firstGpu.memory_total_mb : null;
+  const memoryText = memoryTotalMb == null ? "" : ` · ${Math.round(memoryTotalMb / 1024)} GB/卡`;
+  return `${gpuCount} x ${gpuName}${memoryText}`;
+}
+
 export function MyModelsConsole({ initialModels }: { initialModels: RegistryModelSummary[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
+  const [pendingDeploy, setPendingDeploy] = useState<PendingDeploy>(null);
+  const [deployMachines, setDeployMachines] = useState<InferenceMachineSummary[]>([]);
+  const [deployMachineId, setDeployMachineId] = useState("");
+  const [isDeployMachineLoading, setIsDeployMachineLoading] = useState(false);
+  const [deployMachineError, setDeployMachineError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelPage, setModelPage] = useState(1);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -215,6 +247,10 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const deferredQuery = useDeferredValue(query);
 
   const myModels = useMemo(() => initialModels.filter(isMyModel), [initialModels]);
+  const selectedDeployMachine = useMemo(
+    () => deployMachines.find((machine) => machine.id === deployMachineId) ?? null,
+    [deployMachineId, deployMachines]
+  );
 
   const filteredModels = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -463,12 +499,43 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     });
   }
 
-  function deployModel(model: RegistryModelSummary) {
+  function openDeployDialog(model: RegistryModelSummary) {
+    setPendingDeploy(model);
+    setDeployMachines([]);
+    setDeployMachineId("");
+    setDeployMachineError(null);
+    setIsDeployMachineLoading(true);
+    void getInferenceMachines()
+      .then((machines) => {
+        const activeMachines = machines.filter((machine) => machine.status === "active");
+        setDeployMachines(activeMachines);
+        setDeployMachineId(activeMachines[0]?.id ?? "");
+      })
+      .catch((error: unknown) => {
+        setDeployMachineError(error instanceof Error ? error.message : "读取推理机器失败。");
+      })
+      .finally(() => {
+        setIsDeployMachineLoading(false);
+      });
+  }
+
+  function deployModel() {
+    if (!pendingDeploy) {
+      return;
+    }
+    if (!deployMachineId) {
+      setDeployMachineError("请选择一台推理机器。");
+      return;
+    }
+
+    const model = pendingDeploy;
     runAction(async () => {
       const deployment = await createDeploymentFromModel(model.id, {
+        machine_id: deployMachineId,
         name: `${model.name} 部署`,
         served_model_name: model.model_code ?? model.name
       });
+      setPendingDeploy(null);
       refreshWithMessage("success", `${model.name} 已提交部署任务。`);
       router.push(`/endpoint?deploymentId=${encodeURIComponent(deployment.id)}`);
     });
@@ -589,7 +656,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                           <div className="flex justify-end gap-2">
                             <Button
                               disabled={isPending}
-                              onClick={() => deployModel(model)}
+                              onClick={() => openDeployDialog(model)}
                               size="sm"
                               variant="outline"
                             >
@@ -832,6 +899,91 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeploy(null);
+            setDeployMachineError(null);
+          }
+        }}
+        open={Boolean(pendingDeploy)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>选择推理机器</DialogTitle>
+            <DialogDescription>
+              将 {pendingDeploy?.name ?? ""} 部署到已接入 infer-agent 的机器。
+            </DialogDescription>
+          </DialogHeader>
+
+          {deployMachineError ? (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {deployMachineError}
+            </div>
+          ) : null}
+
+          {isDeployMachineLoading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">正在读取推理机器...</div>
+          ) : deployMachines.length ? (
+            <div className="flex flex-col gap-2">
+              <Label>推理机器</Label>
+              <Select onValueChange={setDeployMachineId} value={deployMachineId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="请选择" />
+                </SelectTrigger>
+                <SelectContent>
+                  {deployMachines.map((machine) => (
+                    <SelectItem key={machine.id} value={machine.id}>
+                      {machine.name} · {readMachineGpuString(machine)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedDeployMachine ? (
+                <div className="rounded-md border border-border bg-background/40 px-3 py-2">
+                  <div className="text-sm text-foreground">{readMachineGpuString(selectedDeployMachine)}</div>
+                  <div className="mt-1 font-mono text-xs text-muted-foreground">
+                    {selectedDeployMachine.agent_base_url}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    状态：{selectedDeployMachine.last_health_status ?? "未检查"} · TP{" "}
+                    {selectedDeployMachine.tensor_parallel_size} · {selectedDeployMachine.dtype}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
+              <div className="text-sm text-foreground">还没有可用的推理机器</div>
+              <div className="mt-1 text-xs leading-6 text-muted-foreground">
+                先在“在线推理”页面添加已部署 infer-agent 的 H20 机器。
+              </div>
+              <Button className="mt-4" onClick={() => router.push("/endpoint")} size="sm">
+                去添加机器
+              </Button>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              disabled={isPending}
+              onClick={() => setPendingDeploy(null)}
+              type="button"
+              variant="outline"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={isPending || isDeployMachineLoading || !deployMachines.length}
+              onClick={deployModel}
+              type="button"
+            >
+              {isPending ? "提交中..." : "部署"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <S3BrowserDialog
         description="浏览当前项目的 COS / S3 对象存储，进入 Checkpoint 所在路径后确认。"

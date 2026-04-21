@@ -102,19 +102,20 @@ journalctl -u infer-agent -f
 
 ## 4. 控制面配置
 
-在控制面的 `.env` 中配置：
+在控制面进入“在线推理 / 推理机器”，新增已经部署 infer-agent 的机器：
 
-```bash
-INFER_AGENT_BASE_URL=http://10.0.0.12:9000
-INFER_AGENT_TOKEN=replace-with-a-long-random-token
-INFER_RUNTIME_PUBLIC_HOST=10.0.0.12
-INFER_VLLM_IMAGE=vllm/vllm-openai:latest
-INFER_DEFAULT_GPU_IDS=0,1,2,3,4,5,6,7
-INFER_DEFAULT_TENSOR_PARALLEL_SIZE=8
-INFER_DEFAULT_DTYPE=bfloat16
-INFER_DEFAULT_GPU_MEMORY_UTILIZATION=0.85
-INFER_DEFAULT_LISTEN_PORT=8000
-```
+- Agent URL：例如 `http://10.0.0.12:9000`
+- Agent Token：与 H20 机器上 `INFER_AGENT_TOKEN` 保持一致
+- Runtime Public Host：例如 `10.0.0.12`
+- vLLM Image：例如 `vllm/vllm-openai:latest`
+- Tensor Parallel Size：例如 `8`
+- Dtype：例如 `bfloat16`
+- GPU Memory Utilization：例如 `0.85`
+- Listen Port：例如 `8000`
+
+infer-agent 启动 vLLM 容器时会直接使用 Docker `--gpus all`，机器上的 GPU 明细由健康检查接口回传给控制面展示。
+
+控制面仍保留 `INFER_AGENT_BASE_URL`、`INFER_AGENT_TOKEN` 等环境变量作为历史兼容兜底；新部署建议在“推理机器”里维护资源池，并在“我的模型”点击部署时选择目标机器。
 
 如果 H20 能稳定访问 Hugging Face，推荐优先在“系统管理 / 系统配置”里配置 Hugging Face Token，然后在“我的模型”里选择 Hugging Face，登记 `repo_id` 和 `revision` 后直接部署。私有仓库可以二选一：
 

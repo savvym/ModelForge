@@ -26,6 +26,12 @@ from nta_backend.schemas.model_deployment import (
     ObjectStorageCredentials,
     ObjectStorageSource,
 )
+from nta_backend.services.inference_machine_service import (
+    InferenceMachineRuntimeConfig,
+    agent_headers,
+    load_inference_machine_runtime,
+    load_runtime_for_endpoint,
+)
 from nta_backend.services.system_config_service import load_system_huggingface_config
 
 DEPLOYMENT_ENDPOINT_TYPE = "infer-agent-vllm"
@@ -49,27 +55,9 @@ def _deployment_config(endpoint: Endpoint) -> dict[str, Any]:
     return endpoint.config_json if isinstance(endpoint.config_json, dict) else {}
 
 
-def _agent_headers() -> dict[str, str]:
-    settings = get_settings()
-    if settings.infer_agent_token is None:
-        return {}
-    return {"Authorization": f"Bearer {settings.infer_agent_token.get_secret_value()}"}
-
-
-def _agent_base_url() -> str:
-    settings = get_settings()
-    if not settings.infer_agent_base_url:
-        raise ValueError("请先配置 INFER_AGENT_BASE_URL，指向 H20 机器上的 infer-agent。")
-    return settings.infer_agent_base_url.rstrip("/")
-
-
 def _normalize_served_name(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value.strip()).strip("-")
     return normalized or "model"
-
-
-def _parse_gpu_ids(raw: str) -> list[int]:
-    return [int(item.strip()) for item in raw.split(",") if item.strip()]
 
 
 def _read_object_storage_import(model: Model) -> dict[str, str]:
@@ -125,6 +113,8 @@ def _serialize_deployment(
         model_name=model_name,
         status=endpoint.status,
         endpoint_url=agent_status.get("endpoint") or config.get("endpoint_url"),
+        machine_id=config.get("machine_id"),
+        machine_name=config.get("machine_name"),
         agent_base_url=config.get("agent_base_url"),
         served_model_name=model.get("served_name"),
         generation=int(config.get("generation") or agent_status.get("generation") or 0),
@@ -171,7 +161,17 @@ class ModelDeploymentService:
                 raise KeyError(str(model_id))
 
             hf_config = await load_system_huggingface_config(session)
-            spec = self._build_spec(model, payload, system_huggingface_config=hf_config)
+            machine = await load_inference_machine_runtime(
+                session,
+                project_id,
+                payload.machine_id,
+            )
+            spec = self._build_spec(
+                model,
+                payload,
+                inference_machine=machine,
+                system_huggingface_config=hf_config,
+            )
             redacted_spec = _redact_spec(spec)
             endpoint = Endpoint(
                 project_id=project_id,
@@ -182,7 +182,9 @@ class ModelDeploymentService:
                 status="deploying",
                 created_by=get_current_user_id(),
                 config_json={
-                    "agent_base_url": _agent_base_url(),
+                    "machine_id": str(machine.id) if machine.id else None,
+                    "machine_name": machine.name,
+                    "agent_base_url": machine.agent_base_url,
                     "generation": spec.generation,
                     "spec": redacted_spec,
                     "endpoint_url": None,
@@ -192,7 +194,7 @@ class ModelDeploymentService:
             session.add(endpoint)
             await session.flush()
 
-            current_agent_status = await self._get_agent_status()
+            current_agent_status = await self._get_agent_status(machine)
             spec.deployment_id = str(endpoint.id)
             spec.generation = max(1, current_agent_status.generation + 1)
             endpoint.config_json = {
@@ -203,7 +205,7 @@ class ModelDeploymentService:
             await session.commit()
             await session.refresh(endpoint)
 
-        agent_status = await self._put_agent_spec(spec)
+        agent_status = await self._put_agent_spec(spec, machine)
         await self._save_agent_status(endpoint.id, agent_status)
         return await self.get_deployment(endpoint.id)
 
@@ -227,8 +229,13 @@ class ModelDeploymentService:
             endpoint = await session.get(Endpoint, deployment_id)
             if endpoint is None or endpoint.project_id != project_id:
                 raise KeyError(str(deployment_id))
+            machine = await load_runtime_for_endpoint(
+                session,
+                project_id,
+                _deployment_config(endpoint),
+            )
 
-        status = await self._get_agent_status()
+        status = await self._get_agent_status(machine)
         await self._save_agent_status(deployment_id, status)
         return await self.get_deployment(deployment_id)
 
@@ -237,20 +244,35 @@ class ModelDeploymentService:
         deployment_id: UUID,
         limit: int = 200,
     ) -> list[ModelDeploymentEvent]:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None or endpoint.project_id != project_id:
+                raise KeyError(str(deployment_id))
+            machine = await load_runtime_for_endpoint(
+                session,
+                project_id,
+                _deployment_config(endpoint),
+            )
+
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                f"{_agent_base_url()}/v1/events/recent",
-                headers=_agent_headers(),
+                f"{machine.agent_base_url}/v1/events/recent",
+                headers=agent_headers(machine),
                 params={"deployment_id": str(deployment_id), "limit": limit},
             )
             response.raise_for_status()
             return [ModelDeploymentEvent.model_validate(item) for item in response.json()]
 
-    async def stop_current(self) -> AgentDeploymentStatus:
+    async def stop_current(self, machine_id: UUID | None = None) -> AgentDeploymentStatus:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            machine = await load_inference_machine_runtime(session, project_id, machine_id)
+
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.delete(
-                f"{_agent_base_url()}/v1/deployments/current",
-                headers=_agent_headers(),
+                f"{machine.agent_base_url}/v1/deployments/current",
+                headers=agent_headers(machine),
             )
             response.raise_for_status()
             return AgentDeploymentStatus.model_validate(response.json())
@@ -260,18 +282,18 @@ class ModelDeploymentService:
         model: Model,
         payload: DeployModelRequest,
         *,
+        inference_machine: InferenceMachineRuntimeConfig,
         system_huggingface_config: dict[str, str | None] | None = None,
     ) -> AgentDeploymentSpec:
-        settings = get_settings()
         object_storage_metadata = _read_object_storage_import(model)
         huggingface_metadata = _read_huggingface_import(model)
 
         served_name = _normalize_served_name(
             payload.served_model_name or model.model_code or model.name
         )
-        gpu_ids = payload.gpu_ids or _parse_gpu_ids(settings.infer_default_gpu_ids)
+        gpu_ids = payload.gpu_ids or inference_machine.gpu_ids
         tensor_parallel_size = (
-            payload.tensor_parallel_size or settings.infer_default_tensor_parallel_size
+            payload.tensor_parallel_size or inference_machine.tensor_parallel_size
         )
         model_source = self._build_model_source(
             object_storage_metadata=object_storage_metadata,
@@ -288,13 +310,13 @@ class ModelDeploymentService:
                 source=model_source,
             ),
             engine=EngineSpec(
-                image=settings.infer_vllm_image,
+                image=inference_machine.vllm_image,
                 gpu_ids=gpu_ids,
                 tensor_parallel_size=tensor_parallel_size,
-                listen_port=settings.infer_default_listen_port,
-                dtype=payload.dtype or settings.infer_default_dtype,
-                gpu_memory_utilization=settings.infer_default_gpu_memory_utilization,
-                max_model_len=payload.max_model_len or settings.infer_default_max_model_len,
+                listen_port=inference_machine.listen_port,
+                dtype=payload.dtype or inference_machine.dtype,
+                gpu_memory_utilization=inference_machine.gpu_memory_utilization,
+                max_model_len=payload.max_model_len or inference_machine.max_model_len,
             ),
         )
 
@@ -351,21 +373,28 @@ class ModelDeploymentService:
 
         raise ValueError("当前模型缺少 Hugging Face 或对象存储导入路径，无法部署到 infer-agent。")
 
-    async def _put_agent_spec(self, spec: AgentDeploymentSpec) -> AgentDeploymentStatus:
+    async def _put_agent_spec(
+        self,
+        spec: AgentDeploymentSpec,
+        machine: InferenceMachineRuntimeConfig,
+    ) -> AgentDeploymentStatus:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.put(
-                f"{_agent_base_url()}/v1/deployments/current",
-                headers=_agent_headers(),
+                f"{machine.agent_base_url}/v1/deployments/current",
+                headers=agent_headers(machine),
                 json=spec.model_dump(mode="json"),
             )
             response.raise_for_status()
             return AgentDeploymentStatus.model_validate(response.json())
 
-    async def _get_agent_status(self) -> AgentDeploymentStatus:
+    async def _get_agent_status(
+        self,
+        machine: InferenceMachineRuntimeConfig,
+    ) -> AgentDeploymentStatus:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
-                f"{_agent_base_url()}/v1/deployments/current",
-                headers=_agent_headers(),
+                f"{machine.agent_base_url}/v1/deployments/current",
+                headers=agent_headers(machine),
             )
             response.raise_for_status()
             return AgentDeploymentStatus.model_validate(response.json())
