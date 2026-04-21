@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -58,6 +59,7 @@ from nta_backend.schemas.evaluation_v2 import (
 )
 
 EVAL_ARTIFACT_BUCKET = get_settings().s3_bucket_eval_artifacts
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -1070,11 +1072,20 @@ class EvaluationRunV2Service:
         return EvaluationRunCancelResponse(run_id=run_uuid, status=status)
 
     async def delete_run(self, run_id: str) -> None:
+        run_uuid = UUID(run_id)
+        project_id: UUID
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            run = await _get_run_or_raise(session, project_id=project_id, run_id=UUID(run_id))
+            run = await _get_run_or_raise(session, project_id=project_id, run_id=run_uuid)
             if run.status not in {"completed", "failed", "cancelled"}:
                 raise ValueError("仅可删除已结束的任务。")
             await session.delete(run)
             await session.commit()
-        delete_object_prefix(EVAL_ARTIFACT_BUCKET, _run_prefix(project_id, UUID(run_id)))
+        try:
+            delete_object_prefix(EVAL_ARTIFACT_BUCKET, _run_prefix(project_id, run_uuid))
+        except Exception:
+            logger.warning(
+                "Failed to delete evaluation run artifacts after metadata deletion.",
+                extra={"run_id": str(run_uuid), "project_id": str(project_id)},
+                exc_info=True,
+            )

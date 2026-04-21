@@ -93,18 +93,37 @@ def delete_object_prefix(bucket: str, prefix: str) -> None:
 
         response = client.list_objects_v2(**payload)
         objects = response.get("Contents", [])
-        if objects:
-            client.delete_objects(
-                Bucket=bucket,
-                Delete={
-                    "Objects": [{"Key": item["Key"]} for item in objects if item.get("Key")],
-                    "Quiet": True,
-                },
-            )
+        keys = [item["Key"] for item in objects if item.get("Key")]
+        if keys:
+            _delete_objects(client, bucket=bucket, keys=keys)
 
         if not response.get("IsTruncated"):
             break
         continuation_token = response.get("NextContinuationToken")
+
+
+def _delete_objects(client, *, bucket: str, keys: list[str]) -> None:
+    try:
+        client.delete_objects(
+            Bucket=bucket,
+            Delete={
+                "Objects": [{"Key": key} for key in keys],
+                "Quiet": True,
+            },
+        )
+    except ClientError as exc:
+        if not _is_missing_content_md5_error(exc):
+            raise
+        for key in keys:
+            client.delete_object(Bucket=bucket, Key=key)
+
+
+def _is_missing_content_md5_error(exc: ClientError) -> bool:
+    error = exc.response.get("Error", {})
+    return (
+        str(error.get("Code", "")) == "InvalidRequest"
+        and "Content-MD5" in str(error.get("Message", ""))
+    )
 
 
 def list_object_store_buckets() -> list[str]:

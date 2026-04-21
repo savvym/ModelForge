@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { getEvaluationRun } from "@/features/eval/api";
 import { EvaluationRunDetailActions } from "@/features/eval/components/evaluation-run-detail-actions";
+import { EvaluationRunLiveRefresh } from "@/features/eval/components/evaluation-run-live-refresh";
 import { formatEvaluationRunKind, getEvalStatusMeta } from "@/features/eval/status";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import type { EvaluationRunDetailV2, EvaluationRunItemV2, EvaluationRunMetricV2 } from "@/types/api";
@@ -36,6 +37,8 @@ export default async function ModelEvalDetailPage({
 
   return (
     <div className="space-y-6">
+      <EvaluationRunLiveRefresh statuses={[detail.status, ...detail.items.map((item) => item.status)]} />
+
       <section className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
         <div className="space-y-1.5">
           <ConsoleBreadcrumb

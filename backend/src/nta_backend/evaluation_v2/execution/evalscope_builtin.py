@@ -276,6 +276,8 @@ def _call_model(
     temperature: float,
     max_tokens: int | None,
     timeout_s: float,
+    retries: int,
+    retry_interval_s: float,
 ) -> tuple[str, ModelUsage | None, dict[str, Any], str | None, int]:
     api_format = _normalize_api_format(model_binding.api_format)
     payload = _build_request_payload(
@@ -297,26 +299,44 @@ def _call_model(
     if model_binding.organization and api_format != "google":
         headers["OpenAI-Organization"] = model_binding.organization
     started_at = time.perf_counter()
-    try:
-        response = httpx.post(
-            _normalize_request_url(model_binding.api_url, api_format, model_name=model_binding.model_name),
-            headers=headers,
-            json=payload,
-            timeout=timeout_s,
-        )
-        response.raise_for_status()
-        body = response.json()
-    except Exception as exc:  # noqa: BLE001
-        latency_ms = int((time.perf_counter() - started_at) * 1000)
-        return "", None, {}, str(exc), latency_ms
+    last_error = ""
+    max_retries = max(retries, 0)
+    retry_interval = max(retry_interval_s, 0.0)
+    for attempt in range(max_retries + 1):
+        try:
+            response = httpx.post(
+                _normalize_request_url(model_binding.api_url, api_format, model_name=model_binding.model_name),
+                headers=headers,
+                json=payload,
+                timeout=timeout_s,
+            )
+            response.raise_for_status()
+            body = response.json()
+            latency_ms = int((time.perf_counter() - started_at) * 1000)
+            return (
+                _extract_output_text(body, api_format),
+                _extract_usage(body, api_format),
+                body,
+                None,
+                latency_ms,
+            )
+        except httpx.HTTPStatusError as exc:
+            last_error = str(exc)
+            status_code = exc.response.status_code
+            if not _is_retryable_status_code(status_code) or attempt >= max_retries:
+                break
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            if attempt >= max_retries:
+                break
+        if retry_interval > 0:
+            time.sleep(retry_interval)
     latency_ms = int((time.perf_counter() - started_at) * 1000)
-    return (
-        _extract_output_text(body, api_format),
-        _extract_usage(body, api_format),
-        body,
-        None,
-        latency_ms,
-    )
+    return "", None, {}, last_error, latency_ms
+
+
+def _is_retryable_status_code(status_code: int) -> bool:
+    return status_code in {408, 409, 425, 429} or status_code >= 500
 
 
 @register_model_api(_MODEL_API_NAME)
@@ -364,6 +384,8 @@ class NTAV2OpenAICompatibleModelAPI(ModelAPI):
             temperature=config.temperature or 0.0,
             max_tokens=config.max_tokens,
             timeout_s=config.timeout or self.timeout_s,
+            retries=config.retries or 0,
+            retry_interval_s=float(config.retry_interval or 0),
         )
         if error:
             raise RuntimeError(error)
@@ -420,13 +442,10 @@ class EvalScopeBuiltinExecutor(EvaluationEngineAdapter):
             outputs=outputs,
             task_config=task_config,
         )
+        _attach_runtime_hooks(evaluator, context)
         task_config.dataset_args[benchmark_name] = benchmark.to_dict()
         task_config.dump_yaml(outputs.configs_dir)
         evaluator.eval()
-
-        if context.progress_callback is not None:
-            total = item_plan.expected_sample_count or 1
-            context.progress_callback(total, total)
 
         report_payload, metrics, samples = _build_normalized_report(
             output_dir=context.output_dir,
@@ -448,6 +467,68 @@ class EvalScopeBuiltinExecutor(EvaluationEngineAdapter):
             samples=samples,
             artifacts=artifacts,
         )
+
+
+def _attach_runtime_hooks(evaluator: Any, context: ExecutionContext) -> None:
+    if context.progress_callback is not None:
+        _attach_progress_hook(evaluator, context)
+    if context.cancellation_event is not None:
+        _attach_cancellation_hook(evaluator, context)
+
+
+def _attach_progress_hook(evaluator: Any, context: ExecutionContext) -> None:
+    original_collect = getattr(evaluator, "_collect_work_items", None)
+    original_persist = getattr(evaluator, "_persist_result", None)
+    if not callable(original_collect) or not callable(original_persist):
+        return
+
+    progress_state = {"done": 0, "total": 0}
+
+    def collect_with_progress(dataset_dict: Any) -> Any:
+        pool_context = original_collect(dataset_dict)
+        progress_state["done"] = int(getattr(pool_context, "total_cached", 0) or 0)
+        progress_state["total"] = int(getattr(pool_context, "grand_total", 0) or 0)
+        context.progress_callback(progress_state["done"], progress_state["total"])
+        return pool_context
+
+    def persist_with_progress(item: Any, task_state: Any, sample_score: Any) -> None:
+        original_persist(item, task_state, sample_score)
+        progress_state["done"] += 1
+        total = progress_state["total"]
+        if total > 0:
+            progress_state["done"] = min(progress_state["done"], total)
+        context.progress_callback(progress_state["done"], total)
+
+    evaluator._collect_work_items = collect_with_progress
+    evaluator._persist_result = persist_with_progress
+
+
+def _attach_cancellation_hook(evaluator: Any, context: ExecutionContext) -> None:
+    def raise_if_cancelled() -> None:
+        if context.cancellation_event is not None and context.cancellation_event.is_set():
+            raise ExecutionCancelledError("Evaluation item was cancelled.")
+
+    original_process = getattr(evaluator, "_process_work_item", None)
+    if callable(original_process):
+
+        def process_with_cancellation(item: Any, model_prediction_dir: Any) -> Any:
+            raise_if_cancelled()
+            result = original_process(item, model_prediction_dir)
+            raise_if_cancelled()
+            return result
+
+        evaluator._process_work_item = process_with_cancellation
+
+    original_review = getattr(evaluator, "_review_task_state", None)
+    if callable(original_review):
+
+        def review_with_cancellation(task_state: Any) -> Any:
+            raise_if_cancelled()
+            result = original_review(task_state)
+            raise_if_cancelled()
+            return result
+
+        evaluator._review_task_state = review_with_cancellation
 
 
 def _build_model(model_binding: ModelBindingSnapshot, config: GenerateConfig) -> Model:

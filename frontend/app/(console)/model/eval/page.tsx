@@ -17,6 +17,7 @@ import { BenchmarkCatalogTable } from "@/features/eval/components/benchmark-cata
 import { EvalDimensionCatalogTable } from "@/features/eval/components/eval-dimension-catalog-table";
 import { EvaluationLeaderboardListTable } from "@/features/eval/components/evaluation-leaderboard-list-table";
 import { EvaluationRunCreateSheet } from "@/features/eval/components/evaluation-run-create-sheet";
+import { EvaluationRunLiveRefresh } from "@/features/eval/components/evaluation-run-live-refresh";
 import { EvaluationRunListTable } from "@/features/eval/components/evaluation-run-list-table";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
@@ -130,6 +131,7 @@ export default async function ModelEvalPage({
             />
           </ConsoleListToolbar>
 
+          <EvaluationRunLiveRefresh statuses={runs.map((run) => run.status)} />
           <EvaluationRunListTable initialRuns={runs} />
         </>
       ) : null}
