@@ -13,6 +13,7 @@ from nta_backend.schemas.model_deployment import (
     ModelDeploymentEvent,
     ModelDeploymentSummary,
 )
+from nta_backend.schemas.model_registry import RegistryModelSummary
 from nta_backend.services.inference_machine_service import InferenceMachineService
 from nta_backend.services.model_deployment_service import ModelDeploymentService
 
@@ -89,6 +90,18 @@ async def get_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
 async def refresh_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
     try:
         return await service.refresh_deployment(deployment_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Deployment not found") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"infer-agent request failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/publish", response_model=RegistryModelSummary)
+async def publish_deployment_to_experience(deployment_id: UUID) -> RegistryModelSummary:
+    try:
+        return await service.publish_to_experience(deployment_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Deployment not found") from exc
     except httpx.HTTPError as exc:

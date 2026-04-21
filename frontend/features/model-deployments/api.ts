@@ -5,7 +5,8 @@ import type {
   InferenceMachineHealth,
   InferenceMachineSummary,
   ModelDeploymentEvent,
-  ModelDeploymentSummary
+  ModelDeploymentSummary,
+  RegistryModelSummary
 } from "@/types/api";
 
 export async function getModelDeployments(
@@ -29,6 +30,14 @@ export async function refreshModelDeployment(
   deploymentId: string
 ): Promise<ModelDeploymentSummary> {
   return apiFetch<ModelDeploymentSummary>(`/model-deployments/${deploymentId}/refresh`, {
+    method: "POST"
+  });
+}
+
+export async function publishDeploymentToExperience(
+  deploymentId: string
+): Promise<RegistryModelSummary> {
+  return apiFetch<RegistryModelSummary>(`/model-deployments/${deploymentId}/publish`, {
     method: "POST"
   });
 }

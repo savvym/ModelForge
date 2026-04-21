@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   KeyRound,
   Plus,
   RefreshCw,
+  Rocket,
   Server,
   SlidersHorizontal,
   Terminal,
@@ -52,6 +54,7 @@ import {
   deleteInferenceMachine,
   getModelDeploymentEvents,
   getInferenceMachines,
+  publishDeploymentToExperience,
   refreshModelDeployment
 } from "@/features/model-deployments/api";
 import { cn } from "@/lib/utils";
@@ -96,6 +99,7 @@ function formatPhase(value?: string | null) {
     starting: "启动中",
     stopped: "已停止",
     stopping_previous: "切换中",
+    superseded: "已替换",
     warming: "预热中"
   };
   return labels[value ?? ""] ?? value ?? "--";
@@ -108,7 +112,7 @@ function phaseVariant(value?: string | null): "default" | "secondary" | "destruc
   if (value === "error" || value === "failed") {
     return "destructive";
   }
-  if (value === "stopped") {
+  if (value === "stopped" || value === "superseded") {
     return "secondary";
   }
   return "outline";
@@ -188,6 +192,7 @@ export function ModelDeploymentsConsole({
   initialMachines: InferenceMachineSummary[];
   selectedDeploymentId?: string | null;
 }) {
+  const router = useRouter();
   const [deployments, setDeployments] = useState(initialDeployments);
   const [machines, setMachines] = useState(initialMachines);
   const [events, setEvents] = useState<ModelDeploymentEvent[]>([]);
@@ -203,10 +208,16 @@ export function ModelDeploymentsConsole({
     tone: "success" | "error";
     text: string;
   } | null>(null);
+  const [deploymentFeedback, setDeploymentFeedback] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const selected = useMemo(
     () => deployments.find((deployment) => deployment.id === selectedId) ?? deployments[0] ?? null,
     [deployments, selectedId]
   );
+  const selectedPhase = selected?.phase ?? selected?.status ?? null;
+  const canPublishSelected = selectedPhase === "ready";
 
   useEffect(() => {
     if (!selected?.id) {
@@ -229,6 +240,39 @@ export function ModelDeploymentsConsole({
         );
         void getModelDeploymentEvents(updated.id).then(setEvents).catch(() => setEvents([]));
       });
+    });
+  }
+
+  function publishSelectedToExperience() {
+    if (!selected?.id) {
+      return;
+    }
+    setDeploymentFeedback(null);
+    startTransition(() => {
+      void publishDeploymentToExperience(selected.id)
+        .then((model) => {
+          setDeployments((current) =>
+            current.map((item) =>
+              item.id === selected.id
+                ? {
+                    ...item,
+                    experience_model_id: model.id,
+                    experience_provider_id: model.provider_id ?? null
+                  }
+                : item
+            )
+          );
+          setDeploymentFeedback({
+            tone: "success",
+            text: `${model.name} 已接入体验中心。`
+          });
+        })
+        .catch((error: unknown) => {
+          setDeploymentFeedback({
+            tone: "error",
+            text: error instanceof Error ? error.message : "接入体验中心失败。"
+          });
+        });
     });
   }
 
@@ -567,12 +611,47 @@ export function ModelDeploymentsConsole({
 
           {selected ? (
             <div className="flex flex-col gap-4 p-4">
+              {deploymentFeedback ? (
+                <div
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-sm",
+                    deploymentFeedback.tone === "success"
+                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-destructive/20 bg-destructive/10 text-destructive"
+                  )}
+                >
+                  {deploymentFeedback.text}
+                </div>
+              ) : null}
+
               <div className="grid gap-3 text-sm">
                 <InfoRow label="模型" value={selected.served_model_name ?? selected.model_name ?? "--"} />
                 <InfoRow label="机器" value={selected.machine_name ?? "--"} />
                 <InfoRow label="Agent" value={selected.agent_base_url ?? "--"} />
                 <InfoRow label="最近事件" value={selected.last_event ?? "--"} />
                 <InfoRow label="错误" value={selected.error_message ?? "--"} tone="danger" />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={isPending || !canPublishSelected}
+                  onClick={publishSelectedToExperience}
+                  size="sm"
+                  type="button"
+                >
+                  <Rocket />
+                  {selected.experience_model_id ? "重新接入体验中心" : "接入体验中心"}
+                </Button>
+                {selected.experience_model_id ? (
+                  <Button
+                    onClick={() => router.push("/experience")}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    去体验
+                  </Button>
+                ) : null}
               </div>
 
               {selected.endpoint_url ? (

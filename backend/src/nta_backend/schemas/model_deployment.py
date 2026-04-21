@@ -106,6 +106,8 @@ class ModelDeploymentSummary(BaseModel):
     model_name: str | None = None
     machine_id: UUID | None = None
     machine_name: str | None = None
+    experience_model_id: UUID | None = None
+    experience_provider_id: UUID | None = None
     status: str
     endpoint_url: str | None = None
     agent_base_url: str | None = None

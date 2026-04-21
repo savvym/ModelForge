@@ -1243,6 +1243,8 @@ export interface ModelDeploymentSummary {
   model_name?: string | null;
   machine_id?: string | null;
   machine_name?: string | null;
+  experience_model_id?: string | null;
+  experience_provider_id?: string | null;
   status: string;
   endpoint_url?: string | null;
   agent_base_url?: string | null;
