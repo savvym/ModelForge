@@ -659,7 +659,11 @@ class ModelDeploymentService:
             if endpoint is None:
                 return
             config = _deployment_config(endpoint)
-            if agent_status.deployment_id and agent_status.deployment_id != str(endpoint.id):
+            if (
+                agent_status.deployment_id
+                and agent_status.deployment_id != str(endpoint.id)
+                and agent_status.phase == "ready"
+            ):
                 endpoint.config_json = {
                     **config,
                     "last_observed_agent_status": agent_status.model_dump(mode="json"),
@@ -699,7 +703,7 @@ class ModelDeploymentService:
                 endpoint.status = "stopped"
             else:
                 endpoint.status = "deploying"
-            if agent_status.deployment_id == str(endpoint.id):
+            if agent_status.deployment_id == str(endpoint.id) and agent_status.phase == "ready":
                 await self._mark_sibling_deployments_superseded(session, endpoint)
             await session.commit()
 

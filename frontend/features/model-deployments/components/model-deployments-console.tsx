@@ -52,6 +52,7 @@ import {
   checkInferenceMachineHealth,
   createInferenceMachine,
   deleteInferenceMachine,
+  getModelDeployments,
   getModelDeploymentEvents,
   getInferenceMachines,
   publishDeploymentToExperience,
@@ -129,6 +130,19 @@ function healthVariant(value?: string | null): "default" | "secondary" | "destru
     return "secondary";
   }
   return "outline";
+}
+
+function shouldPollDeployment(deployment: ModelDeploymentSummary) {
+  const phase = deployment.phase ?? deployment.status;
+  return [
+    "deploying",
+    "downloading",
+    "pending",
+    "smoke_testing",
+    "starting",
+    "stopping_previous",
+    "warming"
+  ].includes(phase);
 }
 
 function parseRequiredNumber(value: string, label: string) {
@@ -229,17 +243,40 @@ export function ModelDeploymentsConsole({
       .catch(() => setEvents([]));
   }, [selected?.id]);
 
+  useEffect(() => {
+    const pollingTargets = deployments.filter(shouldPollDeployment);
+    if (!pollingTargets.length) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void Promise.allSettled(
+        pollingTargets.map((deployment) => refreshModelDeployment(deployment.id))
+      )
+        .then(() => getModelDeployments())
+        .then((updatedDeployments) => {
+          setDeployments(updatedDeployments);
+          if (selected?.id) {
+            void getModelDeploymentEvents(selected.id).then(setEvents).catch(() => setEvents([]));
+          }
+        })
+        .catch(() => undefined);
+    }, 2500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [deployments, selected?.id]);
+
   function refreshSelected() {
     if (!selected?.id) {
       return;
     }
     startTransition(() => {
-      void refreshModelDeployment(selected.id).then((updated) => {
-        setDeployments((current) =>
-          current.map((item) => (item.id === updated.id ? updated : item))
-        );
-        void getModelDeploymentEvents(updated.id).then(setEvents).catch(() => setEvents([]));
-      });
+      void refreshModelDeployment(selected.id)
+        .then(() => getModelDeployments())
+        .then((updatedDeployments) => {
+          setDeployments(updatedDeployments);
+          void getModelDeploymentEvents(selected.id).then(setEvents).catch(() => setEvents([]));
+        });
     });
   }
 
