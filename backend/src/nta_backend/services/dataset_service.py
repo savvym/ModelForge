@@ -34,7 +34,6 @@ from nta_backend.core.storage_layout import (
 )
 from nta_backend.evaluation import normalize_eval_dataset_bytes
 from nta_backend.models.dataset import Dataset, DatasetFile, DatasetVersion
-from nta_backend.models.jobs import EvalJob
 from nta_backend.schemas.dataset import (
     DatasetCreate,
     DatasetCreateResponse,
@@ -424,31 +423,6 @@ async def _sync_dataset_latest_version(
     dataset.latest_version_id = latest_version.id
     dataset.status = latest_version.status
     dataset.updated_at = latest_version.updated_at
-
-
-async def _list_eval_job_references(
-    session: AsyncSession,
-    version_ids: list[UUID],
-) -> list[EvalJob]:
-    if not version_ids:
-        return []
-
-    rows = await session.execute(
-        select(EvalJob)
-        .where(EvalJob.dataset_version_id.in_(version_ids))
-        .order_by(EvalJob.created_at.asc(), EvalJob.id.asc())
-    )
-    return list(rows.scalars().all())
-
-
-def _build_eval_reference_error(scope: str, jobs: list[EvalJob]) -> str:
-    preview = "、".join(job.name for job in jobs[:3])
-    if len(jobs) > 3:
-        preview = f"{preview} 等 {len(jobs)} 个任务"
-
-    if scope == "dataset":
-        return f"该数据集已被评测任务引用：{preview}。请先处理相关评测任务后再删除。"
-    return f"该版本已被评测任务引用：{preview}。请先处理相关评测任务后再删除。"
 
 
 def _store_object_bytes(
@@ -1574,7 +1548,6 @@ class DatasetService:
                 session,
                 [version.id for version in versions],
             )
-            version_ids = [version.id for version in versions]
             object_keys = [
                 file_item.object_key for files in files_by_version.values() for file_item in files
             ]
@@ -1592,10 +1565,6 @@ class DatasetService:
                 str(PurePosixPath(object_key).parent / "_normalized") + "/"
                 for object_key in object_keys
             }
-            references = await _list_eval_job_references(session, version_ids)
-            if references:
-                raise ValueError(_build_eval_reference_error("dataset", references))
-
             await session.delete(dataset)
             await session.commit()
 
@@ -1633,10 +1602,6 @@ class DatasetService:
                 str(PurePosixPath(object_key).parent / "_normalized") + "/"
                 for object_key in object_keys
             }
-            references = await _list_eval_job_references(session, [version.id])
-            if references:
-                raise ValueError(_build_eval_reference_error("version", references))
-
             await session.delete(version)
             remaining_versions = [item for item in versions if item.id != version.id]
             await _sync_dataset_latest_version(session, dataset, remaining_versions)

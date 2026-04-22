@@ -11,10 +11,12 @@ from nta_backend.core.project_context import resolve_active_project_id
 from nta_backend.core.storage_layout import build_project_domain_prefix
 from nta_backend.models.benchmark_catalog import (
     BenchmarkDefinition as BenchmarkDefinitionRecord,
+)
+from nta_backend.models.benchmark_catalog import (
     BenchmarkVersion as BenchmarkVersionRecord,
 )
 from nta_backend.models.eval_template import EvalTemplate
-from nta_backend.models.jobs import EvalJob
+from nta_backend.models.evaluation_v2 import EvaluationRun
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
     BenchmarkDefinitionUpdate,
@@ -404,7 +406,7 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
     template_uuid = None
     version_id: str | None = None
     managed_object_key: str | None = None
-    job_id = None
+    run_id = None
 
     try:
         async with SessionLocal() as session:
@@ -440,7 +442,10 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
             template_uuid = template.id
 
             project_id = await resolve_active_project_id(session)
-            managed_object_key = f"{build_project_domain_prefix(project_id, 'benchmarks')}{benchmark_name}/versions/ver-delete01/dataset.jsonl"
+            managed_object_key = (
+                f"{build_project_domain_prefix(project_id, 'benchmarks')}"
+                f"{benchmark_name}/versions/ver-delete01/dataset.jsonl"
+            )
 
         created = await service.create_benchmark_definition(
             BenchmarkDefinitionCreate(
@@ -487,24 +492,32 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
 
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            job = EvalJob(
+            run = EvaluationRun(
                 project_id=project_id,
-                name="benchmark-version-delete-job",
-                benchmark_name=created.name,
-                benchmark_version_id=version.id,
-                dataset_source_uri=f"benchmark://{created.name}/versions/{version.id}",
+                name="benchmark-version-delete-run",
+                kind="benchmark",
+                status="queued",
+                model_name="pytest-model",
+                execution_plan_json={
+                    "overrides": {
+                        "benchmark": {
+                            "name": created.name,
+                            "version": version.id,
+                        }
+                    }
+                },
             )
-            session.add(job)
+            session.add(run)
             await session.commit()
-            await session.refresh(job)
-            job_id = job.id
+            await session.refresh(run)
+            run_id = run.id
 
         with pytest.raises(ValueError, match="已被评测任务引用"):
             await service.delete_benchmark_version(created.name, version.id)
 
         async with SessionLocal() as session:
-            if job_id is not None:
-                await session.execute(delete(EvalJob).where(EvalJob.id == job_id))
+            if run_id is not None:
+                await session.execute(delete(EvaluationRun).where(EvaluationRun.id == run_id))
                 await session.commit()
 
         await service.delete_benchmark_version(created.name, version.id)
@@ -521,8 +534,8 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
             get_object_bytes(bucket, managed_object_key)
     finally:
         async with SessionLocal() as session:
-            if job_id is not None:
-                await session.execute(delete(EvalJob).where(EvalJob.id == job_id))
+            if run_id is not None:
+                await session.execute(delete(EvaluationRun).where(EvaluationRun.id == run_id))
             if version_id is not None:
                 await session.execute(
                     delete(BenchmarkVersionRecord).where(

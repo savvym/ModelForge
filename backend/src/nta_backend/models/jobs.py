@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, Text, func
+from sqlalchemy import BigInteger, ForeignKey, Text, func
 
 from nta_backend.models.base import (
     JSONB,
@@ -13,71 +13,6 @@ from nta_backend.models.base import (
     datetime,
     mapped_column,
 )
-
-
-class EvalJob(Base, UUIDPrimaryKeyMixin, JobStateMixin, TimestampMixin):
-    __tablename__ = "eval_jobs"
-
-    project_id: Mapped[PythonUUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_by_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    model_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    model_id: Mapped[PythonUUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("models.id"), nullable=True
-    )
-    access_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    benchmark_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    benchmark_version_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    benchmark_config_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    inference_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    eval_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    eval_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    criteria_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    endpoint_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    judge_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    judge_prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    dataset_version_id: Mapped[PythonUUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dataset_versions.id"), nullable=True
-    )
-    dataset_source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    dataset_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    dataset_source_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    artifact_prefix_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_object_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    results_prefix_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    samples_prefix_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    report_object_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
-    temporal_workflow_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    batch_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    auto_progress: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    progress_total: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    progress_done: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    eval_template_id: Mapped[PythonUUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    eval_template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-
-class EvalJobMetric(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    __tablename__ = "eval_job_metrics"
-
-    eval_job_id: Mapped[PythonUUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("eval_jobs.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    metric_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    metric_value: Mapped[float] = mapped_column(Float, nullable=False)
-    metric_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    extra_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class BatchJob(Base, UUIDPrimaryKeyMixin, JobStateMixin, TimestampMixin):

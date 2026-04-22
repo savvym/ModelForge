@@ -21,9 +21,8 @@
 - `GET /api/v1/projects`
 - `GET /api/v1/datasets`
 - `POST /api/v1/uploads/presign`
-- `GET /api/v1/eval-jobs`
-- `POST /api/v1/eval-jobs`
-- `GET /api/v1/streams/eval-jobs/{job_id}`
+- `GET /api/v2/evaluation-runs`
+- `POST /api/v2/evaluation-runs`
 - `WS /ws/playground/{session_id}`
 
 ## 开发

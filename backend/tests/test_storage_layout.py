@@ -25,7 +25,6 @@ TARGET_MODULE = _load_target_module()
 PROJECT_ID = UUID("11111111-1111-1111-1111-111111111111")
 DATASET_ID = UUID("22222222-2222-2222-2222-222222222222")
 VERSION_ID = UUID("33333333-3333-3333-3333-333333333333")
-JOB_ID = UUID("44444444-4444-4444-4444-444444444444")
 LAKE_BATCH_ID = UUID("55555555-5555-5555-5555-555555555555")
 LAKE_ASSET_ID = UUID("66666666-6666-6666-6666-666666666666")
 CREATED_AT = datetime(2026, 3, 26, 12, 34, 56)
@@ -90,21 +89,6 @@ def test_build_lake_resource_codes_use_expected_prefixes() -> None:
     )
     assert (
         TARGET_MODULE.build_lake_asset_code(CREATED_AT, LAKE_ASSET_ID) == "la-20260326123456-upvmu"
-    )
-
-
-def test_build_eval_job_artifact_key_uses_ej_code() -> None:
-    assert (
-        TARGET_MODULE.build_eval_job_artifact_key(
-            PROJECT_ID,
-            JOB_ID,
-            CREATED_AT,
-            "inference_result",
-            "results",
-            "model-output.jsonl",
-        )
-        == "nta-dev/projects/11111111-1111-1111-1111-111111111111/eval-jobs/"
-        "ej-20260326123456-wh938/inference_result/results/model-output.jsonl"
     )
 
 

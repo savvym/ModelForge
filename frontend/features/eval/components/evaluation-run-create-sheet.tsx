@@ -5,16 +5,22 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { BenchmarkEvaluationRunCreateForm } from "@/features/eval/components/benchmark-evaluation-run-create-form";
-import type { BenchmarkDefinitionSummary, RegistryModelSummary } from "@/types/api";
+import type {
+  BenchmarkDefinitionSummary,
+  ModelDeploymentSummary,
+  RegistryModelSummary
+} from "@/types/api";
 
 type EvaluationRunCreateSheetProps = {
   benchmarks: BenchmarkDefinitionSummary[];
+  deployments?: ModelDeploymentSummary[];
   models: RegistryModelSummary[];
   initialOpen?: boolean;
 };
 
 export function EvaluationRunCreateSheet({
   benchmarks,
+  deployments = [],
   models,
   initialOpen = false
 }: EvaluationRunCreateSheetProps) {
@@ -59,7 +65,11 @@ export function EvaluationRunCreateSheet({
           </SheetHeader>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
-            <BenchmarkEvaluationRunCreateForm benchmarks={benchmarks} models={models} />
+            <BenchmarkEvaluationRunCreateForm
+              benchmarks={benchmarks}
+              deployments={deployments}
+              models={models}
+            />
           </div>
         </SheetContent>
       </Sheet>

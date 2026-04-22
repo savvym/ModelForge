@@ -236,7 +236,7 @@ export function BenchmarkDetailPanel({
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                         <span>{formatNumber(version.sample_count)} samples</span>
-                        <span>{formatNumber(version.eval_job_count)} jobs</span>
+                        <span>{formatNumber(version.evaluation_run_count)} runs</span>
                       </div>
                       {version.latest_eval_at ? (
                         <div className="mt-1 text-[11px] text-muted-foreground">
@@ -410,7 +410,7 @@ function BenchmarkVersionDetailTab({
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="样本数" value={formatNumber(version.sample_count)} />
-              <MetricCard label="任务数" value={formatNumber(version.eval_job_count)} />
+              <MetricCard label="任务数" value={formatNumber(version.evaluation_run_count)} />
               <MetricCard label="状态" value={version.enabled ? "已启用" : "已停用"} />
               <MetricCard label="最近运行" value={formatDateTime(version.latest_eval_at)} />
             </CardContent>

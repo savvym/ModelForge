@@ -11,7 +11,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -34,8 +34,7 @@ from nta_backend.models.benchmark_catalog import (
 from nta_backend.models.benchmark_catalog import (
     BenchmarkVersion as BenchmarkVersionRecord,
 )
-from nta_backend.models.evaluation_v2 import EvalSpec, EvalSpecVersion
-from nta_backend.models.jobs import EvalJob
+from nta_backend.models.evaluation_v2 import EvalSpec, EvaluationRun
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
     BenchmarkDefinitionDetail,
@@ -50,7 +49,7 @@ from nta_backend.schemas.object_store import ObjectStoreObjectPreviewResponse
 
 @dataclass(frozen=True)
 class _BenchmarkUsage:
-    eval_job_count: int = 0
+    evaluation_run_count: int = 0
     latest_eval_at: datetime | None = None
 
 
@@ -230,7 +229,7 @@ def _serialize_version(
         dataset_source_uri=version.dataset_source_uri,
         sample_count=version.sample_count,
         enabled=version.enabled,
-        eval_job_count=usage.eval_job_count,
+        evaluation_run_count=usage.evaluation_run_count,
         latest_eval_at=usage.latest_eval_at,
     )
 
@@ -278,7 +277,7 @@ def _serialize_definition(
         eval_template_preset_id=eval_template.preset_id if eval_template else None,
         version_count=len(serialized_versions),
         enabled_version_count=sum(1 for v in serialized_versions if v.enabled),
-        eval_job_count=benchmark_usage.eval_job_count,
+        evaluation_run_count=benchmark_usage.evaluation_run_count,
         latest_eval_at=benchmark_usage.latest_eval_at,
         versions=serialized_versions,
     )
@@ -331,9 +330,9 @@ def _serialize_builtin_spec(
             dataset_source_uri=None,
             sample_count=version.sample_count or 0,
             enabled=version.enabled,
-            eval_job_count=version_usage.get(
+            evaluation_run_count=version_usage.get(
                 (spec.name, version.version), _BenchmarkUsage()
-            ).eval_job_count,
+            ).evaluation_run_count,
             latest_eval_at=version_usage.get(
                 (spec.name, version.version), _BenchmarkUsage()
             ).latest_eval_at,
@@ -364,7 +363,7 @@ def _serialize_builtin_spec(
         eval_template_preset_id=None,
         version_count=len(serialized_versions),
         enabled_version_count=sum(1 for version in serialized_versions if version.enabled),
-        eval_job_count=benchmark_usage.eval_job_count,
+        evaluation_run_count=benchmark_usage.evaluation_run_count,
         latest_eval_at=benchmark_usage.latest_eval_at,
         versions=serialized_versions,
     )
@@ -732,17 +731,13 @@ async def _load_benchmark_usage(
 ) -> tuple[dict[str, _BenchmarkUsage], dict[tuple[str, str], _BenchmarkUsage]]:
     rows = await session.execute(
         select(
-            EvalJob.benchmark_name,
-            EvalJob.benchmark_version_id,
-            func.count(EvalJob.id),
-            func.max(EvalJob.created_at),
+            EvaluationRun.created_at,
+            EvaluationRun.execution_plan_json,
         )
         .where(
-            EvalJob.project_id == project_id,
-            EvalJob.benchmark_name.is_not(None),
-            EvalJob.benchmark_version_id.is_not(None),
+            EvaluationRun.project_id == project_id,
+            EvaluationRun.kind == "benchmark",
         )
-        .group_by(EvalJob.benchmark_name, EvalJob.benchmark_version_id)
     )
 
     benchmark_usage: dict[str, _BenchmarkUsage] = {}
@@ -750,28 +745,52 @@ async def _load_benchmark_usage(
     aggregate_counts: dict[str, int] = defaultdict(int)
     aggregate_latest: dict[str, datetime | None] = {}
 
-    for benchmark_name, version_id, count, latest_eval_at in rows.all():
+    for latest_eval_at, plan in rows.all():
+        benchmark_name, version_id = _benchmark_ref_from_plan(plan)
         if benchmark_name is None or version_id is None:
             continue
+        existing_usage = version_usage.get((benchmark_name, version_id))
+        version_count = (existing_usage.evaluation_run_count if existing_usage else 0) + 1
+        version_latest = (
+            latest_eval_at
+            if existing_usage is None
+            or existing_usage.latest_eval_at is None
+            or latest_eval_at > existing_usage.latest_eval_at
+            else existing_usage.latest_eval_at
+        )
         usage = _BenchmarkUsage(
-            eval_job_count=int(count or 0),
-            latest_eval_at=latest_eval_at,
+            evaluation_run_count=version_count,
+            latest_eval_at=version_latest,
         )
         version_usage[(benchmark_name, version_id)] = usage
-        aggregate_counts[benchmark_name] += usage.eval_job_count
+        aggregate_counts[benchmark_name] += 1
         current_latest = aggregate_latest.get(benchmark_name)
         if current_latest is None or (
-            usage.latest_eval_at is not None and usage.latest_eval_at > current_latest
+            latest_eval_at is not None and latest_eval_at > current_latest
         ):
-            aggregate_latest[benchmark_name] = usage.latest_eval_at
+            aggregate_latest[benchmark_name] = latest_eval_at
 
     for benchmark_name, count in aggregate_counts.items():
         benchmark_usage[benchmark_name] = _BenchmarkUsage(
-            eval_job_count=count,
+            evaluation_run_count=count,
             latest_eval_at=aggregate_latest.get(benchmark_name),
         )
 
     return benchmark_usage, version_usage
+
+
+def _benchmark_ref_from_plan(plan: dict | None) -> tuple[str | None, str | None]:
+    if not isinstance(plan, dict):
+        return None, None
+    overrides = plan.get("overrides") if isinstance(plan.get("overrides"), dict) else {}
+    benchmark = (
+        overrides.get("benchmark") if isinstance(overrides.get("benchmark"), dict) else {}
+    )
+    name = benchmark.get("name")
+    version = benchmark.get("version")
+    benchmark_name = name.strip() if isinstance(name, str) and name.strip() else None
+    version_id = version.strip() if isinstance(version, str) and version.strip() else None
+    return benchmark_name, version_id
 
 
 def _parse_s3_uri(value: str) -> tuple[str, str]:
@@ -835,29 +854,33 @@ def _load_version_file_payload(version: BenchmarkVersionRecord) -> _VersionFileP
     )
 
 
-async def _list_benchmark_eval_job_references(
+async def _list_benchmark_run_references(
     session: AsyncSession,
     *,
     project_id: UUID,
     benchmark_name: str,
     version_id: str,
-) -> list[EvalJob]:
+) -> list[EvaluationRun]:
     rows = await session.execute(
-        select(EvalJob)
+        select(EvaluationRun)
         .where(
-            EvalJob.project_id == project_id,
-            EvalJob.benchmark_name == benchmark_name,
-            EvalJob.benchmark_version_id == version_id,
+            EvaluationRun.project_id == project_id,
+            EvaluationRun.kind == "benchmark",
         )
-        .order_by(EvalJob.created_at.asc(), EvalJob.id.asc())
+        .order_by(EvaluationRun.created_at.asc(), EvaluationRun.id.asc())
     )
-    return list(rows.scalars().all())
+    runs: list[EvaluationRun] = []
+    for run in rows.scalars().all():
+        run_benchmark_name, run_version_id = _benchmark_ref_from_plan(run.execution_plan_json)
+        if run_benchmark_name == benchmark_name and run_version_id == version_id:
+            runs.append(run)
+    return runs
 
 
-def _build_benchmark_eval_reference_error(jobs: list[EvalJob]) -> str:
-    preview = "、".join(job.name for job in jobs[:3])
-    if len(jobs) > 3:
-        preview = f"{preview} 等 {len(jobs)} 个任务"
+def _build_benchmark_eval_reference_error(runs: list[EvaluationRun]) -> str:
+    preview = "、".join(run.name for run in runs[:3])
+    if len(runs) > 3:
+        preview = f"{preview} 等 {len(runs)} 个任务"
     return f"该 Version 已被评测任务引用：{preview}。请先处理相关评测任务后再删除。"
 
 
@@ -1125,7 +1148,6 @@ class BenchmarkCatalogService:
             raise ValueError("创建自定义 Benchmark 时必须选择一个评测模板。")
 
         async with SessionLocal() as session:
-            project_id = await resolve_active_project_id(session)
             generated_name = _normalize_optional_text(payload.name)
             benchmark_name = generated_name or await _generate_benchmark_name(session)
 
@@ -1341,7 +1363,7 @@ class BenchmarkCatalogService:
             if definition is None or version is None:
                 raise KeyError(version_id)
 
-            references = await _list_benchmark_eval_job_references(
+            references = await _list_benchmark_run_references(
                 session,
                 project_id=project_id,
                 benchmark_name=definition.name,

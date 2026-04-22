@@ -20,22 +20,30 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { createBenchmarkEvaluationRun } from "@/features/eval/api";
+import {
+  buildEvalModelTargetOptions,
+  buildEvalModelTargetPayload,
+  describeEvalModelTarget,
+  formatEvalModelTargetOption,
+  pickDefaultEvalModelTarget,
+  type EvalModelTargetOption
+} from "@/features/eval/model-target-options";
 import type {
   BenchmarkDefinitionSummary,
   BenchmarkVersionSummary,
+  ModelDeploymentSummary,
   RegistryModelSummary
 } from "@/types/api";
-
-const PREFERRED_PROVIDER_NAME = "ai.zhanghd.com";
-const PREFERRED_MODEL_NAME = "GPT-5.4";
 
 type BenchmarkMode = "builtin" | "custom";
 
 export function BenchmarkEvaluationRunCreateForm({
   benchmarks,
+  deployments = [],
   models,
 }: {
   benchmarks: BenchmarkDefinitionSummary[];
+  deployments?: ModelDeploymentSummary[];
   models: RegistryModelSummary[];
 }) {
   const router = useRouter();
@@ -49,9 +57,9 @@ export function BenchmarkEvaluationRunCreateForm({
     () => benchmarks.filter((benchmark) => benchmark.source_type !== "builtin" && hasEnabledVersion(benchmark)),
     [benchmarks]
   );
-  const activeModels = useMemo(
-    () => models.filter((model) => model.status === "active" && Boolean(model.provider_id)),
-    [models]
+  const modelOptions = useMemo(
+    () => buildEvalModelTargetOptions(models, deployments),
+    [deployments, models]
   );
 
   const defaultMode: BenchmarkMode = builtinBenchmarks.length ? "builtin" : "custom";
@@ -62,7 +70,9 @@ export function BenchmarkEvaluationRunCreateForm({
   const [versionId, setVersionId] = useState<string>(
     pickInitialVersionId(defaultMode, benchmarkName, builtinBenchmarks, customBenchmarks)
   );
-  const [modelId, setModelId] = useState<string>(pickDefaultModel(activeModels)?.id ?? "");
+  const [modelTargetId, setModelTargetId] = useState<string>(
+    pickDefaultEvalModelTarget(modelOptions)?.id ?? ""
+  );
   const benchmarkOptions = mode === "builtin" ? builtinBenchmarks : customBenchmarks;
 
   useEffect(() => {
@@ -101,10 +111,10 @@ export function BenchmarkEvaluationRunCreateForm({
   }, [benchmarkName, benchmarkOptions, versionId]);
 
   useEffect(() => {
-    if (!modelId && activeModels.length) {
-      setModelId(pickDefaultModel(activeModels)?.id ?? "");
+    if (!modelTargetId && modelOptions.length) {
+      setModelTargetId(pickDefaultEvalModelTarget(modelOptions)?.id ?? "");
     }
-  }, [activeModels, modelId]);
+  }, [modelOptions, modelTargetId]);
 
   const selectedBenchmark =
     benchmarkOptions.find((benchmark) => benchmark.name === benchmarkName) ??
@@ -114,10 +124,12 @@ export function BenchmarkEvaluationRunCreateForm({
   const selectedVersion =
     versionOptions.find((version) => version.id === versionId) ?? versionOptions[0] ?? null;
   const selectedModel =
-    activeModels.find((model) => model.id === modelId) ?? pickDefaultModel(activeModels) ?? null;
+    modelOptions.find((model) => model.id === modelTargetId) ??
+    pickDefaultEvalModelTarget(modelOptions) ??
+    null;
 
   const formDisabled =
-    submitting || activeModels.length === 0 || (builtinBenchmarks.length === 0 && customBenchmarks.length === 0);
+    submitting || modelOptions.length === 0 || (builtinBenchmarks.length === 0 && customBenchmarks.length === 0);
 
   async function handleSubmit() {
     if (!selectedBenchmark || !selectedVersion || !selectedModel) {
@@ -132,7 +144,7 @@ export function BenchmarkEvaluationRunCreateForm({
         description: buildRunDescription(selectedBenchmark, selectedVersion),
         benchmark_name: selectedBenchmark.name,
         benchmark_version_id: selectedVersion.id,
-        model_id: selectedModel.id,
+        ...buildEvalModelTargetPayload(selectedModel),
       });
       toast.success("评测任务已创建");
       router.push(`/model/eval-detail/${run.id}`);
@@ -152,8 +164,8 @@ export function BenchmarkEvaluationRunCreateForm({
         </EmptyHint>
       ) : null}
 
-      {activeModels.length === 0 ? (
-        <EmptyHint>当前项目没有可用模型。请先在模型接入中同步可用模型。</EmptyHint>
+      {modelOptions.length === 0 ? (
+        <EmptyHint>当前项目没有可用模型。请先在模型广场接入模型，或在我的部署中启动模型。</EmptyHint>
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -215,17 +227,21 @@ export function BenchmarkEvaluationRunCreateForm({
         </FieldBlock>
 
         <FieldBlock
-          description="任务执行时会冻结当前模型绑定快照。"
+          description={
+            selectedModel
+              ? describeEvalModelTarget(selectedModel)
+              : "任务执行时会冻结当前模型绑定快照。"
+          }
           label="评测模型"
         >
-          <Select disabled={formDisabled} onValueChange={setModelId} value={modelId}>
+          <Select disabled={formDisabled} onValueChange={setModelTargetId} value={modelTargetId}>
             <SelectTrigger>
               <SelectValue placeholder="选择模型" />
             </SelectTrigger>
             <SelectContent>
-              {activeModels.map((model) => (
+              {modelOptions.map((model) => (
                 <SelectItem key={model.id} value={model.id}>
-                  {model.name}
+                  {formatEvalModelTargetOption(model)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -326,23 +342,10 @@ function pickInitialVersionId(
   return selected?.versions.find((version) => version.enabled)?.id ?? "";
 }
 
-function pickDefaultModel(models: RegistryModelSummary[]) {
-  return (
-    models.find(
-      (model) =>
-        model.name === PREFERRED_MODEL_NAME &&
-        (model.provider_name ?? "").toLowerCase().includes(PREFERRED_PROVIDER_NAME)
-    ) ??
-    models.find((model) => model.name === PREFERRED_MODEL_NAME) ??
-    models[0] ??
-    null
-  );
-}
-
 function buildRunName(
   benchmark: BenchmarkDefinitionSummary,
   version: BenchmarkVersionSummary,
-  model: RegistryModelSummary
+  model: EvalModelTargetOption
 ) {
   return `${benchmark.display_name} · ${version.display_name} · ${model.name}`;
 }

@@ -35,7 +35,7 @@ class Settings(BaseSettings):
 
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "nta-platform-dev"
-    temporal_task_queue_eval: str = "eval-jobs"
+    temporal_task_queue_eval: str = "evaluation-runs"
     temporal_task_queue_batch: str = "batch-jobs"
     temporal_task_queue_dataset: str = "dataset-import"
     probe_registration_token: SecretStr | None = None

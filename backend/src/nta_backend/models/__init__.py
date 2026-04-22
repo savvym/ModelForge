@@ -20,7 +20,7 @@ from nta_backend.models.evaluation_v2 import (
     TemplateSpec,
     TemplateSpecVersion,
 )
-from nta_backend.models.jobs import BatchJob, EvalJob, EvalJobMetric, JobLog
+from nta_backend.models.jobs import BatchJob, JobLog
 from nta_backend.models.lake import LakeAsset, LakeBatch
 from nta_backend.models.modeling import Endpoint, InferenceMachine, Model, ModelProvider
 from nta_backend.models.probe import Probe, ProbeHeartbeat, ProbeTask
@@ -43,9 +43,7 @@ __all__ = [
     "EvalSuite",
     "EvalSuiteItem",
     "EvalSuiteVersion",
-    "EvalJob",
     "EvalTemplate",
-    "EvalJobMetric",
     "EvaluationLeaderboard",
     "EvaluationLeaderboardRun",
     "EvaluationRun",

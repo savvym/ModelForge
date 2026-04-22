@@ -13,7 +13,7 @@ from nta_backend.core.project_context import resolve_active_project_id
 from nta_backend.evaluation.executors.evalscope_executor import NTAOpenAICompatibleAPI
 from nta_backend.evaluation_v2.execution import CanonicalExecutionResult
 from nta_backend.models.evaluation_v2 import EvalSpec, EvalSuite, EvaluationRun, EvaluationRunItem
-from nta_backend.models.modeling import Model, ModelProvider
+from nta_backend.models.modeling import Endpoint, Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
     EvalSpecCreate,
     EvalSpecDatasetFileCreate,
@@ -77,12 +77,17 @@ async def _cleanup_run_provider_model(
     run_id,
     model_id,
     provider_id,
+    deployment_id=None,
 ) -> None:
     async with SessionLocal() as session:
         if run_id is not None:
             run = await session.get(EvaluationRun, run_id)
             if run is not None:
                 await session.delete(run)
+        if deployment_id is not None:
+            deployment = await session.get(Endpoint, deployment_id)
+            if deployment is not None:
+                await session.delete(deployment)
         if model_id is not None:
             model = await session.get(Model, model_id)
             if model is not None:
@@ -158,6 +163,89 @@ async def test_create_suite_run_compiles_provider_binding(monkeypatch: pytest.Mo
         assert model_binding["headers"] == {"X-Test-Header": "1"}
     finally:
         await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)
+
+
+async def test_create_suite_run_compiles_deployment_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = EvaluationRunV2Service()
+
+    async def _fake_start_workflow(payload, workflow_id=None):
+        assert payload.run_id
+        return workflow_id or f"evaluation-run-{payload.run_id}"
+
+    monkeypatch.setattr(
+        "nta_backend.core.temporal.start_evaluation_run_workflow",
+        _fake_start_workflow,
+    )
+
+    provider_id = None
+    model_id = None
+    deployment_id = None
+    run_id = None
+
+    try:
+        provider_id, model_id = await _create_model_and_provider()
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            deployment = Endpoint(
+                project_id=project_id,
+                name="Pytest Deployment",
+                endpoint_type="infer-agent-vllm",
+                model_id=model_id,
+                purchase_type="local-h20",
+                status="active",
+                config_json={
+                    "machine_name": "pytest-h20",
+                    "agent_status": {
+                        "deployment_id": "deployment-id",
+                        "phase": "ready",
+                        "endpoint": "http://10.0.0.12:8000/v1",
+                        "progress": 100,
+                    },
+                    "spec": {
+                        "model": {
+                            "served_name": "pytest-served-model",
+                        }
+                    },
+                },
+            )
+            session.add(deployment)
+            await session.flush()
+            deployment.config_json = {
+                **deployment.config_json,
+                "agent_status": {
+                    **deployment.config_json["agent_status"],
+                    "deployment_id": str(deployment.id),
+                },
+            }
+            await session.commit()
+            deployment_id = deployment.id
+
+        summary = await service.create_run(
+            EvaluationRunCreate(
+                target=EvaluationTargetRef(kind="suite", name="baseline-general", version="v1"),
+                model_deployment_id=deployment_id,
+            )
+        )
+        run_id = summary.id
+
+        detail = await service.get_run(str(run_id))
+        model_binding = detail.execution_plan_json["model_binding"]
+        assert detail.model_name == "Pytest Deployment"
+        assert model_binding["source_type"] == "deployment"
+        assert model_binding["model_id"] == str(model_id)
+        assert model_binding["model_deployment_id"] == str(deployment_id)
+        assert model_binding["model_name"] == "pytest-served-model"
+        assert model_binding["api_url"] == "http://10.0.0.12:8000/v1"
+        assert model_binding["api_format"] == "chat-completions"
+    finally:
+        await _cleanup_run_provider_model(
+            run_id=run_id,
+            model_id=model_id,
+            provider_id=provider_id,
+            deployment_id=deployment_id,
+        )
 
 
 async def test_create_eval_spec_and_suite() -> None:

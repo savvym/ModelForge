@@ -7,16 +7,14 @@ import { useMemo, useRef, useState } from "react";
 import {
   Bot,
   Braces,
-  Cable,
   Check,
   Compass,
   Copy,
   ChevronsUpDown,
-  ImagePlus,
+  LibraryBig,
+  Server,
   Sparkles,
   SquarePen,
-  Video,
-  WandSparkles,
 } from "lucide-react";
 import {
   Conversation,
@@ -91,14 +89,6 @@ const starterPrompts = [
     description: "把模糊目标拆成明确动作。",
     icon: Compass,
   },
-];
-
-const sideModes = [
-  { icon: Bot, label: "语言模型", active: true },
-  { icon: ImagePlus, label: "图像理解" },
-  { icon: Video, label: "视频理解" },
-  { icon: Cable, label: "MCP" },
-  { icon: WandSparkles, label: "创作助手" },
 ];
 
 const experienceMessageMetadataSchema = z.object({
@@ -190,6 +180,8 @@ type ExperienceModelOption = {
   source: "registry" | "deployment";
   targetId: string;
 };
+
+type ExperienceModelSource = ExperienceModelOption["source"];
 
 function isReadyDeployment(deployment: ModelDeploymentSummary) {
   return (deployment.phase ?? deployment.status) === "ready" && Boolean(deployment.endpoint_url);
@@ -318,28 +310,8 @@ export function ExperienceChatConsole({
   }
 
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-cols-[52px_minmax(0,1fr)] overflow-hidden">
-      <aside className="border-r border-border bg-card/80 px-2 py-4">
-        <div className="flex flex-col items-center gap-2">
-          {sideModes.map((mode) => (
-            <button
-              className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors",
-                mode.active
-                  ? "border-border bg-muted/60 text-foreground"
-                  : "border-transparent text-muted-foreground hover:bg-card/80 hover:text-foreground"
-              )}
-              key={mode.label}
-              title={mode.label}
-              type="button"
-            >
-              <mode.icon className="h-4 w-4" />
-            </button>
-          ))}
-        </div>
-      </aside>
-
-      <section className="flex min-h-0 min-w-0 flex-col bg-background/40">
+    <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background/40">
         {!selectedModel ? (
           <div className="flex flex-1 items-center justify-center px-6 py-10">
             <div className="space-y-4 rounded-lg border border-dashed border-border bg-card/80 px-8 py-10 text-center">
@@ -541,9 +513,42 @@ function ExperienceComposer({
 }: ComposerProps) {
   const { value } = usePromptInputController();
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const [activeModelSource, setActiveModelSource] =
+    useState<ExperienceModelSource>("registry");
   const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
-  const registryOptions = modelOptions.filter((model) => model.source === "registry");
-  const deploymentOptions = modelOptions.filter((model) => model.source === "deployment");
+  const registryOptions = useMemo(
+    () => modelOptions.filter((model) => model.source === "registry"),
+    [modelOptions]
+  );
+  const deploymentOptions = useMemo(
+    () => modelOptions.filter((model) => model.source === "deployment"),
+    [modelOptions]
+  );
+  const activeOptions =
+    activeModelSource === "registry" ? registryOptions : deploymentOptions;
+  const modelSourceTabs = [
+    {
+      count: registryOptions.length,
+      icon: LibraryBig,
+      label: "模型广场",
+      value: "registry" as const,
+    },
+    {
+      count: deploymentOptions.length,
+      icon: Server,
+      label: "我的部署",
+      value: "deployment" as const,
+    },
+  ];
+  const activeSourceLabel =
+    modelSourceTabs.find((item) => item.value === activeModelSource)?.label ?? "模型";
+
+  function handleModelSelectorOpenChange(nextOpen: boolean) {
+    setIsModelSelectorOpen(nextOpen);
+    if (nextOpen && selectedModel) {
+      setActiveModelSource(selectedModel.source);
+    }
+  }
 
   function handleSelectModel(nextModelId: string) {
     setIsModelSelectorOpen(false);
@@ -571,7 +576,7 @@ function ExperienceComposer({
       <PromptInputFooter className="flex-wrap gap-2">
         <PromptInputTools className="flex-1 flex-wrap gap-2">
           <ModelSelector
-            onOpenChange={setIsModelSelectorOpen}
+            onOpenChange={handleModelSelectorOpenChange}
             open={isModelSelectorOpen}
           >
             <ModelSelectorTrigger
@@ -589,15 +594,44 @@ function ExperienceComposer({
             </ModelSelectorTrigger>
 
             <ModelSelectorContent
-              className="max-w-[560px]"
+              className="max-w-[760px]"
               title="选择一个语言模型"
             >
               <ModelSelectorInput placeholder="搜索模型或 Provider" />
-              <ModelSelectorList>
-                <ModelSelectorEmpty>没有找到匹配模型。</ModelSelectorEmpty>
-                {registryOptions.length ? (
-                  <ModelSelectorGroup heading="模型广场">
-                    {registryOptions.map((model) => {
+              <div className="grid min-h-[340px] grid-cols-1 border-t border-border sm:grid-cols-[176px_minmax(0,1fr)]">
+                <div className="space-y-1 border-b border-border bg-muted/20 p-2 sm:border-b-0 sm:border-r">
+                  {modelSourceTabs.map((item) => {
+                    const isActive = item.value === activeModelSource;
+                    return (
+                      <button
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm transition-colors",
+                          isActive
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                        )}
+                        key={item.value}
+                        onClick={() => setActiveModelSource(item.value)}
+                        type="button"
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {item.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <ModelSelectorList className="max-h-[420px]">
+                  <ModelSelectorEmpty>
+                    {activeModelSource === "registry"
+                      ? "模型广场暂无匹配模型。"
+                      : "我的部署暂无匹配模型。"}
+                  </ModelSelectorEmpty>
+                  <ModelSelectorGroup heading={activeSourceLabel}>
+                    {activeOptions.map((model) => {
                       const isSelected = model.id === selectedModelId;
                       return (
                         <ModelSelectorItem
@@ -619,33 +653,8 @@ function ExperienceComposer({
                       );
                     })}
                   </ModelSelectorGroup>
-                ) : null}
-                {deploymentOptions.length ? (
-                  <ModelSelectorGroup heading="我的部署">
-                    {deploymentOptions.map((model) => {
-                      const isSelected = model.id === selectedModelId;
-                      return (
-                        <ModelSelectorItem
-                          className="mx-2 rounded-lg px-3 py-3"
-                          key={model.id}
-                          onSelect={() => handleSelectModel(model.id)}
-                          value={`${model.name} ${model.providerName}`}
-                        >
-                          <div className="flex min-w-0 flex-1 flex-col gap-1">
-                            <ModelSelectorName className="text-sm font-medium text-foreground">
-                              {model.name}
-                            </ModelSelectorName>
-                            <div className="text-xs text-muted-foreground">
-                              {model.providerName}
-                            </div>
-                          </div>
-                          {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                        </ModelSelectorItem>
-                      );
-                    })}
-                  </ModelSelectorGroup>
-                ) : null}
-              </ModelSelectorList>
+                </ModelSelectorList>
+              </div>
             </ModelSelectorContent>
           </ModelSelector>
 

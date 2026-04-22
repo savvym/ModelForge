@@ -20,7 +20,6 @@ from nta_backend.activities.dataset_import import (
     persist_dataset_import_result,
     validate_dataset_file,
 )
-from nta_backend.activities.eval_job import run_eval_job
 from nta_backend.activities.evaluation_run import (
     aggregate_evaluation_run,
     execute_evaluation_run_item,
@@ -32,7 +31,6 @@ from nta_backend.workflows.batch_inference import BatchInferenceWorkflow
 from nta_backend.workflows.dataset_import import DatasetImportWorkflow, DatasetImportWorkflowInput
 from nta_backend.workflows.evaluation_run import EvaluationRunWorkflow, EvaluationRunWorkflowInput
 from nta_backend.workflows.evaluation_run_item import EvaluationRunItemWorkflow
-from nta_backend.workflows.eval_job import EvalJobWorkflow, EvalJobWorkflowInput
 from nta_backend.workflows.usage_aggregation import UsageAggregationWorkflow
 
 _temporal_client: Client | None = None
@@ -87,22 +85,6 @@ async def get_temporal_client() -> Client:
         )
         logger.info("Temporal client connected")
     return _temporal_client
-
-
-async def start_eval_job_workflow(
-    payload: EvalJobWorkflowInput,
-    workflow_id: str | None = None,
-) -> str:
-    settings = get_settings()
-    client = await get_temporal_client()
-    workflow_id = workflow_id or f"eval-job-{uuid4()}"
-    handle = await client.start_workflow(
-        EvalJobWorkflow.run,
-        payload,
-        id=workflow_id,
-        task_queue=settings.temporal_task_queue_eval,
-    )
-    return handle.id
 
 
 async def start_evaluation_run_workflow(
@@ -197,13 +179,11 @@ async def run_workers() -> None:
             client,
             task_queue=settings.temporal_task_queue_eval,
             workflows=[
-                EvalJobWorkflow,
                 EvaluationRunWorkflow,
                 EvaluationRunItemWorkflow,
                 UsageAggregationWorkflow,
             ],
             activities=[
-                run_eval_job,
                 list_evaluation_run_items,
                 execute_evaluation_run_item,
                 aggregate_evaluation_run,

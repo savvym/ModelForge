@@ -248,101 +248,6 @@ export interface LakeAssetDirectUploadInitResponse {
   upload: ObjectStoreDirectUploadInitResponse;
 }
 
-export interface EvalJobSummary {
-  id: string;
-  name: string;
-  description?: string | null;
-  status: string;
-  model_name: string;
-  model_source: string;
-  created_by?: string | null;
-  progress_percent: number;
-  progress_done?: number | null;
-  progress_total?: number | null;
-  inference_mode: string;
-  eval_method: string;
-  temporal_workflow_id?: string | null;
-  error_message?: string | null;
-  created_at: string;
-  started_at?: string | null;
-  finished_at?: string | null;
-}
-
-export interface EvalMetric {
-  metric_name: string;
-  metric_value: number;
-  metric_unit?: string | null;
-}
-
-export interface EvalSampleAnalysis {
-  sample_id: string;
-  method: string;
-  input_preview?: string | null;
-  system_prompt?: string | null;
-  rubric_source?: string | null;
-  effective_rubric?: string | null;
-  prediction_text?: string | null;
-  reference_answers: string[];
-  score?: number | null;
-  raw_score?: number | null;
-  passed: boolean;
-  reason?: string | null;
-  error?: string | null;
-  latency_ms?: number | null;
-  total_tokens?: number | null;
-  judge_model_name?: string | null;
-}
-
-export interface EvalJobDetail extends EvalJobSummary {
-  access_source: string;
-  benchmark_name?: string | null;
-  benchmark_version_id?: string | null;
-  benchmark_version_name?: string | null;
-  dataset_source_type: string;
-  dataset_version_id?: string | null;
-  dataset_name: string;
-  dataset_source_uri?: string | null;
-  artifact_prefix_uri?: string | null;
-  source_object_uri?: string | null;
-  results_prefix_uri?: string | null;
-  samples_prefix_uri?: string | null;
-  report_object_uri?: string | null;
-  task_type: string;
-  eval_mode: string;
-  endpoint_name?: string | null;
-  judge_model_name?: string | null;
-  judge_prompt?: string | null;
-  rubric?: string | null;
-  batch_job_id?: string | null;
-  metrics: EvalMetric[];
-  sample_analysis: EvalSampleAnalysis[];
-}
-
-export interface EvalJobCreateInput {
-  name: string;
-  description?: string | null;
-  benchmark_name?: string | null;
-  benchmark_version_id?: string | null;
-  benchmark_config?: Record<string, unknown> | null;
-  model_id?: string | null;
-  model_name: string;
-  model_source: string;
-  access_source: string;
-  dataset_source_type: string;
-  dataset_version_id?: string | null;
-  dataset_name: string;
-  dataset_source_uri?: string | null;
-  inference_mode: string;
-  task_type: string;
-  eval_mode: string;
-  eval_method: string;
-  endpoint_name?: string | null;
-  judge_model_id?: string | null;
-  judge_model_name?: string | null;
-  judge_prompt?: string | null;
-  rubric?: string | null;
-}
-
 export interface BenchmarkVersionSummary {
   id: string;
   display_name: string;
@@ -351,7 +256,7 @@ export interface BenchmarkVersionSummary {
   dataset_source_uri?: string | null;
   sample_count: number;
   enabled: boolean;
-  eval_job_count: number;
+  evaluation_run_count: number;
   latest_eval_at?: string | null;
 }
 
@@ -378,7 +283,7 @@ export interface BenchmarkDefinitionSummary {
   eval_template_preset_id?: string | null;
   version_count: number;
   enabled_version_count: number;
-  eval_job_count: number;
+  evaluation_run_count: number;
   latest_eval_at?: string | null;
   versions: BenchmarkVersionSummary[];
 }
@@ -763,6 +668,8 @@ export interface EvaluationRunItemV2 {
 
 export interface ModelBindingSnapshotV2 {
   model_id?: string | null;
+  model_deployment_id?: string | null;
+  source_type?: string;
   model_name: string;
   display_name: string;
   api_url: string;
@@ -792,7 +699,7 @@ export interface CompiledRunItemPlanV2 {
 }
 
 export interface CompiledRunPlanV2 {
-  kind: "spec" | "suite";
+  kind: "spec" | "suite" | "benchmark";
   target_name: string;
   target_version: string;
   model_binding: ModelBindingSnapshotV2;
@@ -836,7 +743,8 @@ export interface EvaluationRunCreateInputV2 {
   name?: string | null;
   description?: string | null;
   target: EvaluationTargetRefV2;
-  model_id: string;
+  model_id?: string | null;
+  model_deployment_id?: string | null;
   judge_policy_id?: string | null;
   overrides?: Record<string, unknown>;
 }
@@ -846,7 +754,8 @@ export interface BenchmarkEvaluationRunCreateInputV2 {
   description?: string | null;
   benchmark_name: string;
   benchmark_version_id: string;
-  model_id: string;
+  model_id?: string | null;
+  model_deployment_id?: string | null;
 }
 
 export interface EvaluationRunCancelResponseV2 {
@@ -1046,13 +955,6 @@ export interface JudgePolicyCreateInputV2 {
   execution_params_json?: Record<string, unknown>;
   parser_config_json?: Record<string, unknown>;
   retry_policy_json?: Record<string, unknown>;
-}
-
-export interface WorkflowLaunchResponse {
-  job_id: string;
-  workflow_id: string;
-  status: string;
-  stream_url: string;
 }
 
 export interface ModelProviderSummary {
@@ -1417,27 +1319,4 @@ export interface ObjectStoreDirectUploadInitResponse {
   method?: string | null;
   headers: Record<string, string>;
   url?: string | null;
-}
-
-export interface EvalJobStatusEvent {
-  job_type: string;
-  job_id: string;
-  status: string;
-  phase: string;
-  step: number;
-  total_steps: number;
-  timestamp: string;
-  started_at?: string | null;
-  finished_at?: string | null;
-  batch_job_id?: string | null;
-  error_message?: string | null;
-  metrics?: EvalMetric[];
-}
-
-export interface EvalLogEvent {
-  job_type: string;
-  job_id: string;
-  level: string;
-  message: string;
-  timestamp: string;
 }

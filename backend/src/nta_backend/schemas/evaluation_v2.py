@@ -296,9 +296,16 @@ class EvaluationRunCreate(BaseModel):
     name: str | None = None
     description: str | None = None
     target: EvaluationTargetRef
-    model_id: UUID
+    model_id: UUID | None = None
+    model_deployment_id: UUID | None = None
     judge_policy_id: UUID | None = None
     overrides: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_model_target(self) -> EvaluationRunCreate:
+        if self.model_id is None and self.model_deployment_id is None:
+            raise ValueError("Either model_id or model_deployment_id is required.")
+        return self
 
 
 class BenchmarkEvaluationRunCreate(BaseModel):
@@ -306,7 +313,14 @@ class BenchmarkEvaluationRunCreate(BaseModel):
     description: str | None = None
     benchmark_name: str
     benchmark_version_id: str
-    model_id: UUID
+    model_id: UUID | None = None
+    model_deployment_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _validate_model_target(self) -> BenchmarkEvaluationRunCreate:
+        if self.model_id is None and self.model_deployment_id is None:
+            raise ValueError("Either model_id or model_deployment_id is required.")
+        return self
 
 
 class EvaluationRunMetricResponse(BaseModel):
@@ -467,6 +481,8 @@ class EvaluationLeaderboardAddRuns(BaseModel):
 
 class ModelBindingSnapshot(BaseModel):
     model_id: UUID | None = None
+    model_deployment_id: UUID | None = None
+    source_type: str = "registry"
     model_name: str
     display_name: str
     api_url: str

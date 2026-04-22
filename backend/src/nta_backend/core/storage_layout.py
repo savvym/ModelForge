@@ -94,10 +94,6 @@ def build_dataset_version_code(created_at: datetime, version_id: UUID) -> str:
     return build_resource_code("dsv", created_at, version_id)
 
 
-def build_eval_job_code(created_at: datetime, job_id: UUID) -> str:
-    return build_resource_code("ej", created_at, job_id)
-
-
 def build_lake_batch_code(created_at: datetime, batch_id: UUID) -> str:
     return build_resource_code("lb", created_at, batch_id)
 
@@ -191,24 +187,6 @@ def build_dataset_artifact_key(
         version_created_at,
     )
     return f"{version_prefix}artifacts/{safe_name}"
-
-
-def build_eval_job_prefix(project_id: UUID, job_id: UUID, job_created_at: datetime) -> str:
-    job_code = build_eval_job_code(job_created_at, job_id)
-    return f"{build_project_domain_prefix(project_id, 'eval-jobs')}{job_code}/"
-
-
-def build_eval_job_artifact_key(
-    project_id: UUID,
-    job_id: UUID,
-    job_created_at: datetime,
-    *parts: str,
-) -> str:
-    normalized_parts = [part.strip("/") for part in parts if part and part.strip("/")]
-    if not normalized_parts:
-        return build_eval_job_prefix(project_id, job_id, job_created_at).rstrip("/")
-    path = PurePosixPath(*normalized_parts)
-    return f"{build_eval_job_prefix(project_id, job_id, job_created_at)}{path.as_posix()}"
 
 
 def build_eval_spec_version_dataset_key(

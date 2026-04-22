@@ -11,7 +11,7 @@ class BenchmarkVersionSummary(BaseModel):
     dataset_source_uri: str | None = None
     sample_count: int = 0
     enabled: bool = True
-    eval_job_count: int = 0
+    evaluation_run_count: int = 0
     latest_eval_at: datetime | None = None
 
 
@@ -38,7 +38,7 @@ class BenchmarkDefinitionSummary(BaseModel):
     eval_template_preset_id: str | None = None
     version_count: int = 0
     enabled_version_count: int = 0
-    eval_job_count: int = 0
+    evaluation_run_count: int = 0
     latest_eval_at: datetime | None = None
     versions: list[BenchmarkVersionSummary] = Field(default_factory=list)
 

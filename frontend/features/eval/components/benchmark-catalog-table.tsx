@@ -92,7 +92,7 @@ export function BenchmarkCatalogTable({
                   )}
                 </TableCell>
                 <TableCell className="align-top text-foreground">
-                  {benchmark.eval_job_count.toLocaleString()}
+                  {benchmark.evaluation_run_count.toLocaleString()}
                 </TableCell>
                 <TableCell className="align-top text-muted-foreground">
                   {formatDateTime(benchmark.latest_eval_at)}

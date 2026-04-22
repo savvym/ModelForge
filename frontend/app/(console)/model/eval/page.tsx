@@ -19,6 +19,7 @@ import { EvaluationLeaderboardListTable } from "@/features/eval/components/evalu
 import { EvaluationRunCreateSheet } from "@/features/eval/components/evaluation-run-create-sheet";
 import { EvaluationRunLiveRefresh } from "@/features/eval/components/evaluation-run-live-refresh";
 import { EvaluationRunListTable } from "@/features/eval/components/evaluation-run-list-table";
+import { getMyDeployments } from "@/features/model-deployments/api";
 import { getRegistryModels } from "@/features/model-registry/api";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
 import type {
@@ -26,6 +27,7 @@ import type {
   EvalTemplateSummary,
   EvaluationLeaderboardSummaryV2,
   EvaluationRunSummaryV2,
+  ModelDeploymentSummary,
   RegistryModelSummary
 } from "@/types/api";
 
@@ -61,19 +63,22 @@ export default async function ModelEvalPage({
   const projectId = await getCurrentProjectIdFromCookie();
 
   let benchmarks: BenchmarkDefinitionSummary[] = [];
+  let deployments: ModelDeploymentSummary[] = [];
   let models: RegistryModelSummary[] = [];
   let runs: EvaluationRunSummaryV2[] = [];
   let leaderboards: EvaluationLeaderboardSummaryV2[] = [];
   let dimensions: EvalTemplateSummary[] = [];
 
   if (currentTab === "runs") {
-    const [benchmarkResult, modelResult, runResult] = await Promise.all([
+    const [benchmarkResult, modelResult, deploymentResult, runResult] = await Promise.all([
       getBenchmarkCatalog(projectId).catch(() => []),
       getRegistryModels(projectId).catch(() => []),
+      getMyDeployments(projectId).catch(() => []),
       getEvaluationRuns(projectId).catch(() => [])
     ]);
     benchmarks = benchmarkResult;
     models = modelResult;
+    deployments = deploymentResult;
     runs = filterRuns(runResult, query);
   }
 
@@ -126,6 +131,7 @@ export default async function ModelEvalPage({
 
             <EvaluationRunCreateSheet
               benchmarks={benchmarks}
+              deployments={deployments}
               initialOpen={runCreateOpen}
               models={models}
             />

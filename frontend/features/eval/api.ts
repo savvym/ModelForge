@@ -6,9 +6,6 @@ import type {
   BenchmarkDefinitionSummary,
   BenchmarkDefinitionUpdateInput,
   BenchmarkVersionCreateInput,
-  EvalJobCreateInput,
-  EvalJobDetail,
-  EvalJobSummary,
   EvalTemplateCreateInput,
   EvalTemplateSummary,
   EvalTemplateUpdateInput,
@@ -41,37 +38,6 @@ import type {
   TemplateSpecCreateInputV2,
   TemplateSpecSummaryV2
 } from "@/types/api";
-
-export async function getEvalJobs(projectId?: string | null): Promise<EvalJobSummary[]> {
-  return apiFetch<EvalJobSummary[]>("/eval-jobs", { projectId });
-}
-
-export async function getEvalJob(
-  jobId: string,
-  projectId?: string | null
-): Promise<EvalJobDetail> {
-  return apiFetch<EvalJobDetail>(`/eval-jobs/${jobId}`, { projectId });
-}
-
-export async function createEvalJob(payload: EvalJobCreateInput): Promise<EvalJobSummary> {
-  return apiFetch<EvalJobSummary>("/eval-jobs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export async function deleteEvalJob(jobId: string): Promise<void> {
-  return apiFetch<void>(`/eval-jobs/${jobId}`, {
-    method: "DELETE"
-  });
-}
-
-export async function stopEvalJob(jobId: string): Promise<EvalJobSummary> {
-  return apiFetch<EvalJobSummary>(`/eval-jobs/${jobId}/stop`, {
-    method: "POST"
-  });
-}
 
 export async function getBenchmarkCatalog(
   projectId?: string | null

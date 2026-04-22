@@ -34,35 +34,11 @@ const STATUS_META: Record<string, EvalStatusMeta> = {
   }
 };
 
-const DELETE_BLOCKED_STATUSES = new Set(["preparing", "inferencing", "scoring", "cancelling"]);
-const STOPPABLE_STATUSES = new Set(["queued", "preparing", "inferencing", "scoring"]);
 const RUN_DELETE_BLOCKED_STATUSES = new Set(["queued", "running", "cancelling"]);
 const RUN_CANCELLABLE_STATUSES = new Set(["queued", "running"]);
 
 export function getEvalStatusMeta(status: string): EvalStatusMeta {
   return STATUS_META[status] ?? { label: status, variant: "outline" };
-}
-
-export function canDeleteEvalJob(status: string): boolean {
-  return !DELETE_BLOCKED_STATUSES.has(status);
-}
-
-export function canStopEvalJob(status: string): boolean {
-  return STOPPABLE_STATUSES.has(status);
-}
-
-export function getEvalDeleteBlockedReason(status: string): string | null {
-  if (!canDeleteEvalJob(status)) {
-    return "运行中的评测任务暂不支持删除，请等待任务完成后再删除。";
-  }
-  return null;
-}
-
-export function getEvalStopBlockedReason(status: string): string | null {
-  if (!canStopEvalJob(status)) {
-    return "当前任务状态不支持停止。";
-  }
-  return null;
 }
 
 export function canDeleteEvaluationRun(status: string): boolean {

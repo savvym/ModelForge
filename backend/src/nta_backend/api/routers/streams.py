@@ -3,11 +3,10 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter(prefix="/streams")
-_EVAL_STREAM_DISABLED_DETAIL = "评测任务状态流和日志流已暂时下线。"
 
 
 def _timestamp() -> str:
@@ -64,11 +63,6 @@ async def _log_event_stream(job_type: str, job_id: UUID):
         await asyncio.sleep(15)
 
 
-@router.get("/eval-jobs/{job_id}")
-async def stream_eval_job(job_id: str) -> EventSourceResponse:
-    raise HTTPException(status_code=410, detail=_EVAL_STREAM_DISABLED_DETAIL)
-
-
 @router.get("/batch-jobs/{job_id}")
 async def stream_batch_job(job_id: UUID) -> EventSourceResponse:
     return EventSourceResponse(_status_event_stream("batch-job", job_id))
@@ -76,6 +70,4 @@ async def stream_batch_job(job_id: UUID) -> EventSourceResponse:
 
 @router.get("/job-logs/{job_type}/{job_id}")
 async def stream_job_logs(job_type: str, job_id: str) -> EventSourceResponse:
-    if job_type == "eval-job":
-        raise HTTPException(status_code=410, detail=_EVAL_STREAM_DISABLED_DETAIL)
     return EventSourceResponse(_log_event_stream(job_type, UUID(job_id)))

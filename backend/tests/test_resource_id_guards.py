@@ -2,7 +2,8 @@ import asyncio
 from uuid import UUID
 
 import pytest
-from nta_backend.services import dataset_service, eval_service
+
+from nta_backend.services import dataset_service
 
 
 class _ForbiddenSession:
@@ -31,8 +32,3 @@ def test_dataset_service_rejects_legacy_uuid_identifier() -> None:
         )
 
     assert session.called is False
-
-
-def test_eval_service_imports_without_runtime_dependencies() -> None:
-    service = eval_service.EvalJobService()
-    assert service is not None

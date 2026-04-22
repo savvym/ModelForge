@@ -21,7 +21,7 @@ from nta_backend.models.evaluation_v2 import (
     TemplateSpecVersion,
 )
 from nta_backend.models.eval_template import EvalTemplate
-from nta_backend.models.modeling import Model, ModelProvider
+from nta_backend.models.modeling import Endpoint, Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
     BenchmarkEvaluationRunCreate,
     CompiledRunItemPlan,
@@ -29,6 +29,8 @@ from nta_backend.schemas.evaluation_v2 import (
     EvaluationRunCreate,
     ModelBindingSnapshot,
 )
+
+DEPLOYMENT_ENDPOINT_TYPE = "infer-agent-vllm"
 
 
 @dataclass(frozen=True)
@@ -47,7 +49,12 @@ async def compile_run_request(
     project_id: UUID,
     payload: EvaluationRunCreate,
 ) -> CompiledRunContext:
-    model_binding = await _resolve_model_binding(session, project_id=project_id, model_id=payload.model_id)
+    model_binding = await _resolve_model_binding(
+        session,
+        project_id=project_id,
+        model_id=payload.model_id,
+        model_deployment_id=payload.model_deployment_id,
+    )
     judge_policy = await _resolve_judge_policy(
         session,
         project_id=project_id,
@@ -151,7 +158,12 @@ async def compile_benchmark_run_request(
     project_id: UUID,
     payload: BenchmarkEvaluationRunCreate,
 ) -> CompiledRunContext:
-    model_binding = await _resolve_model_binding(session, project_id=project_id, model_id=payload.model_id)
+    model_binding = await _resolve_model_binding(
+        session,
+        project_id=project_id,
+        model_id=payload.model_id,
+        model_deployment_id=payload.model_deployment_id,
+    )
 
     builtin_spec_context = await _load_builtin_benchmark_spec(
         session,
@@ -352,8 +364,18 @@ async def _resolve_model_binding(
     session: AsyncSession,
     *,
     project_id: UUID,
-    model_id: UUID,
+    model_id: UUID | None = None,
+    model_deployment_id: UUID | None = None,
 ) -> ModelBindingSnapshot:
+    if model_deployment_id is not None:
+        return await _resolve_deployment_model_binding(
+            session,
+            project_id=project_id,
+            deployment_id=model_deployment_id,
+        )
+    if model_id is None:
+        raise ValueError("请选择评测模型。")
+
     row = await session.execute(
         select(Model).where(
             Model.id == model_id,
@@ -372,6 +394,7 @@ async def _resolve_model_binding(
         raise ValueError(f"Provider {provider.name} 缺少 base_url。")
     return ModelBindingSnapshot(
         model_id=model.id,
+        source_type="registry",
         model_name=(model.model_code or model.name).strip(),
         display_name=model.name,
         api_url=provider.base_url.strip(),
@@ -383,12 +406,85 @@ async def _resolve_model_binding(
     )
 
 
+async def _resolve_deployment_model_binding(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    deployment_id: UUID,
+) -> ModelBindingSnapshot:
+    row = await session.execute(
+        select(Endpoint, Model.name)
+        .join(Model, Endpoint.model_id == Model.id, isouter=True)
+        .where(
+            Endpoint.id == deployment_id,
+            Endpoint.project_id == project_id,
+            Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+            Endpoint.status != "deleted",
+        )
+    )
+    deployment_row = row.one_or_none()
+    if deployment_row is None:
+        raise ValueError("指定部署不存在。")
+
+    endpoint, model_name = deployment_row
+    config = endpoint.config_json if isinstance(endpoint.config_json, dict) else {}
+    if config.get("unloaded_at") or config.get("superseded_by"):
+        raise ValueError("指定部署当前不可用。")
+
+    agent_status = (
+        config.get("agent_status") if isinstance(config.get("agent_status"), dict) else {}
+    )
+    phase = str(agent_status.get("phase") or "")
+    endpoint_url = str(agent_status.get("endpoint") or config.get("endpoint_url") or "").strip()
+    status_deployment_id = agent_status.get("deployment_id")
+    if status_deployment_id and str(status_deployment_id) != str(endpoint.id):
+        raise ValueError("指定部署已被同一推理机器上的其他部署替换。")
+    if (phase and phase != "ready") or not endpoint_url or endpoint.status != "active":
+        raise ValueError("指定部署尚未 ready，无法发起评测。")
+
+    served_model_name = _deployment_served_model_name(config, model_name)
+    if not served_model_name:
+        raise ValueError("指定部署缺少 Model ID，无法发起评测。")
+
+    display_name = endpoint.name.strip() or model_name or served_model_name
+    return ModelBindingSnapshot(
+        model_id=endpoint.model_id,
+        model_deployment_id=endpoint.id,
+        source_type="deployment",
+        model_name=served_model_name,
+        display_name=display_name,
+        api_url=endpoint_url.rstrip("/"),
+        api_format="chat-completions",
+        api_key=None,
+        organization=None,
+        headers={},
+        model_params={},
+    )
+
+
+def _deployment_served_model_name(config: dict[str, Any], model_name: str | None) -> str | None:
+    spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
+    spec_model = spec.get("model") if isinstance(spec.get("model"), dict) else {}
+    served_name = spec_model.get("served_name")
+    if isinstance(served_name, str) and served_name.strip():
+        return served_name.strip()
+    return model_name.strip() if isinstance(model_name, str) and model_name.strip() else None
+
+
 async def _resolve_model_binding_by_selector(
     session: AsyncSession,
     *,
     project_id: UUID,
     selector: dict[str, Any],
 ) -> ModelBindingSnapshot | None:
+    deployment_id = selector.get("model_deployment_id") or selector.get("deployment_id")
+    if deployment_id:
+        return await _resolve_model_binding(
+            session,
+            project_id=project_id,
+            model_deployment_id=UUID(str(deployment_id)),
+        )
+
     model_id = selector.get("model_id")
     if model_id:
         return await _resolve_model_binding(

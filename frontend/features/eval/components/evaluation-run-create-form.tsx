@@ -20,6 +20,14 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { createEvaluationRun } from "@/features/eval/api";
+import {
+  buildEvalModelTargetOptions,
+  buildEvalModelTargetPayload,
+  describeEvalModelTarget,
+  formatEvalModelTargetOption,
+  pickDefaultEvalModelTarget,
+  type EvalModelTargetOption
+} from "@/features/eval/model-target-options";
 import type {
   EvalSpecSummaryV2,
   EvalSpecVersionSummaryV2,
@@ -28,20 +36,21 @@ import type {
   EvaluationCatalogResponseV2,
   EvaluationRunCreateInputV2,
   JudgePolicySummaryV2,
+  ModelDeploymentSummary,
   RegistryModelSummary
 } from "@/types/api";
 
 const DEFAULT_POLICY_VALUE = "__default__";
-const PREFERRED_PROVIDER_NAME = "ai.zhanghd.com";
-const PREFERRED_MODEL_NAME = "GPT-5.4";
 
 type TargetKind = "suite" | "spec";
 
 export function EvaluationRunCreateForm({
   catalog,
+  deployments = [],
   models,
 }: {
   catalog: EvaluationCatalogResponseV2;
+  deployments?: ModelDeploymentSummary[];
   models: RegistryModelSummary[];
 }) {
   const router = useRouter();
@@ -58,9 +67,9 @@ export function EvaluationRunCreateForm({
     () => catalog.specs.filter((spec) => spec.versions.some((version) => version.enabled)),
     [catalog.specs]
   );
-  const activeModels = useMemo(
-    () => models.filter((model) => model.status === "active" && Boolean(model.provider_id)),
-    [models]
+  const modelOptions = useMemo(
+    () => buildEvalModelTargetOptions(models, deployments),
+    [deployments, models]
   );
 
   const defaultKind: TargetKind = suiteOptions.length ? "suite" : "spec";
@@ -69,7 +78,9 @@ export function EvaluationRunCreateForm({
   const [targetVersion, setTargetVersion] = useState<string>(
     pickInitialVersionValue(defaultKind, targetName, suiteOptions, specOptions)
   );
-  const [modelId, setModelId] = useState<string>(pickDefaultModel(activeModels)?.id ?? "");
+  const [modelTargetId, setModelTargetId] = useState<string>(
+    pickDefaultEvalModelTarget(modelOptions)?.id ?? ""
+  );
   const [judgePolicyId, setJudgePolicyId] = useState<string>(DEFAULT_POLICY_VALUE);
 
   useEffect(() => {
@@ -101,10 +112,10 @@ export function EvaluationRunCreateForm({
   }, [specOptions, suiteOptions, targetKind, targetName, targetVersion]);
 
   useEffect(() => {
-    if (!modelId && activeModels.length) {
-      setModelId(pickDefaultModel(activeModels)?.id ?? "");
+    if (!modelTargetId && modelOptions.length) {
+      setModelTargetId(pickDefaultEvalModelTarget(modelOptions)?.id ?? "");
     }
-  }, [activeModels, modelId]);
+  }, [modelOptions, modelTargetId]);
 
   const selectedSuite =
     targetKind === "suite" ? suiteOptions.find((suite) => suite.name === targetName) ?? null : null;
@@ -114,14 +125,17 @@ export function EvaluationRunCreateForm({
     targetKind === "suite" ? selectedSuite?.versions.filter((version) => version.enabled) ?? [] : selectedSpec?.versions.filter((version) => version.enabled) ?? [];
   const selectedVersion =
     versionOptions.find((version) => version.version === targetVersion) ?? versionOptions[0] ?? null;
-  const selectedModel = activeModels.find((model) => model.id === modelId) ?? pickDefaultModel(activeModels) ?? null;
+  const selectedModel =
+    modelOptions.find((model) => model.id === modelTargetId) ??
+    pickDefaultEvalModelTarget(modelOptions) ??
+    null;
   const selectedJudgePolicy =
     catalog.judge_policies.find((policy) => policy.id === judgePolicyId) ?? null;
 
   const formDisabled =
     submitting ||
     (!suiteOptions.length && !specOptions.length) ||
-    activeModels.length === 0;
+    modelOptions.length === 0;
 
   async function handleSubmit() {
     if (!targetName || !selectedVersion || !selectedModel) {
@@ -148,7 +162,7 @@ export function EvaluationRunCreateForm({
         name: targetName,
         version: selectedVersion.version
       },
-      model_id: selectedModel.id,
+      ...buildEvalModelTargetPayload(selectedModel),
       judge_policy_id: judgePolicyId === DEFAULT_POLICY_VALUE ? undefined : judgePolicyId,
       overrides: {}
     };
@@ -175,8 +189,8 @@ export function EvaluationRunCreateForm({
         </EmptyHint>
       ) : null}
 
-      {!activeModels.length ? (
-        <EmptyHint>当前项目没有可用模型。请先在模型接入中同步可用模型。</EmptyHint>
+      {!modelOptions.length ? (
+        <EmptyHint>当前项目没有可用模型。请先在模型广场接入模型，或在我的部署中启动模型。</EmptyHint>
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -235,17 +249,21 @@ export function EvaluationRunCreateForm({
         </FieldBlock>
 
         <FieldBlock
-          description="任务执行时会把 Provider 绑定快照冻结到执行计划。"
+          description={
+            selectedModel
+              ? describeEvalModelTarget(selectedModel)
+              : "任务执行时会把模型绑定快照冻结到执行计划。"
+          }
           label="评测模型"
         >
-          <Select disabled={formDisabled} onValueChange={setModelId} value={modelId}>
+          <Select disabled={formDisabled} onValueChange={setModelTargetId} value={modelTargetId}>
             <SelectTrigger>
               <SelectValue placeholder="选择模型" />
             </SelectTrigger>
             <SelectContent>
-              {activeModels.map((model) => (
+              {modelOptions.map((model) => (
                 <SelectItem key={model.id} value={model.id}>
-                  {model.name}
+                  {formatEvalModelTargetOption(model)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -325,19 +343,6 @@ export function EvaluationRunCreateForm({
   );
 }
 
-function pickDefaultModel(models: RegistryModelSummary[]) {
-  return (
-    models.find(
-      (model) =>
-        model.name === PREFERRED_MODEL_NAME &&
-        (model.provider_name ?? "").toLowerCase().includes(PREFERRED_PROVIDER_NAME)
-    ) ??
-    models.find((model) => model.name === PREFERRED_MODEL_NAME) ??
-    models[0] ??
-    null
-  );
-}
-
 function pickInitialTargetName(
   targetKind: TargetKind,
   suites: EvalSuiteSummaryV2[],
@@ -375,7 +380,7 @@ function buildRunName({
   suite: EvalSuiteSummaryV2 | null;
   spec: EvalSpecSummaryV2 | null;
   version: EvalSuiteVersionSummaryV2 | EvalSpecVersionSummaryV2 | null;
-  model: RegistryModelSummary;
+  model: EvalModelTargetOption;
 }) {
   const targetDisplay =
     targetKind === "suite" ? suite?.display_name ?? "评测套件" : spec?.display_name ?? "评测类型";

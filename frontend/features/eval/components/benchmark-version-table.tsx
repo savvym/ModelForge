@@ -55,7 +55,7 @@ export function BenchmarkVersionTable({
                 {version.sample_count.toLocaleString()}
               </TableCell>
               <TableCell className="align-top text-foreground">
-                {version.eval_job_count.toLocaleString()}
+                {version.evaluation_run_count.toLocaleString()}
               </TableCell>
               <TableCell className="align-top text-muted-foreground">
                 {formatDateTime(version.latest_eval_at)}
