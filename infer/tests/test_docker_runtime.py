@@ -39,3 +39,24 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
     run_command = commands[1]
     gpus_index = run_command.index("--gpus")
     assert run_command[gpus_index + 1] == "all"
+    restart_index = run_command.index("--restart")
+    assert run_command[restart_index + 1] == "on-failure:3"
+
+
+@pytest.mark.asyncio
+async def test_inspect_state_parses_container_restart_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_command(command: list[str], **_: object) -> str:
+        assert command[:3] == ["docker", "inspect", "-f"]
+        return '{"Status":"exited","ExitCode":1,"Error":""}|3'
+
+    monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
+    runtime = DockerRuntime(AgentSettings())
+
+    state = await runtime.inspect_state()
+
+    assert state is not None
+    assert state.status == "exited"
+    assert state.exit_code == 1
+    assert state.restart_count == 3

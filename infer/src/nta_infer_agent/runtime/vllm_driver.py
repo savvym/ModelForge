@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -20,7 +21,11 @@ class VllmDriver:
     def local_base_url(self, spec: DeploymentSpec) -> str:
         return f"http://127.0.0.1:{spec.engine.listen_port}"
 
-    async def wait_ready(self, spec: DeploymentSpec) -> None:
+    async def wait_ready(
+        self,
+        spec: DeploymentSpec,
+        before_sleep: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         deadline = datetime.now(UTC) + timedelta(seconds=self.settings.health_timeout_seconds)
         headers = self._headers(spec)
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -36,6 +41,8 @@ class VllmDriver:
                             return
                 except httpx.HTTPError:
                     pass
+                if before_sleep is not None:
+                    await before_sleep()
                 await asyncio.sleep(self.settings.health_poll_interval_seconds)
         raise TimeoutError("vLLM did not become healthy before timeout")
 

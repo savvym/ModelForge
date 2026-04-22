@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 
 DOWNLOAD_PROGRESS_START = 10
 DOWNLOAD_PROGRESS_END = 55
+RUNTIME_FAILURE_LOG_TAIL = 120
+TERMINAL_CONTAINER_STATES = {"dead", "exited", "removing"}
+
+
+def _trim_log_excerpt(logs: str, max_chars: int = 1200) -> str:
+    lines = [line.strip() for line in logs.splitlines() if line.strip()]
+    text = "\n".join(lines[-20:])
+    if len(text) <= max_chars:
+        return text
+    return f"...{text[-max_chars:]}"
 
 
 class DeploymentReconciler:
@@ -31,6 +41,7 @@ class DeploymentReconciler:
         self.vllm = VllmDriver(settings)
         self._kick = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._reported_runtime_restarts: dict[tuple[str, int], int] = {}
 
     def start(self) -> None:
         if self._task is None:
@@ -111,10 +122,12 @@ class DeploymentReconciler:
             endpoint=None,
             container_id=None,
             last_event="runtime stopped",
+            clear_runtime=True,
         )
         await self._event(spec, "runtime.stopped", "当前 vLLM 容器已停止", progress=100)
 
     async def _deploy(self, spec: DeploymentSpec) -> None:
+        runtime_takeover_started = False
         try:
             await self._set_status(
                 spec,
@@ -160,6 +173,7 @@ class DeploymentReconciler:
             )
             await self._event(spec, "runtime.stopping_previous", "停止旧 vLLM 容器", progress=60)
             await self.docker.stop_current()
+            runtime_takeover_started = True
 
             await self._set_status(
                 spec,
@@ -167,6 +181,7 @@ class DeploymentReconciler:
                 progress=70,
                 local_path=str(local_path),
                 last_event="starting vllm",
+                clear_runtime=True,
             )
             await self._event(spec, "runtime.starting", "启动 vLLM 容器", progress=70)
             container_id = await self.docker.start_vllm(spec, local_path)
@@ -181,7 +196,10 @@ class DeploymentReconciler:
                 last_event="waiting for vllm health",
             )
             await self._event(spec, "runtime.warming", "等待 vLLM 健康检查通过", progress=82)
-            await self.vllm.wait_ready(spec)
+            await self.vllm.wait_ready(
+                spec,
+                before_sleep=lambda: self._guard_runtime_restart_limit(spec),
+            )
 
             await self._set_status(
                 spec,
@@ -229,21 +247,74 @@ class DeploymentReconciler:
             )
             raise
         except Exception as exc:
+            if runtime_takeover_started:
+                with suppress(Exception):
+                    await self.docker.stop_current()
+                await self._event(
+                    spec,
+                    "runtime.cleaned",
+                    "部署失败，已清理 vLLM 容器",
+                    level="warning",
+                    progress=100,
+                )
+            error_message = _trim_log_excerpt(str(exc), max_chars=1600) or str(exc)
             await self._set_status(
                 spec,
                 phase="error",
                 progress=100,
                 active_model_name=spec.model.served_name,
-                last_event=str(exc),
-                error=ErrorDetail(code=exc.__class__.__name__, message=str(exc)),
+                last_event=error_message,
+                error=ErrorDetail(code=exc.__class__.__name__, message=error_message),
+                clear_runtime=runtime_takeover_started,
             )
             await self._event(
                 spec,
                 "deployment.failed",
-                f"部署失败：{exc}",
+                f"部署失败：{error_message}",
                 level="error",
                 progress=100,
             )
+
+    async def _guard_runtime_restart_limit(self, spec: DeploymentSpec) -> None:
+        restart_limit = self.settings.max_runtime_restarts
+        if restart_limit <= 0:
+            return
+
+        state = await self.docker.inspect_state()
+        if state is None:
+            return
+
+        restart_key = (spec.deployment_id, spec.generation)
+        last_reported = self._reported_runtime_restarts.get(restart_key, 0)
+        if state.restart_count > last_reported:
+            self._reported_runtime_restarts[restart_key] = state.restart_count
+            await self._event(
+                spec,
+                "runtime.restart_detected",
+                f"vLLM 容器已重启 {state.restart_count}/{restart_limit} 次",
+                level="warning",
+                progress=82,
+                payload={
+                    "container_status": state.status,
+                    "exit_code": state.exit_code,
+                    "restart_count": state.restart_count,
+                    "restart_limit": restart_limit,
+                },
+            )
+
+        if state.restart_count < restart_limit or state.status not in TERMINAL_CONTAINER_STATES:
+            return
+
+        logs = await self.docker.logs(tail=RUNTIME_FAILURE_LOG_TAIL)
+        message = f"vLLM 容器重启 {state.restart_count}/{restart_limit} 次后仍未就绪"
+        if state.exit_code is not None:
+            message = f"{message}，退出码 {state.exit_code}"
+        if state.error:
+            message = f"{message}，错误：{state.error}"
+        log_excerpt = _trim_log_excerpt(logs)
+        if log_excerpt:
+            message = f"{message}。\n最近日志：\n{log_excerpt}"
+        raise RuntimeError(message)
 
     async def _set_status(
         self,
@@ -258,6 +329,7 @@ class DeploymentReconciler:
         last_event: str | None = None,
         error: ErrorDetail | None = None,
         last_health_ok_at: datetime | None = None,
+        clear_runtime: bool = False,
     ) -> DeploymentStatus:
         current = await self.state.get_status()
         status = DeploymentStatus(
@@ -265,13 +337,21 @@ class DeploymentReconciler:
             generation=spec.generation,
             phase=phase,
             progress=progress,
-            endpoint=endpoint if endpoint is not None else current.endpoint,
+            endpoint=(
+                None if clear_runtime else endpoint if endpoint is not None else current.endpoint
+            ),
             active_model_name=active_model_name or spec.model.served_name,
             local_path=local_path if local_path is not None else current.local_path,
-            container_id=container_id if container_id is not None else current.container_id,
+            container_id=(
+                None
+                if clear_runtime
+                else container_id if container_id is not None else current.container_id
+            ),
             last_event=last_event,
             error=error,
-            last_health_ok_at=last_health_ok_at or current.last_health_ok_at,
+            last_health_ok_at=None
+            if clear_runtime
+            else last_health_ok_at or current.last_health_ok_at,
         )
         return await self.state.set_status(status)
 

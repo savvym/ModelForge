@@ -55,9 +55,12 @@ MODEL_CACHE_DIR=/data/model-cache
 RUNTIME_DIR=/data/nta-runtime
 RUNTIME_PUBLIC_HOST=10.0.0.12
 HF_TOKEN=hf_xxx_optional_for_private_repos
+MAX_RUNTIME_RESTARTS=3
 ```
 
 `RUNTIME_PUBLIC_HOST` 必须填写控制面可访问到的 H20 地址。否则 agent 会把 vLLM endpoint 报成 `http://127.0.0.1:8000/v1`，控制面从自己的本机访问这个地址时会命中错误服务。
+
+`MAX_RUNTIME_RESTARTS` 控制 vLLM 容器异常退出后的 Docker 重试次数，默认 3 次。超过次数后 infer-agent 会把当前部署标记为失败，并清理 vLLM 容器，避免无限重启。
 
 默认监听：
 
@@ -94,6 +97,7 @@ RUNTIME_DIR=/data/nta-runtime
 RUNTIME_PUBLIC_HOST=10.0.0.12
 DEFAULT_VLLM_IMAGE=vllm/vllm-openai:latest
 HF_TOKEN=hf_xxx_optional_for_private_repos
+MAX_RUNTIME_RESTARTS=3
 ```
 
 启动：

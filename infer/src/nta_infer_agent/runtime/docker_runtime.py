@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from nta_infer_agent.config import AgentSettings
 from nta_infer_agent.process import run_command
 from nta_infer_agent.schemas import DeploymentSpec
+
+
+@dataclass(frozen=True)
+class ContainerState:
+    status: str
+    restart_count: int
+    exit_code: int | None = None
+    error: str | None = None
 
 
 class DockerRuntime:
@@ -26,7 +36,11 @@ class DockerRuntime:
             "--name",
             self.settings.container_name,
             "--restart",
-            "unless-stopped",
+            (
+                f"on-failure:{self.settings.max_runtime_restarts}"
+                if self.settings.max_runtime_restarts > 0
+                else "no"
+            ),
             "--gpus",
             "all",
             "--ipc=host",
@@ -69,6 +83,38 @@ class DockerRuntime:
                 command.extend([option, str(value)])
 
         return await run_command(command)
+
+    async def inspect_state(self) -> ContainerState | None:
+        output = await run_command(
+            [
+                self.settings.docker_bin,
+                "inspect",
+                "-f",
+                "{{json .State}}|{{.RestartCount}}",
+                self.settings.container_name,
+            ],
+            check=False,
+        )
+        if not output or "|" not in output:
+            return None
+
+        state_json, restart_count = output.rsplit("|", 1)
+        try:
+            state = json.loads(state_json)
+        except json.JSONDecodeError:
+            return None
+
+        return ContainerState(
+            status=str(state.get("Status") or "unknown"),
+            restart_count=int(restart_count.strip() or 0),
+            exit_code=(
+                int(state["ExitCode"])
+                if isinstance(state.get("ExitCode"), int | float | str)
+                and str(state.get("ExitCode")).lstrip("-").isdigit()
+                else None
+            ),
+            error=str(state.get("Error") or "") or None,
+        )
 
     async def inspect_container_id(self) -> str | None:
         output = await run_command(

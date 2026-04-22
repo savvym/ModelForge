@@ -32,6 +32,11 @@ class AgentSettings(BaseSettings):
     container_name: str = "nta-vllm"
     default_vllm_image: str = "vllm/vllm-openai:latest"
     vllm_container_port: int = 8000
+    max_runtime_restarts: int = Field(
+        default=3,
+        ge=0,
+        validation_alias=AliasChoices("MAX_RUNTIME_RESTARTS", "INFER_MAX_RUNTIME_RESTARTS"),
+    )
     runtime_public_host: str | None = Field(
         default=None,
         validation_alias=AliasChoices("RUNTIME_PUBLIC_HOST", "INFER_RUNTIME_PUBLIC_HOST"),
