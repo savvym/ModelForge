@@ -1303,6 +1303,15 @@ export interface ModelDeploymentSummary {
   progress: number;
   last_event?: string | null;
   error_message?: string | null;
+  last_passive_health_status?: string | null;
+  last_passive_health_checked_at?: string | null;
+  last_passive_health_latency_ms?: number | null;
+  last_passive_health_error?: string | null;
+  unload_task_status?: string | null;
+  unload_task_started_at?: string | null;
+  unload_task_finished_at?: string | null;
+  unload_task_message?: string | null;
+  unload_task_warning?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1327,6 +1336,16 @@ export interface DeployModelInput {
   tensor_parallel_size?: number | null;
   max_model_len?: number | null;
   dtype?: string | null;
+}
+
+export interface ModelDeploymentPassiveHealth {
+  deployment_id: string;
+  status: string;
+  prompt: string;
+  output_text?: string | null;
+  latency_ms?: number | null;
+  checked_at: string;
+  error?: string | null;
 }
 
 export interface InferenceMachineSummary {

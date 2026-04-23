@@ -37,9 +37,33 @@ function getBrowserProjectId() {
   return null;
 }
 
-async function buildApiError(response: Response): Promise<Error> {
-  const fallback = `API request failed: ${response.status} ${response.statusText}`;
+const API_DETAIL_MESSAGES: Record<string, string> = {
+  "Deployment not found": "部署不存在或已被清理。",
+  "Inference machine not found": "推理机器不存在或已被删除。",
+  "Model or inference machine not found": "模型或推理机器不存在。"
+};
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly statusText: string,
+    readonly detail: string | null
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+    Object.setPrototypeOf(this, ApiRequestError.prototype);
+  }
+}
+
+function formatApiErrorMessage(response: Response, detail: string | null) {
+  if (detail) {
+    return API_DETAIL_MESSAGES[detail] ?? detail;
+  }
+  return `请求失败：${response.status} ${response.statusText}`;
+}
+
+export async function buildApiError(response: Response): Promise<ApiRequestError> {
   try {
     const payload = (await response.json()) as {
       detail?: string | { detail?: string } | null;
@@ -51,9 +75,19 @@ async function buildApiError(response: Response): Promise<Error> {
           ? payload.detail.detail
           : null;
 
-    return new Error(detail ? `${fallback} - ${detail}` : fallback);
+    return new ApiRequestError(
+      formatApiErrorMessage(response, detail),
+      response.status,
+      response.statusText,
+      detail
+    );
   } catch {
-    return new Error(fallback);
+    return new ApiRequestError(
+      formatApiErrorMessage(response, null),
+      response.status,
+      response.statusText,
+      null
+    );
   }
 }
 

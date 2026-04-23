@@ -3,6 +3,7 @@
 import { FileUp, FolderOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { ConsoleBreadcrumb } from "@/components/console/console-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,6 @@ import {
   buildBenchmarkVersionPrefix,
   buildObjectStoreRootPrefix
 } from "@/lib/object-store-layout";
-import { cn } from "@/lib/utils";
 import type { BenchmarkDefinitionSummary, BenchmarkVersionSummary } from "@/types/api";
 
 type BenchmarkVersionEditorFormProps = {
@@ -44,10 +44,6 @@ export function BenchmarkVersionEditorForm({
   const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    tone: "success" | "error";
-    text: string;
-  } | null>(null);
   const [form, setForm] = useState({
     id: initialVersion?.id ?? "",
     display_name: initialVersion?.display_name ?? "",
@@ -74,20 +70,14 @@ export function BenchmarkVersionEditorForm({
       setForm((current) => ({ ...current, id: versionId }));
     }
     if (!versionId) {
-      setFeedback({
-        tone: "error",
-        text: "系统暂时无法生成 Version ID，请刷新页面后重试。"
-      });
+      toast.error("系统暂时无法生成 Version ID，请刷新页面后重试。");
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
       return;
     }
     if (!projectId) {
-      setFeedback({
-        tone: "error",
-        text: "缺少项目上下文，无法确定对象存储上传目录。"
-      });
+      toast.error("缺少项目上下文，无法确定对象存储上传目录。");
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -95,7 +85,6 @@ export function BenchmarkVersionEditorForm({
     }
 
     setIsUploading(true);
-    setFeedback(null);
     try {
       const upload = await uploadManagedFile({
         file,
@@ -105,15 +94,9 @@ export function BenchmarkVersionEditorForm({
         ...current,
         dataset_source_uri: upload.uri
       }));
-      setFeedback({
-        tone: "success",
-        text: `文件已上传到对象存储：${upload.uri}`
-      });
+      toast.success(`文件已上传到对象存储：${upload.uri}`);
     } catch (error) {
-      setFeedback({
-        tone: "error",
-        text: error instanceof Error ? error.message : "上传到对象存储失败"
-      });
+      toast.error(error instanceof Error ? error.message : "上传到对象存储失败");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -124,25 +107,18 @@ export function BenchmarkVersionEditorForm({
 
   function submit() {
     if (!form.display_name.trim()) {
-      setFeedback({ tone: "error", text: "请填写展示名称。" });
+      toast.error("请填写展示名称。");
       return;
     }
     if (!form.dataset_source_uri.trim()) {
-      setFeedback({
-        tone: "error",
-        text: "请提供数据源 URI，当前仅支持 s3://。"
-      });
+      toast.error("请提供数据源 URI，当前仅支持 s3://。");
       return;
     }
     if (!isSupportedDatasetSource(form.dataset_source_uri.trim())) {
-      setFeedback({
-        tone: "error",
-        text: "Benchmark Version 目前仅支持 s3:// 对象存储 URI。"
-      });
+      toast.error("Benchmark Version 目前仅支持 s3:// 对象存储 URI。");
       return;
     }
 
-    setFeedback(null);
     startTransition(() => {
       void (async () => {
         try {
@@ -165,10 +141,7 @@ export function BenchmarkVersionEditorForm({
           router.push(`/model/eval-benchmarks/${benchmark.name}`);
           router.refresh();
         } catch (error) {
-          setFeedback({
-            tone: "error",
-            text: error instanceof Error ? error.message : "保存 Benchmark Version 失败"
-          });
+          toast.error(error instanceof Error ? error.message : "保存 Benchmark Version 失败");
         }
       })();
     });
@@ -208,19 +181,6 @@ export function BenchmarkVersionEditorForm({
           {mode === "edit" ? "编辑 Benchmark Version" : "新增 Benchmark Version"}
         </h1>
       </div>
-
-      {feedback ? (
-        <div
-          className={cn(
-            "rounded-lg border px-3 py-2 text-sm",
-            feedback.tone === "error"
-              ? "border-rose-800/80 bg-rose-950/40 text-rose-200"
-              : "border-emerald-800/80 bg-emerald-950/30 text-emerald-200"
-          )}
-        >
-          {feedback.text}
-        </div>
-      ) : null}
 
       <Card className="border-border bg-card/80 shadow-none">
         <CardHeader>
@@ -324,7 +284,6 @@ export function BenchmarkVersionEditorForm({
         onClose={() => setBrowserOpen(false)}
         onSelect={(uri) => {
           updateField("dataset_source_uri", uri);
-          setFeedback(null);
           setBrowserOpen(false);
         }}
         open={browserOpen}

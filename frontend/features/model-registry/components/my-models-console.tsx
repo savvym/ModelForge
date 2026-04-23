@@ -14,6 +14,7 @@ import {
   Trash2,
   UploadCloud
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   ConsoleListHeader,
   consoleListSearchInputClassName,
@@ -95,7 +96,6 @@ import type {
   RegistryModelSummary
 } from "@/types/api";
 
-type Feedback = { tone: "success" | "error"; text: string } | null;
 type PendingDelete = { id: string; name: string } | null;
 type PendingDeploy = RegistryModelSummary | null;
 type ImportSourceType = "object-storage" | "huggingface";
@@ -279,7 +279,6 @@ function shouldRefreshDeploymentHints(model: RegistryModelSummary) {
 export function MyModelsConsole({ initialModels }: { initialModels: RegistryModelSummary[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const [pendingDeploy, setPendingDeploy] = useState<PendingDeploy>(null);
   const [deployMachines, setDeployMachines] = useState<InferenceMachineSummary[]>([]);
@@ -384,18 +383,6 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     pendingDeploy,
     selectedDeployMachine
   ]);
-
-  useEffect(() => {
-    if (feedback?.tone !== "success") {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setFeedback((current) => (current?.tone === "success" ? null : current));
-    }, 2200);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [feedback]);
 
   useEffect(() => {
     if (!isImportOpen || importForm.source_type !== "huggingface") {
@@ -536,7 +523,6 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
 
   function openImportSheet() {
     setImportForm(createInitialImportForm());
-    setFeedback(null);
     setHfSearchError(null);
     setHfSearchResults([]);
     setHfRevisionResults([]);
@@ -554,37 +540,40 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   }
 
   function refreshWithMessage(tone: "success" | "error", text: string) {
-    setFeedback({ tone, text });
+    if (tone === "success") {
+      toast.success(text);
+    } else {
+      toast.error(text);
+    }
     router.refresh();
   }
 
   function runAction(action: () => Promise<void>) {
-    setFeedback(null);
     startTransition(() => {
       void action().catch((error: unknown) => {
-        setFeedback({ tone: "error", text: error instanceof Error ? error.message : "操作失败" });
+        toast.error(error instanceof Error ? error.message : "操作失败");
       });
     });
   }
 
   function submitImport() {
     if (!importForm.name.trim() || !importForm.base_model.trim()) {
-      setFeedback({ tone: "error", text: "请填写模型名称和基础模型。" });
+      toast.error("请填写模型名称和基础模型。");
       return;
     }
 
     if (importForm.source_type === "object-storage" && !importForm.source_uri.trim()) {
-      setFeedback({ tone: "error", text: "请填写对象存储路径。" });
+      toast.error("请填写对象存储路径。");
       return;
     }
 
     if (importForm.source_type === "huggingface" && !importForm.repo_id.trim()) {
-      setFeedback({ tone: "error", text: "请填写 Hugging Face Repo ID。" });
+      toast.error("请填写 Hugging Face Repo ID。");
       return;
     }
 
     if (importForm.source_type === "huggingface" && !importForm.revision.trim()) {
-      setFeedback({ tone: "error", text: "请选择模型 Revision。" });
+      toast.error("请选择模型 Revision。");
       return;
     }
 
@@ -710,20 +699,6 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           description={`集中管理 ${myModels.length} 个自有模型资产，支持从 Hugging Face 或 COS / S3 登记 safetensors checkpoint。`}
           title="我的模型"
         />
-
-        {feedback?.tone === "success" ? (
-          <div className="pointer-events-none fixed right-6 top-6 z-50">
-            <div className="rounded-lg border border-border bg-card/80 px-3 py-2 text-sm text-foreground shadow-[0_18px_48px_rgba(2,6,23,0.42)] backdrop-blur">
-              {feedback.text}
-            </div>
-          </div>
-        ) : null}
-
-        {feedback?.tone === "error" ? (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {feedback.text}
-          </div>
-        ) : null}
 
         <section className="overflow-hidden rounded-lg border border-border bg-card/80">
           <div className="flex flex-col gap-3 border-b border-border px-4 py-4 lg:flex-row lg:items-center lg:justify-between">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, RefreshCcw, Save, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { ConsoleListHeader } from "@/components/console/list-surface";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,13 +27,9 @@ export function SystemConfigConsole({
   });
   const [showToken, setShowToken] = useState(false);
   const [pending, setPending] = useState(false);
-  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(
-    null
-  );
 
   async function refreshSettings() {
     setPending(true);
-    setFeedback(null);
     try {
       const nextSettings = await getSystemHuggingFaceSettings();
       setSettings(nextSettings);
@@ -42,10 +39,7 @@ export function SystemConfigConsole({
       });
       router.refresh();
     } catch (error) {
-      setFeedback({
-        tone: "error",
-        text: error instanceof Error ? error.message : "刷新系统配置失败。"
-      });
+      toast.error(error instanceof Error ? error.message : "刷新系统配置失败。");
     } finally {
       setPending(false);
     }
@@ -53,7 +47,6 @@ export function SystemConfigConsole({
 
   async function saveSettings(clearToken = false) {
     setPending(true);
-    setFeedback(null);
     try {
       const nextSettings = await updateSystemHuggingFaceSettings({
         clear_token: clearToken,
@@ -66,13 +59,10 @@ export function SystemConfigConsole({
         token: nextSettings.token ?? ""
       });
       setShowToken(false);
-      setFeedback({ tone: "success", text: clearToken ? "HF Token 已清除。" : "配置已保存。" });
+      toast.success(clearToken ? "HF Token 已清除。" : "配置已保存。");
       router.refresh();
     } catch (error) {
-      setFeedback({
-        tone: "error",
-        text: error instanceof Error ? error.message : "保存系统配置失败。"
-      });
+      toast.error(error instanceof Error ? error.message : "保存系统配置失败。");
     } finally {
       setPending(false);
     }
@@ -96,18 +86,6 @@ export function SystemConfigConsole({
         description="管理控制面全局集成配置，模型搜索、录入校验和 infer-agent 部署会继承这里的 Hugging Face 配置。"
         title="系统配置"
       />
-
-      {feedback ? (
-        <div
-          className={
-            feedback.tone === "success"
-              ? "rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300"
-              : "rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          }
-        >
-          {feedback.text}
-        </div>
-      ) : null}
 
       <section className="grid gap-5 rounded-lg border border-border bg-card/70 p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">

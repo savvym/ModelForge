@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { createRegistryModel, updateRegistryModel } from "@/features/model-registry/api";
 import { modelApiFormatOptions } from "@/features/model-registry/api-format";
 import { ModelRegistryBreadcrumb } from "@/features/model-registry/components/model-registry-breadcrumb";
-import { cn } from "@/lib/utils";
 import type { ModelProviderSummary, RegistryModelSummary } from "@/types/api";
 
 type ModelCreateFormProps = {
@@ -94,10 +94,6 @@ export function ModelCreateForm({
 }: ModelCreateFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [feedback, setFeedback] = useState<{
-    tone: "success" | "error";
-    text: string;
-  } | null>(null);
   const [form, setForm] = useState({
     name: initialModel?.name ?? "",
     model_code: initialModel?.model_code ?? "",
@@ -121,11 +117,10 @@ export function ModelCreateForm({
 
   function submit() {
     if (!form.name.trim() || !form.model_code.trim()) {
-      setFeedback({ tone: "error", text: "请填写模型名称和模型 ID。" });
+      toast.error("请填写模型名称和模型 ID。");
       return;
     }
 
-    setFeedback(null);
     startTransition(() => {
       void (async () => {
         try {
@@ -156,10 +151,7 @@ export function ModelCreateForm({
           router.push(target);
           router.refresh();
         } catch (error: unknown) {
-          setFeedback({
-            tone: "error",
-            text: error instanceof Error ? error.message : "创建 Model 失败"
-          });
+          toast.error(error instanceof Error ? error.message : "创建 Model 失败");
         }
       })();
     });
@@ -173,17 +165,6 @@ export function ModelCreateForm({
           {mode === "edit" ? "编辑 Model" : "增加 Model"}
         </h1>
       </div>
-
-      {feedback ? (
-        <div
-          className={cn(
-            "rounded-md border px-3 py-2 text-sm",
-            "border-border bg-card text-muted-foreground"
-          )}
-        >
-          {feedback.text}
-        </div>
-      ) : null}
 
       <Card className="rounded-md border-border shadow-sm">
         <CardHeader className="pb-4">

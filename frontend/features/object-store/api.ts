@@ -1,4 +1,4 @@
-import { apiFetch, getApiBaseUrl } from "@/lib/api-client/http";
+import { apiFetch, buildApiError, getApiBaseUrl } from "@/lib/api-client/http";
 import type {
   ObjectStoreBrowserResponse,
   ObjectStoreDirectUploadInitResponse,
@@ -27,16 +27,7 @@ export async function browseObjectStore(params?: {
   return apiFetch<ObjectStoreBrowserResponse>(`/uploads/browser${suffix}`);
 }
 
-async function parseActionError(response: Response): Promise<Error> {
-  const fallback = `API request failed: ${response.status} ${response.statusText}`;
-
-  try {
-    const payload = (await response.json()) as { detail?: string | null };
-    return new Error(payload.detail ? `${fallback} - ${payload.detail}` : fallback);
-  } catch {
-    return new Error(fallback);
-  }
-}
+const parseActionError = buildApiError;
 
 export async function uploadManagedFile(payload: {
   file: File;

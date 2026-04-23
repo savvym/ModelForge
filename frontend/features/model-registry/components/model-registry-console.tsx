@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Copy, MoreHorizontal, Plus, RefreshCw, Search } from "lucide-react";
+import { toast } from "sonner";
 import {
   ConsoleListHeader,
   consoleListSearchInputClassName,
@@ -62,7 +63,6 @@ import type {
   RegistryModelTestResponse
 } from "@/types/api";
 
-type Feedback = { tone: "success" | "error"; text: string } | null;
 type PendingDelete = { kind: "provider" | "model"; id: string; name: string } | null;
 const MODEL_PAGE_SIZE = 12;
 const DEFAULT_TEST_PROMPT = "请用一句话介绍你自己，并说明你当前使用的模型名称。";
@@ -166,7 +166,6 @@ export function ModelRegistryConsole({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     initialSelectedProviderId ?? null
@@ -231,33 +230,24 @@ export function ModelRegistryConsole({
     setModelPage(1);
   }, [selectedProviderId, deferredModelQuery]);
 
-  useEffect(() => {
-    if (feedback?.tone !== "success") {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setFeedback((current) => (current?.tone === "success" ? null : current));
-    }, 2200);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [feedback]);
-
   function navigate(path: string) {
     router.push(path);
   }
 
   function refreshWithMessage(tone: "success" | "error", text: string) {
-    setFeedback({ tone, text });
+    if (tone === "success") {
+      toast.success(text);
+    } else {
+      toast.error(text);
+    }
     router.refresh();
   }
 
   function runAction(action: () => Promise<void>) {
-    setFeedback(null);
     startTransition(() => {
       void action().catch((error: unknown) => {
         const text = error instanceof Error ? error.message : "操作失败";
-        setFeedback({ tone: "error", text });
+        toast.error(text);
       });
     });
   }
@@ -315,8 +305,8 @@ export function ModelRegistryConsole({
 
     void navigator.clipboard
       .writeText(modelCode)
-      .then(() => setFeedback({ tone: "success", text: `已复制模型 ID：${modelCode}` }))
-      .catch(() => setFeedback({ tone: "error", text: "复制模型 ID 失败" }));
+      .then(() => toast.success(`已复制模型 ID：${modelCode}`))
+      .catch(() => toast.error("复制模型 ID 失败"));
   }
 
   function openModelTest(model: RegistryModelSummary) {
@@ -372,20 +362,6 @@ export function ModelRegistryConsole({
           description={`管理外部模型 Provider，并统一维护 ${providerOptions.length} 个连接、${initialModels.length} 个模型。`}
           title={title}
         />
-
-        {feedback?.tone === "success" ? (
-          <div className="pointer-events-none fixed right-6 top-6 z-50">
-            <div className="rounded-lg border border-border bg-card/80 px-3 py-2 text-sm text-foreground shadow-[0_18px_48px_rgba(2,6,23,0.42)] backdrop-blur">
-              {feedback.text}
-            </div>
-          </div>
-        ) : null}
-
-        {feedback?.tone === "error" ? (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {feedback.text}
-          </div>
-        ) : null}
 
         {pendingDelete ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/80 px-4 py-3">

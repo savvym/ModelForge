@@ -25,6 +25,7 @@ from nta_backend.schemas.model_deployment import (
     HuggingFaceSource,
     ModelBinding,
     ModelDeploymentEvent,
+    ModelDeploymentPassiveHealth,
     ModelDeploymentSummary,
     ModelSource,
     ObjectStorageCredentials,
@@ -163,6 +164,40 @@ def _extract_usage_tokens(payload: dict[str, Any]) -> tuple[int | None, int | No
     )
 
 
+def _extract_chat_completion_text(payload: dict[str, Any]) -> str | None:
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return None
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    return content.strip() if isinstance(content, str) and content.strip() else None
+
+
+def _is_http_status(exc: httpx.HTTPError, status_code: int) -> bool:
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == status_code
+
+
+def _unload_task_config(config: dict[str, Any]) -> dict[str, Any]:
+    task = config.get("unload_task")
+    return task if isinstance(task, dict) else {}
+
+
+def _unload_task_summary_fields(config: dict[str, Any]) -> dict[str, Any]:
+    task = _unload_task_config(config)
+    return {
+        "unload_task_status": str(task.get("status")) if task.get("status") else None,
+        "unload_task_started_at": task.get("started_at"),
+        "unload_task_finished_at": task.get("finished_at"),
+        "unload_task_message": str(task.get("message")) if task.get("message") else None,
+        "unload_task_warning": str(task.get("warning")) if task.get("warning") else None,
+    }
+
+
 def _sse_payload(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -207,6 +242,9 @@ def _serialize_deployment(
     progress = int(agent_status.get("progress") or 0)
     last_event = agent_status.get("last_event")
     is_current = bool(status_deployment_id and str(status_deployment_id) == str(endpoint.id))
+    passive_health = (
+        config.get("passive_health") if isinstance(config.get("passive_health"), dict) else {}
+    )
     if is_unloaded:
         phase = "unloaded"
         endpoint_url = None
@@ -242,6 +280,99 @@ def _serialize_deployment(
             if not is_superseded and isinstance(agent_status.get("error"), dict)
             else None
         ),
+        last_passive_health_status=(
+            str(passive_health.get("status")) if passive_health.get("status") else None
+        ),
+        last_passive_health_checked_at=passive_health.get("checked_at"),
+        last_passive_health_latency_ms=(
+            int(passive_health["latency_ms"])
+            if isinstance(passive_health.get("latency_ms"), int | float)
+            else None
+        ),
+        last_passive_health_error=(
+            str(passive_health.get("error")) if passive_health.get("error") else None
+        ),
+        **_unload_task_summary_fields(config),
+        created_at=endpoint.created_at,
+        updated_at=endpoint.updated_at,
+    )
+
+
+def _serialize_deployment_task(
+    endpoint: Endpoint,
+    model_name: str | None = None,
+) -> ModelDeploymentSummary:
+    config = _deployment_config(endpoint)
+    agent_status = (
+        config.get("agent_status") if isinstance(config.get("agent_status"), dict) else {}
+    )
+    passive_health = (
+        config.get("passive_health") if isinstance(config.get("passive_health"), dict) else {}
+    )
+    raw_phase = str(agent_status.get("phase") or endpoint.status or "")
+    has_been_ready = bool(config.get("has_been_ready")) or raw_phase == "ready"
+    error_message = (
+        agent_status.get("error", {}).get("message")
+        if isinstance(agent_status.get("error"), dict)
+        else None
+    )
+    if endpoint.status == "failed" or raw_phase == "error":
+        task_phase = "failed"
+        task_status = "failed"
+        progress = 100
+        last_event = agent_status.get("last_event") or "部署失败"
+    elif has_been_ready:
+        task_phase = "succeeded"
+        task_status = "succeeded"
+        progress = 100
+        last_event = (
+            agent_status.get("last_event")
+            if raw_phase not in {"unloaded", "unloading"}
+            else None
+        ) or "成功部署"
+        error_message = None
+    else:
+        task_phase = (
+            raw_phase
+            if raw_phase in {"deploying", "downloading", "pending", "warming"}
+            else "deploying"
+        )
+        task_status = "deploying"
+        progress = int(agent_status.get("progress") or 0)
+        last_event = agent_status.get("last_event")
+
+    return ModelDeploymentSummary(
+        id=endpoint.id,
+        name=endpoint.name,
+        model_id=endpoint.model_id,
+        model_name=model_name,
+        status=task_status,
+        endpoint_url=config.get("endpoint_url"),
+        machine_id=config.get("machine_id"),
+        machine_name=config.get("machine_name"),
+        experience_model_id=config.get("experience_model_id"),
+        experience_provider_id=config.get("experience_provider_id"),
+        agent_base_url=config.get("agent_base_url"),
+        served_model_name=_deployment_served_model_name(config, model_name),
+        is_current=False,
+        generation=int(config.get("generation") or agent_status.get("generation") or 0),
+        phase=task_phase,
+        progress=progress,
+        last_event=last_event,
+        error_message=str(error_message) if error_message else None,
+        last_passive_health_status=(
+            str(passive_health.get("status")) if passive_health.get("status") else None
+        ),
+        last_passive_health_checked_at=passive_health.get("checked_at"),
+        last_passive_health_latency_ms=(
+            int(passive_health["latency_ms"])
+            if isinstance(passive_health.get("latency_ms"), int | float)
+            else None
+        ),
+        last_passive_health_error=(
+            str(passive_health.get("error")) if passive_health.get("error") else None
+        ),
+        **_unload_task_summary_fields(config),
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
     )
@@ -311,9 +442,10 @@ class ModelDeploymentService:
                 .order_by(Endpoint.updated_at.desc())
             )
             deployments = [
-                _serialize_deployment(endpoint, model_name) for endpoint, model_name in rows.all()
+                _serialize_deployment_task(endpoint, model_name)
+                for endpoint, model_name in rows.all()
             ]
-            return _normalize_machine_active_deployments(deployments)
+            return deployments
 
     async def list_my_deployments(self) -> list[ModelDeploymentSummary]:
         async with SessionLocal() as session:
@@ -400,7 +532,11 @@ class ModelDeploymentService:
             await session.commit()
             await session.refresh(endpoint)
 
-        agent_status = await self._put_agent_spec(spec, machine)
+        try:
+            agent_status = await self._put_agent_spec(spec, machine)
+        except httpx.HTTPError as exc:
+            await self._mark_deployment_failed(endpoint.id, f"infer-agent request failed: {exc}")
+            raise
         await self._save_agent_status(endpoint.id, agent_status)
         return await self.get_deployment(endpoint.id)
 
@@ -555,7 +691,11 @@ class ModelDeploymentService:
             endpoint.status = "deploying"
             await session.commit()
 
-        agent_status = await self._put_agent_spec(spec, machine)
+        try:
+            agent_status = await self._put_agent_spec(spec, machine)
+        except httpx.HTTPError as exc:
+            await self._mark_deployment_failed(deployment_id, f"infer-agent request failed: {exc}")
+            raise
         await self._save_agent_status(deployment_id, agent_status)
         return await self.get_deployment(deployment_id)
 
@@ -572,12 +712,72 @@ class ModelDeploymentService:
             config = _deployment_config(endpoint)
             if _is_unloaded_config(config):
                 return _serialize_deployment(endpoint)
-            machine = await load_runtime_for_endpoint(session, project_id, config)
+            unload_started_at = _now().isoformat()
+            endpoint.config_json = {
+                **config,
+                "agent_status": {
+                    **(
+                        config.get("agent_status")
+                        if isinstance(config.get("agent_status"), dict)
+                        else {}
+                    ),
+                    "phase": "unloading",
+                    "progress": 20,
+                    "endpoint": None,
+                    "last_event": "卸载任务已提交",
+                    "error": None,
+                },
+                "endpoint_url": None,
+                "unload_task": {
+                    "status": "running",
+                    "started_at": unload_started_at,
+                    "message": "卸载任务已提交",
+                },
+            }
+            endpoint.status = "unloading"
+            await session.commit()
+
+            try:
+                machine = await load_runtime_for_endpoint(session, project_id, config)
+            except (KeyError, ValueError) as exc:
+                machine = None
+                load_runtime_error = str(exc)
+            else:
+                load_runtime_error = None
 
         agent_status: AgentDeploymentStatus | None = None
-        current_agent_status = await self._get_agent_status(machine)
-        if current_agent_status.deployment_id == str(deployment_id):
-            agent_status = await self._delete_agent_current(machine)
+        current_agent_status: AgentDeploymentStatus | None = None
+        cleanup_warning: str | None = None
+        unload_reason = "卸载任务完成"
+        if machine is None:
+            cleanup_warning = load_runtime_error or "推理机器不存在，已跳过远端清理。"
+            unload_reason = "推理机器不可用，已完成本地节点卸载"
+        else:
+            try:
+                current_agent_status = await self._get_agent_status(machine)
+            except httpx.HTTPError as exc:
+                if _is_http_status(exc, 404):
+                    unload_reason = "远端部署不存在，已完成本地节点卸载"
+                else:
+                    cleanup_warning = f"infer-agent 不可达，远端清理未确认：{exc}"
+                    unload_reason = "本地节点已卸载，远端清理未确认"
+
+            if (
+                current_agent_status is not None
+                and current_agent_status.deployment_id == str(deployment_id)
+            ):
+                try:
+                    agent_status = await self._delete_agent_current(machine)
+                    unload_reason = "卸载任务完成，远端 vLLM 已清理"
+                except httpx.HTTPError as exc:
+                    if _is_http_status(exc, 404):
+                        unload_reason = "远端部署不存在，已完成本地节点卸载"
+                    else:
+                        cleanup_warning = f"infer-agent 清理失败，远端清理未确认：{exc}"
+                        unload_reason = "本地节点已卸载，远端清理未确认"
+            elif current_agent_status is not None and current_agent_status.deployment_id:
+                cleanup_warning = "同一推理机器当前运行的是其他部署，未删除远端容器。"
+                unload_reason = "本地节点已卸载，远端当前部署不匹配"
 
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
@@ -601,12 +801,27 @@ class ModelDeploymentService:
                     "phase": "unloaded",
                     "progress": 100,
                     "endpoint": None,
-                    "last_event": "deployment unloaded",
-                    "error": None,
+                    "last_event": unload_reason,
+                    "error": (
+                        {"code": "remote_cleanup_warning", "message": cleanup_warning}
+                        if cleanup_warning
+                        else None
+                    ),
                 },
                 "endpoint_url": None,
                 "unloaded_at": _now().isoformat(),
-                "unloaded_reason": "部署已卸载",
+                "unloaded_reason": unload_reason,
+                "unload_task": {
+                    **(
+                        config.get("unload_task")
+                        if isinstance(config.get("unload_task"), dict)
+                        else {}
+                    ),
+                    "status": "completed_with_warnings" if cleanup_warning else "succeeded",
+                    "finished_at": _now().isoformat(),
+                    "message": unload_reason,
+                    "warning": cleanup_warning,
+                },
             }
             endpoint.status = "unloaded"
             await self._unpublish_deployment_model(session, config)
@@ -789,6 +1004,89 @@ class ModelDeploymentService:
                 yield _sse_payload({"type": "error", "message": str(exc)})
 
         return generator()
+
+    async def check_passive_health(
+        self,
+        deployment_id: UUID,
+    ) -> ModelDeploymentPassiveHealth:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.id == deployment_id,
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                )
+            )
+            row = rows.one_or_none()
+            if row is None:
+                raise KeyError(str(deployment_id))
+            endpoint, model_name = row
+            config = _deployment_config(endpoint)
+            if _is_unloaded_config(config) or _is_superseded_config(config, endpoint.id):
+                result = ModelDeploymentPassiveHealth(
+                    deployment_id=deployment_id,
+                    status="error",
+                    checked_at=_now(),
+                    error="该部署当前不是可用节点。",
+                )
+                await self._save_passive_health_result(deployment_id, result)
+                return result
+            served_model_name = _deployment_served_model_name(config, model_name)
+            if not served_model_name:
+                raise ValueError("部署缺少 Model ID，无法执行被动健康检查。")
+            machine = await load_runtime_for_endpoint(session, project_id, config)
+
+        checked_at = _now()
+        prompt = "hi"
+        try:
+            agent_status = await self._get_agent_status(machine)
+            await self._save_agent_status(deployment_id, agent_status)
+            if agent_status.deployment_id != str(deployment_id):
+                raise ValueError("该部署已被同一推理机器上的其他部署替换。")
+            if agent_status.phase != "ready" or not agent_status.endpoint:
+                raise ValueError("部署尚未 ready，暂不能执行被动健康检查。")
+
+            started_at = perf_counter()
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    f"{agent_status.endpoint.rstrip('/')}/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        **runtime_headers(machine),
+                    },
+                    json={
+                        "model": served_model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                        "temperature": 0,
+                        "max_tokens": 8,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+
+            result = ModelDeploymentPassiveHealth(
+                deployment_id=deployment_id,
+                status="ok",
+                prompt=prompt,
+                output_text=_extract_chat_completion_text(payload),
+                latency_ms=int((perf_counter() - started_at) * 1000),
+                checked_at=checked_at,
+            )
+        except (httpx.HTTPError, ValueError) as exc:
+            result = ModelDeploymentPassiveHealth(
+                deployment_id=deployment_id,
+                status="error",
+                prompt=prompt,
+                checked_at=checked_at,
+                error=str(exc),
+            )
+
+        await self._save_passive_health_result(deployment_id, result)
+        return result
 
     async def list_events(
         self,
@@ -1029,6 +1327,51 @@ class ModelDeploymentService:
                 endpoint.status = "deploying"
             if agent_status.deployment_id == str(endpoint.id) and agent_status.phase == "ready":
                 await self._mark_sibling_deployments_superseded(session, endpoint)
+            await session.commit()
+
+    async def _save_passive_health_result(
+        self,
+        deployment_id: UUID,
+        result: ModelDeploymentPassiveHealth,
+    ) -> None:
+        async with SessionLocal() as session:
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None:
+                return
+            endpoint.config_json = {
+                **_deployment_config(endpoint),
+                "passive_health": result.model_dump(mode="json"),
+            }
+            await session.commit()
+
+    async def _mark_deployment_failed(self, deployment_id: UUID, message: str) -> None:
+        async with SessionLocal() as session:
+            endpoint = await session.get(Endpoint, deployment_id)
+            if endpoint is None:
+                return
+            config = _deployment_config(endpoint)
+            endpoint.config_json = {
+                **config,
+                "agent_status": {
+                    **(
+                        config.get("agent_status")
+                        if isinstance(config.get("agent_status"), dict)
+                        else {}
+                    ),
+                    "deployment_id": str(endpoint.id),
+                    "phase": "error",
+                    "progress": 100,
+                    "endpoint": None,
+                    "last_event": "deployment failed",
+                    "error": {
+                        "code": "agent_request_failed",
+                        "message": message,
+                    },
+                },
+                "endpoint_url": None,
+                "updated_from_agent_at": _now().isoformat(),
+            }
+            endpoint.status = "failed"
             await session.commit()
 
     async def _mark_sibling_deployments_superseded(

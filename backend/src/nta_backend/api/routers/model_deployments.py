@@ -12,6 +12,7 @@ from nta_backend.schemas.model_deployment import (
     InferenceMachineHealth,
     InferenceMachineSummary,
     ModelDeploymentEvent,
+    ModelDeploymentPassiveHealth,
     ModelDeploymentSummary,
 )
 from nta_backend.schemas.model_registry import RegistryModelChatRequest
@@ -136,6 +137,18 @@ async def unload_deployment(deployment_id: UUID) -> ModelDeploymentSummary:
         raise HTTPException(status_code=404, detail="Deployment not found") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"infer-agent request failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{deployment_id}/passive-health", response_model=ModelDeploymentPassiveHealth)
+async def check_deployment_passive_health(
+    deployment_id: UUID,
+) -> ModelDeploymentPassiveHealth:
+    try:
+        return await service.check_passive_health(deployment_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Deployment not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

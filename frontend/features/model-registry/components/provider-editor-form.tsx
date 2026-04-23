@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { createModelProvider, updateModelProvider } from "@/features/model-registry/api";
 import { modelApiFormatOptions } from "@/features/model-registry/api-format";
 import { ModelRegistryBreadcrumb } from "@/features/model-registry/components/model-registry-breadcrumb";
-import { cn } from "@/lib/utils";
 import type { ModelProviderSummary } from "@/types/api";
 
 type ProviderEditorFormProps = {
@@ -31,10 +31,6 @@ type ProviderEditorFormProps = {
 export function ProviderEditorForm({ mode, initialProvider }: ProviderEditorFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [feedback, setFeedback] = useState<{
-    tone: "success" | "error";
-    text: string;
-  } | null>(null);
   const [form, setForm] = useState({
     name: initialProvider?.name ?? "",
     api_format: initialProvider?.api_format ?? "chat-completions",
@@ -50,11 +46,10 @@ export function ProviderEditorForm({ mode, initialProvider }: ProviderEditorForm
 
   function submit() {
     if (!form.name.trim() || !form.base_url.trim()) {
-      setFeedback({ tone: "error", text: "请填写 Provider 名称和 Base URL。" });
+      toast.error("请填写 Provider 名称和 Base URL。");
       return;
     }
 
-    setFeedback(null);
     startTransition(() => {
       void (async () => {
         try {
@@ -82,10 +77,7 @@ export function ProviderEditorForm({ mode, initialProvider }: ProviderEditorForm
           router.push(`/model-square?provider=${provider.id}`);
           router.refresh();
         } catch (error: unknown) {
-          setFeedback({
-            tone: "error",
-            text: error instanceof Error ? error.message : "保存 Provider 失败"
-          });
+          toast.error(error instanceof Error ? error.message : "保存 Provider 失败");
         }
       })();
     });
@@ -99,17 +91,6 @@ export function ProviderEditorForm({ mode, initialProvider }: ProviderEditorForm
           {mode === "edit" ? "编辑 Provider" : "增加 Provider"}
         </h1>
       </div>
-
-      {feedback ? (
-        <div
-          className={cn(
-            "rounded-md border px-3 py-2 text-sm",
-            "border-border bg-card text-muted-foreground"
-          )}
-        >
-          {feedback.text}
-        </div>
-      ) : null}
 
       <Card className="rounded-md border-border shadow-sm">
         <CardHeader className="pb-4">

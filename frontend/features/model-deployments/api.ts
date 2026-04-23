@@ -5,6 +5,7 @@ import type {
   InferenceMachineHealth,
   InferenceMachineSummary,
   ModelDeploymentEvent,
+  ModelDeploymentPassiveHealth,
   ModelDeploymentSummary
 } from "@/types/api";
 
@@ -61,6 +62,17 @@ export async function unloadModelDeployment(
   return apiFetch<ModelDeploymentSummary>(`/model-deployments/${deploymentId}/unload`, {
     method: "POST"
   });
+}
+
+export async function checkModelDeploymentPassiveHealth(
+  deploymentId: string
+): Promise<ModelDeploymentPassiveHealth> {
+  return apiFetch<ModelDeploymentPassiveHealth>(
+    `/model-deployments/${deploymentId}/passive-health`,
+    {
+      method: "POST"
+    }
+  );
 }
 
 export async function getModelDeploymentEvents(

@@ -18,7 +18,8 @@ function AppToaster() {
 
   return (
     <Toaster
-      position="top-right"
+      closeButton
+      position="bottom-right"
       richColors
       theme={mounted && resolvedTheme === "light" ? "light" : "dark"}
     />

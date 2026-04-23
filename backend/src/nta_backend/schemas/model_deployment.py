@@ -118,6 +118,15 @@ class ModelDeploymentSummary(BaseModel):
     progress: int = 0
     last_event: str | None = None
     error_message: str | None = None
+    last_passive_health_status: str | None = None
+    last_passive_health_checked_at: datetime | None = None
+    last_passive_health_latency_ms: int | None = None
+    last_passive_health_error: str | None = None
+    unload_task_status: str | None = None
+    unload_task_started_at: datetime | None = None
+    unload_task_finished_at: datetime | None = None
+    unload_task_message: str | None = None
+    unload_task_warning: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -142,6 +151,16 @@ class DeployModelRequest(BaseModel):
     tensor_parallel_size: int | None = Field(default=None, ge=1, le=16)
     max_model_len: int | None = Field(default=None, ge=1)
     dtype: str | None = None
+
+
+class ModelDeploymentPassiveHealth(BaseModel):
+    deployment_id: UUID
+    status: str
+    prompt: str = "hi"
+    output_text: str | None = None
+    latency_ms: int | None = None
+    checked_at: datetime
+    error: str | None = None
 
 
 class InferenceMachineSummary(BaseModel):
