@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { startTransition, useEffect, useState } from "react";
 import {
   Bot,
-  Boxes,
   ClipboardCheck,
   Database,
   HardDrive,
@@ -18,8 +17,7 @@ import {
   Rocket,
   Search,
   Settings2,
-  Sparkles,
-  WandSparkles
+  Sparkles
 } from "lucide-react";
 import { CURRENT_PROJECT_COOKIE } from "@/features/project/constants";
 import type { ProjectSummary } from "@/types/api";
@@ -156,7 +154,7 @@ export function ConsoleShell({
             href="/overview"
             title="返回概览"
           >
-            <Boxes />
+            <LayoutDashboard />
           </ConsoleNavLink>
 
           {projects.length ? (
@@ -320,9 +318,7 @@ const iconByHref: Record<string, LucideIcon> = {
   "/model-square": Bot,
   "/experience": Sparkles,
   "/endpoint": Rocket,
-  "/batch-inference": Boxes,
   "/model/my-models": Database,
-  "/model/finetune": WandSparkles,
   "/model/eval": ClipboardCheck,
   "/model/eval-benchmarks": ClipboardCheck,
   "/model/probes": Search,
