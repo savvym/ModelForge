@@ -248,6 +248,141 @@ export interface LakeAssetDirectUploadInitResponse {
   upload: ObjectStoreDirectUploadInitResponse;
 }
 
+export type BronzeAssetType =
+  | "web_page"
+  | "website_batch"
+  | "pdf"
+  | "markdown"
+  | "markdown_package"
+  | "image"
+  | "object_prefix";
+
+export type BronzeImportMethod =
+  | "url"
+  | "url_list"
+  | "sitemap"
+  | "upload"
+  | "uploaded_package"
+  | "object_key"
+  | "object_prefix";
+
+export interface BronzeImportCreateInput {
+  asset_type: BronzeAssetType;
+  import_method?: BronzeImportMethod | null;
+  source_uri?: string | null;
+  name?: string | null;
+  provider?: string | null;
+  product?: string | null;
+  tags?: string[];
+  capture_mode?: string;
+  extract_images?: boolean;
+  trigger_silver?: boolean;
+  entrypoint?: string | null;
+  manifest_uri?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BronzeAssetPatchInput {
+  name?: string | null;
+  provider?: string | null;
+  product?: string | null;
+  tags?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface BronzeArtifactSummary {
+  id: string;
+  snapshot_id?: string | null;
+  name: string;
+  artifact_type: string;
+  object_bucket?: string | null;
+  object_key?: string | null;
+  source_uri?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  preview_kind: string;
+  created_at?: string | null;
+}
+
+export interface BronzeSnapshotSummary {
+  id: string;
+  asset_id: string;
+  status: string;
+  snapshot_time: string;
+  raw_hash?: string | null;
+  rendered_hash?: string | null;
+  text_hash?: string | null;
+  content_hash?: string | null;
+  artifact_count: number;
+  diff_status: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface BronzeLineageSummary {
+  silver_ready: boolean;
+  gold_outputs: string[];
+  downstream_jobs: string[];
+}
+
+export interface BronzeJobSummary {
+  id: string;
+  name: string;
+  source_type: string;
+  resource_type?: string | null;
+  status: string;
+  planned_asset_count: number;
+  completed_asset_count: number;
+  failed_asset_count: number;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BronzeAssetSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  source_type: string;
+  source_uri?: string | null;
+  provider?: string | null;
+  product?: string | null;
+  tags: string[];
+  latest_snapshot_id?: string | null;
+  latest_snapshot_at?: string | null;
+  artifact_count: number;
+  image_count: number;
+  hash_status: string;
+  status: string;
+  ingestion_job_id: string;
+  ingestion_job_name: string;
+  object_bucket?: string | null;
+  object_key?: string | null;
+  size_bytes?: number | null;
+  metadata: Record<string, unknown>;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BronzeAssetDetail extends BronzeAssetSummary {
+  snapshots: BronzeSnapshotSummary[];
+  artifacts: BronzeArtifactSummary[];
+  logs: string[];
+  lineage: BronzeLineageSummary;
+}
+
+export interface BronzeImportCreateResponse {
+  asset: BronzeAssetDetail;
+  job: BronzeJobSummary;
+}
+
+export interface BronzeArtifactSignedUrl {
+  artifact_id: string;
+  url: string;
+  expires_in: number;
+}
+
 export interface BenchmarkVersionSummary {
   id: string;
   display_name: string;

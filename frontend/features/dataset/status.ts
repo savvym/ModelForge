@@ -43,10 +43,6 @@ export function formatDatasetScope(scope: string): string {
     return "我的数据集";
   }
 
-  if (scope === "my-data-lake") {
-    return "我的数据湖";
-  }
-
   if (scope === "shared") {
     return "共享数据集";
   }

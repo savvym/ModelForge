@@ -1,6 +1,14 @@
 import { CURRENT_PROJECT_COOKIE, CURRENT_PROJECT_HEADER } from "@/features/project/constants";
 import { apiFetch, getApiBaseUrl } from "@/lib/api-client/http";
 import type {
+  BronzeArtifactSignedUrl,
+  BronzeAssetDetail,
+  BronzeAssetPatchInput,
+  BronzeAssetSummary,
+  BronzeImportCreateInput,
+  BronzeImportCreateResponse,
+  BronzeJobSummary,
+  BronzeSnapshotSummary,
   LakeAssetDirectUploadInitInput,
   LakeAssetDirectUploadInitResponse,
   LakeAssetSummary,
@@ -76,6 +84,85 @@ export async function deleteLakeAsset(assetId: string): Promise<void> {
   await apiFetch<void>(`/lake/assets/${assetId}`, {
     method: "DELETE"
   });
+}
+
+export async function createBronzeImport(
+  payload: BronzeImportCreateInput
+): Promise<BronzeImportCreateResponse> {
+  return apiFetch<BronzeImportCreateResponse>("/bronze/imports", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getBronzeAssets(projectId?: string | null): Promise<BronzeAssetSummary[]> {
+  return apiFetch<BronzeAssetSummary[]>("/bronze/assets", { projectId });
+}
+
+export async function getBronzeAsset(
+  assetId: string,
+  projectId?: string | null
+): Promise<BronzeAssetDetail> {
+  return apiFetch<BronzeAssetDetail>(`/bronze/assets/${assetId}`, { projectId });
+}
+
+export async function updateBronzeAsset(
+  assetId: string,
+  payload: BronzeAssetPatchInput
+): Promise<BronzeAssetDetail> {
+  return apiFetch<BronzeAssetDetail>(`/bronze/assets/${assetId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function refreshBronzeAsset(assetId: string): Promise<BronzeJobSummary> {
+  return apiFetch<BronzeJobSummary>(`/bronze/assets/${assetId}/refresh`, {
+    method: "POST"
+  });
+}
+
+export async function archiveBronzeAsset(assetId: string): Promise<BronzeAssetDetail> {
+  return apiFetch<BronzeAssetDetail>(`/bronze/assets/${assetId}/archive`, {
+    method: "POST"
+  });
+}
+
+export async function deleteBronzeAsset(assetId: string): Promise<void> {
+  await apiFetch<void>(`/bronze/assets/${assetId}`, {
+    method: "DELETE"
+  });
+}
+
+export async function getBronzeAssetSnapshots(
+  assetId: string,
+  projectId?: string | null
+): Promise<BronzeSnapshotSummary[]> {
+  return apiFetch<BronzeSnapshotSummary[]>(`/bronze/assets/${assetId}/snapshots`, {
+    projectId
+  });
+}
+
+export async function getBronzeJobs(projectId?: string | null): Promise<BronzeJobSummary[]> {
+  return apiFetch<BronzeJobSummary[]>("/bronze/jobs", { projectId });
+}
+
+export async function cancelBronzeJob(jobId: string): Promise<BronzeJobSummary> {
+  return apiFetch<BronzeJobSummary>(`/bronze/jobs/${jobId}/cancel`, {
+    method: "POST"
+  });
+}
+
+export async function getBronzeArtifactSignedUrl(
+  artifactId: string
+): Promise<BronzeArtifactSignedUrl> {
+  return apiFetch<BronzeArtifactSignedUrl>(`/bronze/artifacts/${artifactId}/signed-url`);
 }
 
 export function abortLakeUploadsKeepalive(payload: {

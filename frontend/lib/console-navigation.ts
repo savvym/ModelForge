@@ -53,7 +53,7 @@ export const consoleNavSections: ConsoleNavSection[] = [
     title: "数据管理",
     items: [
       { title: "数据集", href: "/dataset", group: "workspace" },
-      { title: "湖资产", href: "/lake-assets", group: "workspace" },
+      { title: "数据湖", href: "/lake-assets", group: "workspace" },
       { title: "Files", href: "/files", group: "workspace" },
       { title: "对象存储", href: "/data", group: "workspace" }
     ]
@@ -107,8 +107,8 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   },
   dataset: { title: "数据集", description: "数据集、版本和共享管理。", group: "workspace" },
   "lake-assets": {
-    title: "湖资产",
-    description: "统一查看和管理数据湖 raw 层资产，支持搜索、筛选与删除。",
+    title: "数据湖",
+    description: "Bronze 管理中心，统一管理 URL、PDF、Markdown、图片和 raw evidence 证据包。",
     group: "workspace"
   },
   files: {
