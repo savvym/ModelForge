@@ -62,11 +62,13 @@ MAX_RUNTIME_RESTARTS=3
 
 `MAX_RUNTIME_RESTARTS` 控制 vLLM 容器异常退出后的 Docker 重试次数，默认 3 次。超过次数后 infer-agent 会把当前部署标记为失败，并清理 vLLM 容器，避免无限重启。
 
-infer-agent 的 `9000` 管理端口会保护所有 HTTP URL，包括 `/v1/*`、`/docs`、`/openapi.json` 和不存在的路径。所有请求都必须带：
+infer-agent 的 `9000` 管理端口会保护所有 HTTP URL，包括 `/v1/*` 和不存在的路径。所有请求都必须带：
 
 ```http
 Authorization: Bearer $INFER_AGENT_TOKEN
 ```
+
+`/docs`、`/redoc` 和 `/openapi.json` 不开放；无论是否带 token，访问都会返回 404。
 
 默认监听：
 

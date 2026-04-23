@@ -15,6 +15,7 @@ from nta_infer_agent.state import EventBus, StateStore
 
 logger = logging.getLogger(__name__)
 AUTH_ERROR_DETAIL = "Invalid infer-agent token"
+DISABLED_DOCS_PATHS = {"/docs", "/redoc", "/openapi.json"}
 
 event_bus = EventBus()
 settings = get_settings()
@@ -32,10 +33,18 @@ def _expected_authorization_header() -> str:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="NTA Infer Agent", version=__version__)
+    app = FastAPI(
+        title="NTA Infer Agent",
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
 
     @app.middleware("http")
     async def require_token_for_all_urls(request: Request, call_next):
+        if request.url.path in DISABLED_DOCS_PATHS:
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
         if request.headers.get("authorization") != _expected_authorization_header():
             return JSONResponse(status_code=401, content={"detail": AUTH_ERROR_DETAIL})
         return await call_next(request)

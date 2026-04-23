@@ -30,14 +30,13 @@ def test_all_http_urls_require_bearer_token(monkeypatch: pytest.MonkeyPatch) -> 
     app_module = importlib.import_module("nta_infer_agent.api.app")
     client = TestClient(app_module.create_app())
 
-    unauthorized = client.get("/docs")
-    assert unauthorized.status_code == 401
-    assert unauthorized.json() == {"detail": "Invalid infer-agent token"}
-
-    assert client.get("/openapi.json").status_code == 401
+    assert client.get("/docs").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+    assert client.get("/redoc").status_code == 404
     assert client.get("/not-found").status_code == 401
 
     headers = {"Authorization": "Bearer test-token"}
-    assert client.get("/docs", headers=headers).status_code == 200
-    assert client.get("/openapi.json", headers=headers).status_code == 200
+    assert client.get("/docs", headers=headers).status_code == 404
+    assert client.get("/openapi.json", headers=headers).status_code == 404
+    assert client.get("/redoc", headers=headers).status_code == 404
     assert client.get("/not-found", headers=headers).status_code == 404
