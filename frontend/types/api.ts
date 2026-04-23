@@ -1202,6 +1202,7 @@ export interface InferenceMachineSummary {
   description?: string | null;
   status: string;
   has_agent_token: boolean;
+  has_runtime_api_key: boolean;
   vllm_image: string;
   gpu_ids: number[];
   tensor_parallel_size: number;
@@ -1222,7 +1223,8 @@ export interface InferenceMachineSummary {
 export interface InferenceMachineCreateInput {
   name: string;
   agent_base_url: string;
-  agent_token?: string | null;
+  agent_token: string;
+  runtime_api_key: string;
   runtime_public_host?: string | null;
   description?: string | null;
   vllm_image: string;

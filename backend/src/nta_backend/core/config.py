@@ -100,6 +100,7 @@ class Settings(BaseSettings):
 
     infer_agent_base_url: str | None = None
     infer_agent_token: SecretStr | None = None
+    infer_runtime_api_key: SecretStr | None = None
     infer_runtime_public_host: str | None = None
     infer_object_storage_endpoint_url: str | None = None
     infer_vllm_image: str = "vllm/vllm-openai:latest"

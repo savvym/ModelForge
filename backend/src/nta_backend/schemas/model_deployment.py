@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ObjectStorageCredentials(BaseModel):
@@ -60,7 +60,7 @@ class EngineSpec(BaseModel):
     max_model_len: int | None = None
     enable_prefix_caching: bool = True
     enable_lora: bool = True
-    api_key: str | None = None
+    api_key: str
     extra_args: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -152,6 +152,7 @@ class InferenceMachineSummary(BaseModel):
     description: str | None = None
     status: str
     has_agent_token: bool = False
+    has_runtime_api_key: bool = False
     vllm_image: str
     gpu_ids: list[int] = Field(default_factory=list)
     tensor_parallel_size: int
@@ -172,7 +173,8 @@ class InferenceMachineSummary(BaseModel):
 class InferenceMachineCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     agent_base_url: str = Field(min_length=8, max_length=500)
-    agent_token: str | None = Field(default=None, max_length=4000)
+    agent_token: str = Field(min_length=1, max_length=4000)
+    runtime_api_key: str = Field(min_length=1, max_length=4000)
     runtime_public_host: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=500)
     vllm_image: str = Field(default="vllm/vllm-openai:latest", min_length=1, max_length=255)
@@ -182,6 +184,14 @@ class InferenceMachineCreate(BaseModel):
     gpu_memory_utilization: float = Field(default=0.85, ge=0.1, le=1.0)
     max_model_len: int | None = Field(default=None, ge=1)
     listen_port: int = Field(default=8000, ge=1, le=65535)
+
+    @field_validator("agent_token", "runtime_api_key")
+    @classmethod
+    def validate_secret_text(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("token must not be empty")
+        return text
 
 
 class InferenceMachineHealth(BaseModel):

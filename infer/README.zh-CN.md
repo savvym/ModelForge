@@ -46,7 +46,7 @@ vim .env
 uv run nta-infer-agent
 ```
 
-`.env` 至少需要确认这几项：
+`.env` 至少需要确认这几项，其中 `INFER_AGENT_TOKEN` 必须配置，不能为空：
 
 ```bash
 INFER_AGENT_TOKEN=replace-with-a-long-random-token
@@ -61,6 +61,12 @@ MAX_RUNTIME_RESTARTS=3
 `RUNTIME_PUBLIC_HOST` 必须填写控制面可访问到的 H20 地址。否则 agent 会把 vLLM endpoint 报成 `http://127.0.0.1:8000/v1`，控制面从自己的本机访问这个地址时会命中错误服务。
 
 `MAX_RUNTIME_RESTARTS` 控制 vLLM 容器异常退出后的 Docker 重试次数，默认 3 次。超过次数后 infer-agent 会把当前部署标记为失败，并清理 vLLM 容器，避免无限重启。
+
+infer-agent 的 `9000` 管理端口会保护所有 HTTP URL，包括 `/v1/*`、`/docs`、`/openapi.json` 和不存在的路径。所有请求都必须带：
+
+```http
+Authorization: Bearer $INFER_AGENT_TOKEN
+```
 
 默认监听：
 
@@ -120,6 +126,7 @@ journalctl -u infer-agent -f
 
 - Agent URL：例如 `http://10.0.0.12:9000`
 - Agent Token：与 H20 机器上 `INFER_AGENT_TOKEN` 保持一致
+- Runtime API Key：由控制面下发给 vLLM，调用 `:8000/v1/*` 时使用 `Authorization: Bearer <Runtime API Key>`
 - Runtime Public Host：例如 `10.0.0.12`
 - vLLM Image：例如 `vllm/vllm-openai:latest`
 - Tensor Parallel Size：例如 `8`
@@ -200,7 +207,9 @@ http://{RUNTIME_PUBLIC_HOST}:8000/v1
 建议：
 
 - `9000` 只允许控制面 Backend 访问。
-- `8000` 只允许控制面、评测服务和需要调用模型的内网服务访问。
+- `8000` 只允许控制面、评测服务和需要调用模型的内网服务访问，并必须带 Runtime API Key。
 - 不要暴露 Docker socket。
-- `INFER_AGENT_TOKEN` 使用长随机字符串。
+- `INFER_AGENT_TOKEN` 是必填项，使用长随机字符串；未配置或为空时 infer-agent 不会启动。
+- `9000` 上所有 HTTP URL 都必须使用 `Authorization: Bearer $INFER_AGENT_TOKEN` 访问。
+- vLLM runtime 启动时必须带 `--api-key`，`/v1/models`、`/v1/chat/completions` 等 runtime API 都必须使用 Runtime API Key。
 - 生产环境把对象存储长期 AK/SK 替换为 STS 临时凭据。

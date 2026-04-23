@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INFER_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
@@ -19,10 +19,7 @@ class AgentSettings(BaseSettings):
     log_level: str = "INFO"
 
     node_name: str = "h20-node-01"
-    agent_token: SecretStr | None = Field(
-        default=None,
-        validation_alias=AliasChoices("AGENT_TOKEN", "INFER_AGENT_TOKEN"),
-    )
+    agent_token: SecretStr = Field(validation_alias="INFER_AGENT_TOKEN")
 
     state_path: Path = Path("/var/lib/infer-agent/state.db")
     model_cache_dir: Path = Path("/data/model-cache")
@@ -53,6 +50,14 @@ class AgentSettings(BaseSettings):
     reconcile_interval_seconds: float = 2.0
     health_timeout_seconds: int = 900
     health_poll_interval_seconds: float = 2.0
+
+    @field_validator("agent_token")
+    @classmethod
+    def validate_agent_token(cls, value: SecretStr) -> SecretStr:
+        token = value.get_secret_value().strip()
+        if not token:
+            raise ValueError("INFER_AGENT_TOKEN must not be empty")
+        return SecretStr(token)
 
     @property
     def model_cache_root(self) -> Path:

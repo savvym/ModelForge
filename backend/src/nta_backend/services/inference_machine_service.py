@@ -37,7 +37,8 @@ class InferenceMachineRuntimeConfig:
     id: UUID | None
     name: str
     agent_base_url: str
-    agent_token: str | None
+    agent_token: str
+    runtime_api_key: str
     runtime_public_host: str | None
     vllm_image: str
     gpu_ids: list[int]
@@ -57,6 +58,13 @@ def _normalize_optional_text(value: str | None) -> str | None:
         return None
     text = value.strip()
     return text or None
+
+
+def _require_text(value: str | None, message: str) -> str:
+    text = _normalize_optional_text(value)
+    if text is None:
+        raise ValueError(message)
+    return text
 
 
 def _normalize_base_url(value: str) -> str:
@@ -140,6 +148,11 @@ def _read_optional_int(config: dict[str, Any], key: str) -> int | None:
     return None
 
 
+def _runtime_api_key(config: dict[str, Any]) -> str | None:
+    value = config.get("runtime_api_key")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def _serialize_machine(machine: InferenceMachine) -> InferenceMachineSummary:
     config = _config(machine)
     return InferenceMachineSummary(
@@ -150,6 +163,7 @@ def _serialize_machine(machine: InferenceMachine) -> InferenceMachineSummary:
         description=machine.description,
         status=machine.status,
         has_agent_token=bool(machine.agent_token),
+        has_runtime_api_key=bool(_runtime_api_key(config)),
         vllm_image=str(config.get("vllm_image") or DEFAULT_MACHINE_CONFIG["vllm_image"]),
         gpu_ids=_read_gpu_ids(config),
         tensor_parallel_size=_read_int(config, "tensor_parallel_size"),
@@ -174,7 +188,11 @@ def machine_runtime_config(machine: InferenceMachine) -> InferenceMachineRuntime
         id=machine.id,
         name=machine.name,
         agent_base_url=machine.agent_base_url.rstrip("/"),
-        agent_token=machine.agent_token,
+        agent_token=_require_text(machine.agent_token, "推理机器缺少 Agent Token。"),
+        runtime_api_key=_require_text(
+            _runtime_api_key(config),
+            "推理机器缺少 Runtime API Key。",
+        ),
         runtime_public_host=machine.runtime_public_host,
         vllm_image=str(config.get("vllm_image") or DEFAULT_MACHINE_CONFIG["vllm_image"]),
         gpu_ids=_read_gpu_ids(config),
@@ -190,6 +208,12 @@ def legacy_env_machine_runtime_config() -> InferenceMachineRuntimeConfig | None:
     settings = get_settings()
     if not settings.infer_agent_base_url:
         return None
+    if settings.infer_agent_token is None:
+        raise ValueError("INFER_AGENT_TOKEN is required when INFER_AGENT_BASE_URL is configured.")
+    if settings.infer_runtime_api_key is None:
+        raise ValueError(
+            "INFER_RUNTIME_API_KEY is required when INFER_AGENT_BASE_URL is configured."
+        )
     gpu_ids = [
         int(item.strip())
         for item in settings.infer_default_gpu_ids.split(",")
@@ -199,11 +223,8 @@ def legacy_env_machine_runtime_config() -> InferenceMachineRuntimeConfig | None:
         id=None,
         name="环境变量机器",
         agent_base_url=settings.infer_agent_base_url.rstrip("/"),
-        agent_token=(
-            settings.infer_agent_token.get_secret_value()
-            if settings.infer_agent_token is not None
-            else None
-        ),
+        agent_token=settings.infer_agent_token.get_secret_value().strip(),
+        runtime_api_key=settings.infer_runtime_api_key.get_secret_value().strip(),
         runtime_public_host=settings.infer_runtime_public_host,
         vllm_image=settings.infer_vllm_image,
         gpu_ids=gpu_ids,
@@ -262,11 +283,23 @@ async def load_runtime_for_endpoint(
 
     agent_base_url = endpoint_config.get("agent_base_url")
     if isinstance(agent_base_url, str) and agent_base_url.strip():
+        endpoint_agent_token = endpoint_config.get("agent_token")
+        if not isinstance(endpoint_agent_token, str):
+            endpoint_agent_token = None
         return InferenceMachineRuntimeConfig(
             id=None,
             name=str(endpoint_config.get("machine_name") or "历史部署机器"),
             agent_base_url=agent_base_url.rstrip("/"),
-            agent_token=None,
+            agent_token=_require_text(
+                endpoint_agent_token,
+                "历史部署记录缺少 Agent Token。",
+            ),
+            runtime_api_key=_require_text(
+                endpoint_config.get("runtime_api_key")
+                if isinstance(endpoint_config.get("runtime_api_key"), str)
+                else None,
+                "历史部署记录缺少 Runtime API Key。",
+            ),
             runtime_public_host=None,
             vllm_image=str(
                 endpoint_config.get("vllm_image") or DEFAULT_MACHINE_CONFIG["vllm_image"]
@@ -283,9 +316,11 @@ async def load_runtime_for_endpoint(
 
 
 def agent_headers(machine: InferenceMachineRuntimeConfig) -> dict[str, str]:
-    if not machine.agent_token:
-        return {}
     return {"Authorization": f"Bearer {machine.agent_token}"}
+
+
+def runtime_headers(machine: InferenceMachineRuntimeConfig) -> dict[str, str]:
+    return {"Authorization": f"Bearer {machine.runtime_api_key}"}
 
 
 class InferenceMachineService:
@@ -317,6 +352,8 @@ class InferenceMachineService:
                 raise ValueError("请填写推理机器名称。")
             if not agent_base_url:
                 raise ValueError("请填写 Agent URL。")
+            agent_token = _require_text(payload.agent_token, "请填写 Agent Token。")
+            runtime_api_key = _require_text(payload.runtime_api_key, "请填写 Runtime API Key。")
             if not vllm_image:
                 raise ValueError("请填写 vLLM Image。")
             if not dtype:
@@ -325,7 +362,7 @@ class InferenceMachineService:
                 project_id=project_id,
                 name=name,
                 agent_base_url=agent_base_url,
-                agent_token=_normalize_optional_text(payload.agent_token),
+                agent_token=agent_token,
                 runtime_public_host=_normalize_optional_text(payload.runtime_public_host),
                 description=_normalize_optional_text(payload.description),
                 status="active",
@@ -338,6 +375,7 @@ class InferenceMachineService:
                     "gpu_memory_utilization": payload.gpu_memory_utilization,
                     "max_model_len": payload.max_model_len,
                     "listen_port": payload.listen_port,
+                    "runtime_api_key": runtime_api_key,
                 },
             )
             session.add(machine)

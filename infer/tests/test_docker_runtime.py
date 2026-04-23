@@ -8,6 +8,10 @@ from nta_infer_agent.runtime.docker_runtime import DockerRuntime
 from nta_infer_agent.schemas import DeploymentSpec, EngineSpec, ModelBinding, ModelSource
 
 
+def _settings() -> AgentSettings:
+    return AgentSettings(INFER_AGENT_TOKEN="test-token", _env_file=None)
+
+
 @pytest.mark.asyncio
 async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None:
     commands: list[list[str]] = []
@@ -17,7 +21,7 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
         return "container-id"
 
     monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
-    runtime = DockerRuntime(AgentSettings())
+    runtime = DockerRuntime(_settings())
     spec = DeploymentSpec(
         deployment_id="deployment-id",
         generation=1,
@@ -28,6 +32,7 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
             source=ModelSource(type="local", uri="local:///model"),
         ),
         engine=EngineSpec(
+            api_key="runtime-token",
             image="vllm/vllm-openai:latest",
             gpu_ids=[0, 1, 2, 3],
             tensor_parallel_size=4,
@@ -41,6 +46,8 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
     assert run_command[gpus_index + 1] == "all"
     restart_index = run_command.index("--restart")
     assert run_command[restart_index + 1] == "on-failure:3"
+    api_key_index = run_command.index("--api-key")
+    assert run_command[api_key_index + 1] == "runtime-token"
 
 
 @pytest.mark.asyncio
@@ -52,7 +59,7 @@ async def test_inspect_state_parses_container_restart_count(
         return '{"Status":"exited","ExitCode":1,"Error":""}|3'
 
     monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
-    runtime = DockerRuntime(AgentSettings())
+    runtime = DockerRuntime(_settings())
 
     state = await runtime.inspect_state()
 

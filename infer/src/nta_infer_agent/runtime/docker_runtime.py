@@ -72,8 +72,7 @@ class DockerRuntime:
             command.append("--enable-prefix-caching")
         if spec.engine.enable_lora:
             command.extend(["--enable-lora", "--max-loras", "16", "--max-lora-rank", "128"])
-        if spec.engine.api_key is not None:
-            command.extend(["--api-key", spec.engine.api_key.get_secret_value()])
+        command.extend(["--api-key", spec.engine.api_key.get_secret_value()])
         for key, value in spec.engine.extra_args.items():
             option = f"--{key.replace('_', '-')}"
             if isinstance(value, bool):

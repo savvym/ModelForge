@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 
 class ObjectStorageCredentials(BaseModel):
@@ -59,8 +59,16 @@ class EngineSpec(BaseModel):
     max_model_len: int | None = None
     enable_prefix_caching: bool = True
     enable_lora: bool = True
-    api_key: SecretStr | None = None
+    api_key: SecretStr
     extra_args: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("api_key")
+    @classmethod
+    def validate_api_key(cls, value: SecretStr) -> SecretStr:
+        api_key = value.get_secret_value().strip()
+        if not api_key:
+            raise ValueError("vLLM runtime api_key must not be empty")
+        return SecretStr(api_key)
 
 
 class SmokeTestSpec(BaseModel):

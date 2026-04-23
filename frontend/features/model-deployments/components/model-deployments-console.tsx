@@ -79,6 +79,7 @@ function createInitialMachineForm() {
     listen_port: "8000",
     max_model_len: "",
     name: "",
+    runtime_api_key: "",
     runtime_public_host: "",
     tensor_parallel_size: "8",
     vllm_image: "vllm/vllm-openai:latest"
@@ -428,13 +429,14 @@ export function ModelDeploymentsConsole({
           : null;
         const created = await createInferenceMachine({
           agent_base_url: machineForm.agent_base_url.trim(),
-          agent_token: machineForm.agent_token.trim() || null,
+          agent_token: machineForm.agent_token.trim(),
           description: machineForm.description.trim() || null,
           dtype: machineForm.dtype,
           gpu_memory_utilization: gpuMemoryUtilization,
           listen_port: listenPort,
           max_model_len: maxModelLen,
           name: machineForm.name.trim(),
+          runtime_api_key: machineForm.runtime_api_key.trim(),
           runtime_public_host: machineForm.runtime_public_host.trim() || null,
           tensor_parallel_size: tensorParallelSize,
           vllm_image: machineForm.vllm_image.trim()
@@ -593,6 +595,12 @@ export function ModelDeploymentsConsole({
                     <span className="inline-flex items-center gap-1">
                       <KeyRound className="size-3" />
                       Token
+                    </span>
+                  ) : null}
+                  {machine.has_runtime_api_key ? (
+                    <span className="inline-flex items-center gap-1">
+                      <KeyRound className="size-3" />
+                      Runtime
                     </span>
                   ) : null}
                   {machine.last_node_name ? <span>{machine.last_node_name}</span> : null}
@@ -930,6 +938,13 @@ export function ModelDeploymentsConsole({
                 placeholder="infer-agent 启动时配置的 token"
                 type="password"
                 value={machineForm.agent_token}
+              />
+              <MachineFormField
+                label="Runtime API Key"
+                onChange={(value) => updateMachineForm("runtime_api_key", value)}
+                placeholder="下发给 vLLM 的 Bearer token"
+                type="password"
+                value={machineForm.runtime_api_key}
               />
               <MachineFormField
                 label="Runtime Public Host"

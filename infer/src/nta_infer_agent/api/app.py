@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from nta_infer_agent import __version__
 from nta_infer_agent.config import get_settings
@@ -14,6 +14,7 @@ from nta_infer_agent.schemas import DeploymentSpec, HealthResponse
 from nta_infer_agent.state import EventBus, StateStore
 
 logger = logging.getLogger(__name__)
+AUTH_ERROR_DETAIL = "Invalid infer-agent token"
 
 event_bus = EventBus()
 settings = get_settings()
@@ -22,16 +23,22 @@ reconciler = DeploymentReconciler(settings, state)
 
 
 async def require_token(authorization: str | None = Header(default=None)) -> None:
-    token = settings.agent_token.get_secret_value() if settings.agent_token else None
-    if not token:
-        return
-    expected = f"Bearer {token}"
-    if authorization != expected:
-        raise HTTPException(status_code=401, detail="Invalid infer-agent token")
+    if authorization != _expected_authorization_header():
+        raise HTTPException(status_code=401, detail=AUTH_ERROR_DETAIL)
+
+
+def _expected_authorization_header() -> str:
+    return f"Bearer {settings.agent_token.get_secret_value()}"
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="NTA Infer Agent", version=__version__)
+
+    @app.middleware("http")
+    async def require_token_for_all_urls(request: Request, call_next):
+        if request.headers.get("authorization") != _expected_authorization_header():
+            return JSONResponse(status_code=401, content={"detail": AUTH_ERROR_DETAIL})
+        return await call_next(request)
 
     @app.on_event("startup")
     async def startup() -> None:

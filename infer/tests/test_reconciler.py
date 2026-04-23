@@ -15,6 +15,10 @@ from nta_infer_agent.schemas import (
 from nta_infer_agent.storage.object_store import DownloadProgress
 
 
+def _settings() -> AgentSettings:
+    return AgentSettings(INFER_AGENT_TOKEN="test-token", _env_file=None)
+
+
 class _FakeDocker:
     def __init__(self) -> None:
         self.stop_calls = 0
@@ -106,7 +110,7 @@ def _deployment_spec(**overrides: object) -> DeploymentSpec:
             served_name="qwen",
             source=ModelSource(type="local", uri="local:///model"),
         ),
-        engine=EngineSpec(image="vllm/vllm-openai:latest"),
+        engine=EngineSpec(api_key="runtime-token", image="vllm/vllm-openai:latest"),
     )
 
 
@@ -114,7 +118,7 @@ def _deployment_spec(**overrides: object) -> DeploymentSpec:
 async def test_reconcile_does_not_repeat_stop_when_already_stopped() -> None:
     spec = _deployment_spec(desired_phase="stopped")
     state = _StoppedState(spec)
-    reconciler = DeploymentReconciler(AgentSettings(), state)  # type: ignore[arg-type]
+    reconciler = DeploymentReconciler(_settings(), state)  # type: ignore[arg-type]
     docker = _FakeDocker()
     reconciler.docker = docker  # type: ignore[assignment]
 
@@ -128,7 +132,7 @@ async def test_reconcile_does_not_repeat_stop_when_already_stopped() -> None:
 async def test_download_progress_reporter_updates_status_and_event() -> None:
     spec = _deployment_spec()
     state = _RecordingState()
-    reconciler = DeploymentReconciler(AgentSettings(), state)  # type: ignore[arg-type]
+    reconciler = DeploymentReconciler(_settings(), state)  # type: ignore[arg-type]
     reporter = _DownloadProgressReporter(reconciler, spec)
 
     reporter.report(
@@ -151,7 +155,7 @@ async def test_download_progress_reporter_updates_status_and_event() -> None:
 async def test_deploy_marks_error_and_cleans_container_after_restart_limit() -> None:
     spec = _deployment_spec()
     state = _RecordingState()
-    reconciler = DeploymentReconciler(AgentSettings(), state)  # type: ignore[arg-type]
+    reconciler = DeploymentReconciler(_settings(), state)  # type: ignore[arg-type]
     docker = _RestartLimitDocker()
     reconciler.docker = docker  # type: ignore[assignment]
     reconciler.downloader = _ReadyCache()  # type: ignore[assignment]

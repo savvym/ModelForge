@@ -39,6 +39,7 @@ from nta_backend.services.inference_machine_service import (
     agent_headers,
     load_inference_machine_runtime,
     load_runtime_for_endpoint,
+    runtime_headers,
 )
 from nta_backend.services.system_config_service import load_system_huggingface_config
 
@@ -720,6 +721,7 @@ class ModelDeploymentService:
                         headers={
                             "Accept": "text/event-stream",
                             "Content-Type": "application/json",
+                            **runtime_headers(machine),
                         },
                         json=request_body,
                     ) as response:
@@ -882,6 +884,7 @@ class ModelDeploymentService:
                 dtype=payload.dtype or inference_machine.dtype,
                 gpu_memory_utilization=inference_machine.gpu_memory_utilization,
                 max_model_len=payload.max_model_len or inference_machine.max_model_len,
+                api_key=inference_machine.runtime_api_key,
             ),
         )
 

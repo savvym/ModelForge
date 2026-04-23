@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from nta_backend.models.benchmark_catalog import (
     BenchmarkDefinition as BenchmarkDefinitionRecord,
 )
+from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.evaluation_v2 import (
     EvalSpec,
     EvalSpecVersion,
@@ -20,7 +21,6 @@ from nta_backend.models.evaluation_v2 import (
     JudgePolicy,
     TemplateSpecVersion,
 )
-from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.modeling import Endpoint, Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
     BenchmarkEvaluationRunCreate,
@@ -29,6 +29,7 @@ from nta_backend.schemas.evaluation_v2 import (
     EvaluationRunCreate,
     ModelBindingSnapshot,
 )
+from nta_backend.services.inference_machine_service import load_runtime_for_endpoint
 
 DEPLOYMENT_ENDPOINT_TYPE = "infer-agent-vllm"
 
@@ -447,6 +448,7 @@ async def _resolve_deployment_model_binding(
         raise ValueError("指定部署缺少 Model ID，无法发起评测。")
 
     display_name = endpoint.name.strip() or model_name or served_model_name
+    machine = await load_runtime_for_endpoint(session, project_id, config)
     return ModelBindingSnapshot(
         model_id=endpoint.model_id,
         model_deployment_id=endpoint.id,
@@ -455,7 +457,7 @@ async def _resolve_deployment_model_binding(
         display_name=display_name,
         api_url=endpoint_url.rstrip("/"),
         api_format="chat-completions",
-        api_key=None,
+        api_key=machine.runtime_api_key,
         organization=None,
         headers={},
         model_params={},

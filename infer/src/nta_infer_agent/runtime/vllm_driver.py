@@ -65,6 +65,4 @@ class VllmDriver:
             response.raise_for_status()
 
     def _headers(self, spec: DeploymentSpec) -> dict[str, str]:
-        if spec.engine.api_key is None:
-            return {}
         return {"Authorization": f"Bearer {spec.engine.api_key.get_secret_value()}"}
