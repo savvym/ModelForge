@@ -292,19 +292,36 @@ type ConsoleTask = {
   updatedAt: string;
 };
 
+const RUNNING_TASK_PHASES = new Set([
+  "deploying",
+  "downloading",
+  "pending",
+  "running",
+  "smoke_testing",
+  "starting",
+  "stopping",
+  "stopping_previous",
+  "unloading",
+  "warming"
+]);
+
+const STOPPABLE_DEPLOYMENT_TASK_PHASES = new Set([
+  "deploying",
+  "downloading",
+  "pending",
+  "running",
+  "smoke_testing",
+  "starting",
+  "stopping_previous",
+  "warming"
+]);
+
 function isTaskRunning(task: ConsoleTask) {
-  return [
-    "deploying",
-    "downloading",
-    "pending",
-    "running",
-    "smoke_testing",
-    "starting",
-    "stopping",
-    "stopping_previous",
-    "unloading",
-    "warming"
-  ].includes(task.phase);
+  return RUNNING_TASK_PHASES.has(task.phase);
+}
+
+function canStopDeploymentTask(task: ConsoleTask) {
+  return task.kind === "deployment" && STOPPABLE_DEPLOYMENT_TASK_PHASES.has(task.phase);
 }
 
 function buildConsoleTasks(deployments: ModelDeploymentSummary[]): ConsoleTask[] {
@@ -1100,6 +1117,21 @@ export function ModelDeploymentsConsole({
                               <Terminal />
                               查看
                             </Button>
+                            {task.kind === "deployment" ? (
+                              <Button
+                                disabled={isPending || !canStopDeploymentTask(task)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  runDeploymentAction(task.deployment, "stop");
+                                }}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                <Square />
+                                停止
+                              </Button>
+                            ) : null}
                             <Button
                               className="text-destructive hover:text-destructive"
                               disabled={isPending || isTaskRunning(task)}
@@ -1220,6 +1252,17 @@ export function ModelDeploymentsConsole({
                   <RefreshCw className={cn(isPending ? "animate-spin" : "")} />
                   刷新
                 </Button>
+                {selectedTask?.kind === "deployment" ? (
+                  <Button
+                    disabled={isPending || !canStopDeploymentTask(selectedTask)}
+                    onClick={() => runDeploymentAction(selectedTask.deployment, "stop")}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Square />
+                    停止部署
+                  </Button>
+                ) : null}
                 <Button onClick={() => setIsTaskDetailOpen(false)} type="button">
                   关闭
                 </Button>

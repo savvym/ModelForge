@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,18 @@ class _RestartLimitDocker:
 class _ReadyCache:
     async def ensure_cached(self, model: ModelBinding, **_: object) -> tuple[Path, bool]:
         return Path("/tmp/model"), True
+
+
+class _BlockingCache:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.cancel_event = None
+
+    async def ensure_cached(self, model: ModelBinding, **kwargs: object) -> tuple[Path, bool]:
+        self.cancel_event = kwargs.get("cancel_event")
+        self.started.set()
+        while True:
+            await asyncio.sleep(0.1)
 
 
 class _FailingVllm:
@@ -149,6 +162,29 @@ async def test_download_progress_reporter_updates_status_and_event() -> None:
     assert state.status.progress > 10
     assert state.status.last_event == "正在下载模型文件（50 B / 100 B）"
     assert state.events[-1]["event_type"] == "artifact.download_progress"
+
+
+@pytest.mark.asyncio
+async def test_deploy_sets_download_cancel_event_when_cancelled() -> None:
+    spec = _deployment_spec()
+    state = _RecordingState()
+    reconciler = DeploymentReconciler(_settings(), state)  # type: ignore[arg-type]
+    cache = _BlockingCache()
+    reconciler.downloader = cache  # type: ignore[assignment]
+
+    task = asyncio.create_task(reconciler._deploy(spec))
+    await asyncio.wait_for(cache.started.wait(), timeout=1.0)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert cache.cancel_event is not None
+    assert cache.cancel_event.is_set()
+    assert [event["event_type"] for event in state.events][-2:] == [
+        "artifact.download_cancelled",
+        "deployment.cancelled",
+    ]
 
 
 @pytest.mark.asyncio

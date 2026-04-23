@@ -128,6 +128,8 @@ class DeploymentReconciler:
 
     async def _deploy(self, spec: DeploymentSpec) -> None:
         runtime_takeover_started = False
+        download_cancel_event = threading.Event()
+        download_finished = False
         try:
             await self._set_status(
                 spec,
@@ -145,7 +147,9 @@ class DeploymentReconciler:
             local_path, cache_hit = await self.downloader.ensure_cached(
                 spec.model,
                 progress=progress_reporter.report,
+                cancel_event=download_cancel_event,
             )
+            download_finished = True
             await progress_reporter.drain()
             if cache_hit:
                 await self._event(
@@ -238,6 +242,15 @@ class DeploymentReconciler:
                 payload={"endpoint": self.vllm.endpoint(spec)},
             )
         except asyncio.CancelledError:
+            download_cancel_event.set()
+            if not download_finished:
+                await self._event(
+                    spec,
+                    "artifact.download_cancelled",
+                    "模型下载已停止",
+                    level="warning",
+                    progress=100,
+                )
             await self._event(
                 spec,
                 "deployment.cancelled",

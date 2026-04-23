@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
+import subprocess
+import sys
+import tempfile
 import threading
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
@@ -12,10 +17,13 @@ from urllib.parse import urlparse
 
 import boto3
 from botocore.client import Config
-from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub import HfApi
 
 from nta_infer_agent.config import AgentSettings
 from nta_infer_agent.schemas import HuggingFaceSource, ModelBinding, ObjectStorageSource
+
+DOWNLOAD_WORKER_POLL_SECONDS = 0.2
+DOWNLOAD_WORKER_TERMINATE_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -33,6 +41,10 @@ class ObjectStorageObject:
 
 
 DownloadProgressCallback = Callable[[DownloadProgress], None]
+
+
+class DownloadCancelled(RuntimeError):
+    """Raised when a model download is cancelled by a newer desired state."""
 
 
 class ModelCache:
@@ -71,18 +83,21 @@ class ModelDownloader:
         self,
         model: ModelBinding,
         progress: DownloadProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> tuple[Path, bool]:
         if model.source.type == "local":
             return self._local_path(model), True
 
+        _raise_if_cancelled(cancel_event)
         if model.source.type == "object_storage":
             if model.source.object_storage is None:
                 raise ValueError("object_storage source details are required")
             return await self._ensure_downloaded(
                 model,
                 lambda destination: self._download_object_storage(
-                    model.source.object_storage, destination, progress
+                    model.source.object_storage, destination, progress, cancel_event
                 ),
+                cancel_event=cancel_event,
             )
 
         if model.source.type == "huggingface":
@@ -91,8 +106,9 @@ class ModelDownloader:
             return await self._ensure_downloaded(
                 model,
                 lambda destination: self._download_huggingface(
-                    model.source.huggingface, destination, progress
+                    model.source.huggingface, destination, progress, cancel_event
                 ),
+                cancel_event=cancel_event,
             )
 
         raise ValueError(f"unsupported model source type: {model.source.type}")
@@ -101,6 +117,8 @@ class ModelDownloader:
         self,
         model: ModelBinding,
         downloader,
+        *,
+        cancel_event: threading.Event | None = None,
     ) -> tuple[Path, bool]:
         destination = self.cache.path_for_model(model)
         if self.cache.is_ready(destination):
@@ -111,11 +129,39 @@ class ModelDownloader:
             await asyncio.to_thread(_remove_tree, staging)
         staging.mkdir(parents=True, exist_ok=True)
 
-        await asyncio.to_thread(downloader, staging)
-        self.cache.ready_marker(staging).write_text("ready\n", encoding="utf-8")
-        if destination.exists():
-            await asyncio.to_thread(_remove_tree, destination)
-        staging.rename(destination)
+        _raise_if_cancelled(cancel_event)
+        loop = asyncio.get_running_loop()
+        download_future = loop.run_in_executor(None, downloader, staging)
+        try:
+            await asyncio.shield(download_future)
+        except asyncio.CancelledError:
+            if cancel_event is not None:
+                cancel_event.set()
+            with suppress(Exception):
+                await asyncio.wait_for(
+                    asyncio.shield(download_future),
+                    timeout=DOWNLOAD_WORKER_TERMINATE_TIMEOUT_SECONDS,
+                )
+            if not download_future.done():
+                download_future.add_done_callback(_consume_future_result)
+            with suppress(Exception):
+                await asyncio.to_thread(_remove_tree, staging)
+            raise
+        except DownloadCancelled:
+            with suppress(Exception):
+                await asyncio.to_thread(_remove_tree, staging)
+            raise
+
+        try:
+            _raise_if_cancelled(cancel_event)
+            self.cache.ready_marker(staging).write_text("ready\n", encoding="utf-8")
+            if destination.exists():
+                await asyncio.to_thread(_remove_tree, destination)
+            staging.rename(destination)
+        except DownloadCancelled:
+            with suppress(Exception):
+                await asyncio.to_thread(_remove_tree, staging)
+            raise
         return destination, False
 
     def _local_path(self, model: ModelBinding) -> Path:
@@ -135,7 +181,9 @@ class ModelDownloader:
         source: HuggingFaceSource,
         destination: Path,
         progress: DownloadProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
+        _raise_if_cancelled(cancel_event)
         token = None
         if source.token is not None:
             token = source.token.get_secret_value()
@@ -145,6 +193,7 @@ class ModelDownloader:
             token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
 
         total_bytes = self._estimate_huggingface_size(source, token)
+        _raise_if_cancelled(cancel_event)
         stop_watcher = threading.Event()
         watcher: threading.Thread | None = None
         if progress is not None:
@@ -178,13 +227,15 @@ class ModelDownloader:
         if source.ignore_patterns:
             kwargs["ignore_patterns"] = source.ignore_patterns
 
+        completed_successfully = False
         try:
-            snapshot_download(**kwargs)
+            self._run_huggingface_worker(kwargs, cancel_event)
+            completed_successfully = True
         finally:
             stop_watcher.set()
             if watcher is not None:
                 watcher.join(timeout=2.0)
-            if progress is not None:
+            if completed_successfully and progress is not None:
                 completed = _directory_size(destination)
                 progress(
                     DownloadProgress(
@@ -200,12 +251,15 @@ class ModelDownloader:
         source: ObjectStorageSource,
         destination: Path,
         progress: DownloadProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
+        _raise_if_cancelled(cancel_event)
         _, bucket, key = parse_object_storage_uri(source.uri)
         client = self._build_client(source)
 
         normalized_prefix = key if key.endswith("/") else f"{key}/"
         objects = self._list_objects(client, bucket, normalized_prefix)
+        _raise_if_cancelled(cancel_event)
 
         if objects:
             files = [
@@ -216,6 +270,7 @@ class ModelDownloader:
             total_size = sum(item.size for item in files)
             completed_size = 0
             for item in files:
+                _raise_if_cancelled(cancel_event)
                 relative = item.key[len(normalized_prefix) :]
                 if not relative or relative.endswith("/"):
                     continue
@@ -227,8 +282,10 @@ class ModelDownloader:
                     completed_getter=lambda base=base_completed: base,
                     total=total_size,
                     name=relative,
+                    cancel_event=cancel_event,
                 )
                 client.download_file(bucket, item.key, str(target), Callback=callback)
+                _raise_if_cancelled(cancel_event)
                 completed_size += item.size
                 if progress is not None:
                     progress(
@@ -243,9 +300,11 @@ class ModelDownloader:
 
         target = destination / Path(key).name
         total_size = self._object_size(client, bucket, key)
+        _raise_if_cancelled(cancel_event)
         completed_size = 0
 
         def callback(chunk_size: int) -> None:
+            _raise_if_cancelled(cancel_event)
             nonlocal completed_size
             completed_size += int(chunk_size)
             if progress is not None:
@@ -259,6 +318,63 @@ class ModelDownloader:
                 )
 
         client.download_file(bucket, key, str(target), Callback=callback)
+
+    def _run_huggingface_worker(
+        self,
+        kwargs: dict[str, object],
+        cancel_event: threading.Event | None,
+    ) -> None:
+        _raise_if_cancelled(cancel_event)
+        self.settings.runtime_root.mkdir(parents=True, exist_ok=True)
+        config_path: Path | None = None
+        process: subprocess.Popen[str] | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                delete=False,
+                dir=self.settings.runtime_root,
+                encoding="utf-8",
+                prefix="hf-download-",
+                suffix=".json",
+            ) as config_file:
+                os.chmod(config_file.name, 0o600)
+                config_path = Path(config_file.name)
+                json.dump(kwargs, config_file, ensure_ascii=False)
+
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "nta_infer_agent.download_worker",
+                    str(config_path),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            while True:
+                if cancel_event is not None and cancel_event.is_set():
+                    _terminate_process(process)
+                    raise DownloadCancelled("model download cancelled")
+                try:
+                    stdout, stderr = process.communicate(timeout=DOWNLOAD_WORKER_POLL_SECONDS)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+
+            if process.returncode:
+                message = (stderr or stdout or "").strip()
+                raise RuntimeError(
+                    message or f"huggingface download failed with code {process.returncode}"
+                )
+        finally:
+            if process is not None and process.poll() is None:
+                _terminate_process(process)
+            if config_path is not None:
+                try:
+                    config_path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def _build_client(self, source: ObjectStorageSource):
         credentials = source.credentials
@@ -338,13 +454,17 @@ def _object_download_callback(
     completed_getter: Callable[[], int],
     total: int,
     name: str,
+    cancel_event: threading.Event | None,
 ) -> Callable[[int], None] | None:
-    if progress is None:
+    if progress is None and cancel_event is None:
         return None
     file_completed = 0
 
     def callback(chunk_size: int) -> None:
         nonlocal file_completed
+        _raise_if_cancelled(cancel_event)
+        if progress is None:
+            return
         file_completed += int(chunk_size)
         progress(
             DownloadProgress(
@@ -356,6 +476,32 @@ def _object_download_callback(
         )
 
     return callback
+
+
+def _raise_if_cancelled(cancel_event: threading.Event | None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise DownloadCancelled("model download cancelled")
+
+
+def _consume_future_result(future: asyncio.Future) -> None:
+    try:
+        future.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        pass
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=DOWNLOAD_WORKER_TERMINATE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        with suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=DOWNLOAD_WORKER_TERMINATE_TIMEOUT_SECONDS)
 
 
 def _matches_patterns(
