@@ -33,11 +33,13 @@ const workflowStatusItems = [
 export function ConsolePage({
   pageKey,
   highlight,
+  showHeader = true,
   showScaffold = true,
   children
 }: {
   pageKey: keyof typeof consolePageMeta;
   highlight?: string;
+  showHeader?: boolean;
   showScaffold?: boolean;
   children?: React.ReactNode;
 }) {
@@ -46,15 +48,17 @@ export function ConsolePage({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="flex flex-col gap-1.5 pb-2">
-        <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {groupLabel}
-        </div>
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{meta.title}</h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{meta.description}</p>
-        </div>
-      </section>
+      {showHeader ? (
+        <section className="flex flex-col gap-1.5 pb-2">
+          <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            {groupLabel}
+          </div>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">{meta.title}</h1>
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{meta.description}</p>
+          </div>
+        </section>
+      ) : null}
 
       {showScaffold ? (
         <>

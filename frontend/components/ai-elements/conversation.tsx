@@ -70,7 +70,7 @@ export function ConversationEmptyState({
       {children ?? (
         <>
           {icon ? <div className="text-muted-foreground">{icon}</div> : null}
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <h3 className="text-lg font-medium text-foreground">{title}</h3>
             {description ? (
               <p className="text-sm leading-6 text-muted-foreground">{description}</p>

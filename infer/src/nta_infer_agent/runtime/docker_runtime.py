@@ -49,7 +49,6 @@ class DockerRuntime:
             "-v",
             f"{model_path}:/model:ro",
             spec.engine.image,
-            "--model",
             "/model",
             "--served-model-name",
             spec.model.served_name,

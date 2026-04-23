@@ -65,6 +65,7 @@ import {
   checkModelDeploymentPassiveHealth,
   createInferenceMachine,
   deleteInferenceMachine,
+  deleteModelDeploymentTask,
   getMyDeployments,
   getModelDeployments,
   getModelDeploymentEvents,
@@ -150,17 +151,43 @@ function phaseVariant(value?: string | null): "default" | "secondary" | "destruc
   return "outline";
 }
 
-function healthVariant(value?: string | null): "default" | "secondary" | "destructive" | "outline" {
-  if (value === "ok") {
-    return "default";
-  }
-  if (value === "unreachable" || value === "error") {
+type MachineHealthState = "healthy" | "probing" | "unhealthy";
+
+function machineHealthVariant(
+  value: MachineHealthState
+): "default" | "secondary" | "destructive" | "outline" {
+  if (value === "unhealthy") {
     return "destructive";
   }
-  if (!value) {
-    return "secondary";
-  }
   return "outline";
+}
+
+function formatMachineHealthState(value: MachineHealthState) {
+  const labels: Record<MachineHealthState, string> = {
+    healthy: "健康",
+    probing: "探测中",
+    unhealthy: "不健康"
+  };
+  return labels[value];
+}
+
+function readMachineHealthState(
+  machine: InferenceMachineSummary,
+  probingMachineIds: Set<string>
+): MachineHealthState {
+  if (probingMachineIds.has(machine.id)) {
+    return "probing";
+  }
+  return machine.last_health_status === "ok" ? "healthy" : "unhealthy";
+}
+
+function machineHealthDotClassName(value: MachineHealthState) {
+  const tones: Record<MachineHealthState, string> = {
+    healthy: "bg-emerald-500",
+    probing: "bg-amber-400",
+    unhealthy: "bg-destructive"
+  };
+  return tones[value];
 }
 
 function shouldPollDeployment(deployment: ModelDeploymentSummary) {
@@ -265,8 +292,24 @@ type ConsoleTask = {
   updatedAt: string;
 };
 
+function isTaskRunning(task: ConsoleTask) {
+  return [
+    "deploying",
+    "downloading",
+    "pending",
+    "running",
+    "smoke_testing",
+    "starting",
+    "stopping",
+    "stopping_previous",
+    "unloading",
+    "warming"
+  ].includes(task.phase);
+}
+
 function buildConsoleTasks(deployments: ModelDeploymentSummary[]): ConsoleTask[] {
   return deployments.flatMap((deployment) => {
+    const deletedTaskKinds = new Set(deployment.deleted_task_kinds ?? []);
     const deploymentTask: ConsoleTask = {
       id: `${deployment.id}:deployment`,
       kind: "deployment",
@@ -279,24 +322,26 @@ function buildConsoleTasks(deployments: ModelDeploymentSummary[]): ConsoleTask[]
       errorMessage: deployment.error_message ?? null,
       updatedAt: deployment.updated_at
     };
-    if (!deployment.unload_task_status) {
-      return [deploymentTask];
+    const tasks: ConsoleTask[] = [];
+    if (!deletedTaskKinds.has("deployment")) {
+      tasks.push(deploymentTask);
     }
-    return [
-      deploymentTask,
-      {
-        id: `${deployment.id}:unload`,
-        kind: "unload",
-        kindLabel: "卸载",
-        deployment,
-        name: `${deployment.name} 卸载节点`,
-        phase: deployment.unload_task_status,
-        progress: deployment.unload_task_finished_at ? 100 : 20,
-        lastEvent: deployment.unload_task_message ?? deployment.last_event ?? null,
-        errorMessage: deployment.unload_task_warning ?? null,
-        updatedAt: deployment.unload_task_finished_at ?? deployment.updated_at
-      }
-    ];
+    if (!deployment.unload_task_status || deletedTaskKinds.has("unload")) {
+      return tasks;
+    }
+    tasks.push({
+      id: `${deployment.id}:unload`,
+      kind: "unload",
+      kindLabel: "卸载",
+      deployment,
+      name: `${deployment.name} 卸载节点`,
+      phase: deployment.unload_task_status,
+      progress: deployment.unload_task_finished_at ? 100 : 20,
+      lastEvent: deployment.unload_task_message ?? deployment.last_event ?? null,
+      errorMessage: deployment.unload_task_warning ?? null,
+      updatedAt: deployment.unload_task_finished_at ?? deployment.updated_at
+    });
+    return tasks;
   });
 }
 
@@ -326,9 +371,12 @@ export function ModelDeploymentsConsole({
   const [isMachinePending, startMachineTransition] = useTransition();
   const [isMachineDialogOpen, setIsMachineDialogOpen] = useState(false);
   const [isMachineAdvancedOpen, setIsMachineAdvancedOpen] = useState(false);
+  const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
+  const [probingMachineIds, setProbingMachineIds] = useState<Set<string>>(() => new Set());
   const [machineForm, setMachineForm] = useState(createInitialMachineForm);
   const [pendingUnloadDeployment, setPendingUnloadDeployment] =
     useState<ModelDeploymentSummary | null>(null);
+  const [pendingDeleteTask, setPendingDeleteTask] = useState<ConsoleTask | null>(null);
   const [pendingDeleteMachine, setPendingDeleteMachine] =
     useState<InferenceMachineSummary | null>(null);
   const consoleTasks = useMemo(() => buildConsoleTasks(deployments), [deployments]);
@@ -447,6 +495,48 @@ export function ModelDeploymentsConsole({
         })
         .catch((error: unknown) => {
           toast.error(error instanceof Error ? error.message : "刷新部署列表失败。");
+        });
+    });
+  }
+
+  function openTaskDetails(task: ConsoleTask) {
+    setSelectedId(task.id);
+    setIsTaskDetailOpen(true);
+  }
+
+  function removeTask(task: ConsoleTask) {
+    if (isTaskRunning(task)) {
+      toast.error("进行中的任务不能删除。");
+      return;
+    }
+    startTransition(() => {
+      void deleteModelDeploymentTask(task.deployment.id, task.kind)
+        .then(() => Promise.all([getModelDeployments(), getMyDeployments()]))
+        .then(([updatedDeployments, updatedMyDeployments]) => {
+          setDeployments(updatedDeployments);
+          setMyDeployments(updatedMyDeployments);
+          setSelectedId((current) => (current === task.id ? null : current));
+          setEvents((current) => (selectedTask?.id === task.id ? [] : current));
+          if (selectedTask?.id === task.id) {
+            setIsTaskDetailOpen(false);
+          }
+          toast.success(`${task.name} 已从任务列表删除。`);
+        })
+        .catch((error: unknown) => {
+          if (isDeploymentNotFoundError(error)) {
+            setDeployments((current) =>
+              current.filter((deployment) => deployment.id !== task.deployment.id)
+            );
+            setMyDeployments((current) =>
+              current.filter((deployment) => deployment.id !== task.deployment.id)
+            );
+            setSelectedId((current) => (current === task.id ? null : current));
+            setEvents([]);
+            setIsTaskDetailOpen(false);
+            toast.success("这个任务对应的部署已被清理，已从当前视图移除。");
+            return;
+          }
+          toast.error(error instanceof Error ? error.message : "删除任务失败。");
         });
     });
   }
@@ -595,6 +685,11 @@ export function ModelDeploymentsConsole({
   }
 
   function checkMachine(machine: InferenceMachineSummary) {
+    setProbingMachineIds((current) => {
+      const next = new Set(current);
+      next.add(machine.id);
+      return next;
+    });
     startMachineTransition(() => {
       void checkInferenceMachineHealth(machine.id)
         .then((health) => {
@@ -615,6 +710,13 @@ export function ModelDeploymentsConsole({
         })
         .catch((error: unknown) => {
           toast.error(error instanceof Error ? error.message : "健康检查失败。");
+        })
+        .finally(() => {
+          setProbingMachineIds((current) => {
+            const next = new Set(current);
+            next.delete(machine.id);
+            return next;
+          });
         });
     });
   }
@@ -637,7 +739,7 @@ export function ModelDeploymentsConsole({
   }
 
   return (
-    <ConsolePage pageKey="endpoint" showScaffold={false}>
+    <ConsolePage pageKey="endpoint" showHeader={false} showScaffold={false}>
       <Tabs className="flex flex-col gap-4" defaultValue="my-deployments">
         <TabsList className="h-auto w-full justify-start gap-1 rounded-lg border border-border bg-card/80 p-1">
           <TabsTrigger value="my-deployments">我的部署</TabsTrigger>
@@ -787,13 +889,7 @@ export function ModelDeploymentsConsole({
 
         <TabsContent value="machines">
           <section className="overflow-hidden rounded-lg border border-border bg-card/80">
-            <div className="flex flex-col gap-3 border-b border-border px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="text-sm font-medium text-foreground">推理机器</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  已添加 {machines.length} 台部署了 infer-agent 的机器，部署模型时可选择目标机器。
-                </div>
-              </div>
+            <div className="flex justify-end border-b border-border px-4 py-3">
               <div className="flex items-center gap-2">
                 <Button
                   disabled={isMachinePending}
@@ -823,80 +919,94 @@ export function ModelDeploymentsConsole({
 
             <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
               {machines.length ? (
-                machines.map((machine) => (
-                  <div
-                    className="rounded-lg border border-border bg-background/40 p-4"
-                    key={machine.id}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-foreground">
-                          {machine.name}
+                machines.map((machine) => {
+                  const healthState = readMachineHealthState(machine, probingMachineIds);
+                  return (
+                    <div
+                      className="rounded-lg border border-border bg-background/40 p-4"
+                      key={machine.id}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-foreground">
+                            {machine.name}
+                          </div>
+                          <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                            {machine.agent_base_url}
+                          </div>
                         </div>
-                        <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                          {machine.agent_base_url}
+                        <Badge
+                          className="gap-1.5 px-3 py-1"
+                          variant={machineHealthVariant(healthState)}
+                        >
+                          <span
+                            className={cn(
+                              "size-1.5 rounded-full",
+                              machineHealthDotClassName(healthState)
+                            )}
+                          />
+                          {formatMachineHealthState(healthState)}
+                        </Badge>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                        <MachineMetric icon={<Cpu />} label="GPU" value={formatGpuSummary(machine)} />
+                        <MachineMetric
+                          icon={<Activity />}
+                          label="TP"
+                          value={String(machine.tensor_parallel_size)}
+                        />
+                        <MachineMetric label="显存" value={formatGpuMemory(machine)} />
+                        <MachineMetric label="port" value={String(machine.listen_port)} />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span>{machine.vllm_image}</span>
+                        {machine.has_agent_token ? (
+                          <span className="inline-flex items-center gap-1">
+                            <KeyRound className="size-3" />
+                            Token
+                          </span>
+                        ) : null}
+                        {machine.has_runtime_api_key ? (
+                          <span className="inline-flex items-center gap-1">
+                            <KeyRound className="size-3" />
+                            Runtime
+                          </span>
+                        ) : null}
+                        {machine.last_node_name ? <span>{machine.last_node_name}</span> : null}
+                        {machine.last_gpu_count != null ? (
+                          <span>{machine.last_gpu_count} GPU</span>
+                        ) : null}
+                      </div>
+                      {machine.last_health_error ? (
+                        <div className="mt-3 line-clamp-2 text-xs text-destructive">
+                          {machine.last_health_error}
                         </div>
-                      </div>
-                      <Badge variant={healthVariant(machine.last_health_status)}>
-                        {machine.last_health_status ?? "未检查"}
-                      </Badge>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                      <MachineMetric icon={<Cpu />} label="GPU" value={formatGpuSummary(machine)} />
-                      <MachineMetric
-                        icon={<Activity />}
-                        label="TP"
-                        value={String(machine.tensor_parallel_size)}
-                      />
-                      <MachineMetric label="显存" value={formatGpuMemory(machine)} />
-                      <MachineMetric label="port" value={String(machine.listen_port)} />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{machine.vllm_image}</span>
-                      {machine.has_agent_token ? (
-                        <span className="inline-flex items-center gap-1">
-                          <KeyRound className="size-3" />
-                          Token
-                        </span>
                       ) : null}
-                      {machine.has_runtime_api_key ? (
-                        <span className="inline-flex items-center gap-1">
-                          <KeyRound className="size-3" />
-                          Runtime
-                        </span>
-                      ) : null}
-                      {machine.last_node_name ? <span>{machine.last_node_name}</span> : null}
-                      {machine.last_gpu_count != null ? <span>{machine.last_gpu_count} GPU</span> : null}
-                    </div>
-                    {machine.last_health_error ? (
-                      <div className="mt-3 line-clamp-2 text-xs text-destructive">
-                        {machine.last_health_error}
+                      <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                          disabled={isMachinePending}
+                          onClick={() => checkMachine(machine)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          {healthState === "probing" ? "探测中..." : "健康检查"}
+                        </Button>
+                        <Button
+                          className="text-destructive hover:text-destructive"
+                          disabled={isMachinePending}
+                          onClick={() => requestDeleteMachine(machine)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Trash2 />
+                          删除
+                        </Button>
                       </div>
-                    ) : null}
-                    <div className="mt-4 flex justify-end gap-2">
-                      <Button
-                        disabled={isMachinePending}
-                        onClick={() => checkMachine(machine)}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        健康检查
-                      </Button>
-                      <Button
-                        className="text-destructive hover:text-destructive"
-                        disabled={isMachinePending}
-                        onClick={() => requestDeleteMachine(machine)}
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Trash2 />
-                        删除
-                      </Button>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="col-span-full rounded-lg border border-dashed border-border bg-background/40 px-4 py-10 text-center text-sm text-muted-foreground">
                   还没有推理机器。先在 H20 机器上部署 infer-agent，然后把 Agent URL 和 Token 添加到这里。
@@ -907,184 +1017,251 @@ export function ModelDeploymentsConsole({
         </TabsContent>
 
         <TabsContent value="tasks">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_420px]">
-            <section className="overflow-hidden rounded-lg border border-border bg-card/80">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4">
-                <div>
-                  <div className="text-sm font-medium text-foreground">任务</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {consoleTasks.length} 个在线推理相关任务，包含部署、卸载和后续清理。
-                  </div>
-                </div>
-                <Button
-                  disabled={!selectedTask || isPending}
-                  onClick={refreshSelected}
-                  size="sm"
-                  variant="outline"
-                >
-                  <RefreshCw className={cn(isPending ? "animate-spin" : "")} />
-                  刷新任务
-                </Button>
-              </div>
+          <section className="overflow-hidden rounded-lg border border-border bg-card/80">
+            <div className="flex justify-end border-b border-border px-4 py-3">
+              <Button
+                disabled={!selectedTask || isPending}
+                onClick={refreshSelected}
+                size="sm"
+                variant="outline"
+              >
+                <RefreshCw className={cn(isPending ? "animate-spin" : "")} />
+                刷新任务
+              </Button>
+            </div>
 
-              <ConsoleListTableSurface>
-                <Table className="text-sm">
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="h-10 px-3">任务名称</TableHead>
-                      <TableHead className="h-10 px-3">类型</TableHead>
-                      <TableHead className="h-10 px-3">模型</TableHead>
-                      <TableHead className="h-10 px-3">机器</TableHead>
-                      <TableHead className="h-10 px-3">任务状态</TableHead>
-                      <TableHead className="h-10 px-3">进度</TableHead>
-                      <TableHead className="h-10 px-3">更新时间</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {consoleTasks.length ? (
-                      consoleTasks.map((task) => (
-                        <TableRow
-                          className="cursor-pointer"
-                          data-state={task.id === selectedTask?.id ? "selected" : undefined}
-                          key={task.id}
-                          onClick={() => setSelectedId(task.id)}
-                        >
-                          <TableCell className="px-3 py-2.5 font-medium text-foreground">
-                            {task.name}
-                          </TableCell>
-                          <TableCell className="px-3 py-2.5">
-                            <Badge variant="outline">{task.kindLabel}</Badge>
-                          </TableCell>
-                          <TableCell className="px-3 py-2.5 text-muted-foreground">
-                            {task.deployment.served_model_name ?? task.deployment.model_name ?? "--"}
-                          </TableCell>
-                          <TableCell className="px-3 py-2.5 text-muted-foreground">
-                            {task.deployment.machine_name ?? "--"}
-                          </TableCell>
-                          <TableCell className="px-3 py-2.5">
-                            <Badge variant={phaseVariant(task.phase)}>
-                              {formatPhase(task.phase)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="px-3 py-2.5">
-                            <div className="flex min-w-[120px] items-center gap-2">
-                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                                <div
-                                  className="h-full rounded-full bg-primary"
-                                  style={{ width: `${task.progress}%` }}
-                                />
-                              </div>
-                              <span className="w-9 text-right text-xs text-muted-foreground">
-                                {task.progress}%
-                              </span>
+            <ConsoleListTableSurface>
+              <Table className="text-sm">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-10 px-3">任务名称</TableHead>
+                    <TableHead className="h-10 px-3">类型</TableHead>
+                    <TableHead className="h-10 px-3">模型</TableHead>
+                    <TableHead className="h-10 px-3">机器</TableHead>
+                    <TableHead className="h-10 px-3">任务状态</TableHead>
+                    <TableHead className="h-10 px-3">进度</TableHead>
+                    <TableHead className="h-10 px-3">更新时间</TableHead>
+                    <TableHead className="h-10 px-3 text-right">操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {consoleTasks.length ? (
+                    consoleTasks.map((task) => (
+                      <TableRow
+                        className="cursor-pointer"
+                        data-state={task.id === selectedTask?.id ? "selected" : undefined}
+                        key={task.id}
+                        onClick={() => openTaskDetails(task)}
+                      >
+                        <TableCell className="px-3 py-2.5 font-medium text-foreground">
+                          {task.name}
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5">
+                          <Badge variant="outline">{task.kindLabel}</Badge>
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5 text-muted-foreground">
+                          {task.deployment.served_model_name ?? task.deployment.model_name ?? "--"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5 text-muted-foreground">
+                          {task.deployment.machine_name ?? "--"}
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5">
+                          <Badge variant={phaseVariant(task.phase)}>
+                            {formatPhase(task.phase)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5">
+                          <div className="flex min-w-[120px] items-center gap-2">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${task.progress}%` }}
+                              />
                             </div>
-                          </TableCell>
-                          <TableCell className="px-3 py-2.5 text-muted-foreground">
-                            {formatDateTime(task.updatedAt)}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell className="h-40 text-center text-muted-foreground" colSpan={7}>
-                          暂无任务。从“我的模型”点击部署，或在“我的部署”卸载节点后会出现在这里。
+                            <span className="w-9 text-right text-xs text-muted-foreground">
+                              {task.progress}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5 text-muted-foreground">
+                          {formatDateTime(task.updatedAt)}
+                        </TableCell>
+                        <TableCell className="px-3 py-2.5">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openTaskDetails(task);
+                              }}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              <Terminal />
+                              查看
+                            </Button>
+                            <Button
+                              className="text-destructive hover:text-destructive"
+                              disabled={isPending || isTaskRunning(task)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPendingDeleteTask(task);
+                              }}
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 />
+                              删除
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </ConsoleListTableSurface>
-            </section>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell className="h-40 text-center text-muted-foreground" colSpan={8}>
+                        暂无任务。从“我的模型”点击部署，或在“我的部署”卸载节点后会出现在这里。
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </ConsoleListTableSurface>
+          </section>
+        </TabsContent>
+      </Tabs>
 
-            <section className="overflow-hidden rounded-lg border border-border bg-card/80">
-              <div className="border-b border-border px-4 py-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Terminal />
-                  任务详情
-                </div>
-                <div className="mt-1 truncate text-xs text-muted-foreground">
-                  {selectedTask?.name ?? "选择一个任务查看详情"}
-                </div>
-              </div>
+      <Dialog open={isTaskDetailOpen && Boolean(selectedTask)} onOpenChange={setIsTaskDetailOpen}>
+        <DialogContent className="max-w-3xl">
+          {selectedTask ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedTask.name}</DialogTitle>
+                <DialogDescription>
+                  {selectedTask.kindLabel} · {formatPhase(selectedTask.phase)}
+                </DialogDescription>
+              </DialogHeader>
 
-              {selectedTask ? (
-                <div className="flex flex-col gap-4 p-4">
-                  <div className="grid gap-2 text-sm">
-                    <InfoRow label="类型" value={selectedTask.kindLabel} />
-                    <InfoRow label="状态" value={formatPhase(selectedTask.phase)} />
-                    <InfoRow
-                      label="模型"
-                      value={
-                        selectedTask.deployment.served_model_name ??
-                        selectedTask.deployment.model_name ??
-                        "--"
-                      }
-                    />
-                    <InfoRow label="机器" value={selectedTask.deployment.machine_name ?? "--"} />
-                    <InfoRow label="最近事件" value={selectedTask.lastEvent ?? "--"} />
-                    <InfoRow label="错误" tone="danger" value={selectedTask.errorMessage ?? "--"} />
+              <div className="flex max-h-[68vh] flex-col gap-4 overflow-y-auto pr-1">
+                <div className="grid gap-2 text-sm">
+                  <InfoRow label="类型" value={selectedTask.kindLabel} />
+                  <InfoRow label="状态" value={formatPhase(selectedTask.phase)} />
+                  <InfoRow
+                    label="模型"
+                    value={
+                      selectedTask.deployment.served_model_name ??
+                      selectedTask.deployment.model_name ??
+                      "--"
+                    }
+                  />
+                  <InfoRow label="机器" value={selectedTask.deployment.machine_name ?? "--"} />
+                  <InfoRow label="最近事件" value={selectedTask.lastEvent ?? "--"} />
+                  <InfoRow label="错误" tone="danger" value={selectedTask.errorMessage ?? "--"} />
+                </div>
+
+                <div className="rounded-lg border border-border bg-background/40">
+                  <div className="border-b border-border px-3 py-2 text-sm font-medium text-foreground">
+                    任务事件
                   </div>
-
-                  <div className="rounded-lg border border-border bg-background/40">
-                    <div className="border-b border-border px-3 py-2 text-sm font-medium text-foreground">
-                      任务事件
-                    </div>
-                    <ScrollArea className="h-[360px]">
-                      <div className="flex flex-col gap-3 p-3">
-                        {selectedTask.kind === "unload" ? (
-                          <div className="rounded-md border border-border bg-card/80 px-3 py-2">
+                  <ScrollArea className="h-[360px]">
+                    <div className="flex flex-col gap-3 p-3">
+                      {selectedTask.kind === "unload" ? (
+                        <div className="rounded-md border border-border bg-card/80 px-3 py-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-sm text-foreground">
+                              {selectedTask.lastEvent ?? "卸载任务已记录"}
+                            </div>
+                            <Badge variant={selectedTask.errorMessage ? "secondary" : "outline"}>
+                              unload
+                            </Badge>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatDateTime(selectedTask.updatedAt)}
+                            {selectedTask.errorMessage ? ` · ${selectedTask.errorMessage}` : ""}
+                          </div>
+                        </div>
+                      ) : null}
+                      {events.length ? (
+                        events.map((event) => (
+                          <div
+                            className="rounded-md border border-border bg-card/80 px-3 py-2"
+                            key={event.id ?? event.created_at}
+                          >
                             <div className="flex items-start justify-between gap-3">
-                              <div className="text-sm text-foreground">
-                                {selectedTask.lastEvent ?? "卸载任务已记录"}
-                              </div>
-                              <Badge
-                                variant={selectedTask.errorMessage ? "secondary" : "outline"}
-                              >
-                                unload
+                              <div className="text-sm text-foreground">{event.message}</div>
+                              <Badge variant={event.level === "error" ? "destructive" : "outline"}>
+                                {event.event_type}
                               </Badge>
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {formatDateTime(selectedTask.updatedAt)}
-                              {selectedTask.errorMessage ? ` · ${selectedTask.errorMessage}` : ""}
+                              {formatDateTime(event.created_at)}
+                              {typeof event.progress === "number" ? ` · ${event.progress}%` : ""}
                             </div>
                           </div>
-                        ) : null}
-                        {events.length ? (
-                          events.map((event) => (
-                            <div
-                              className="rounded-md border border-border bg-card/80 px-3 py-2"
-                              key={event.id ?? event.created_at}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="text-sm text-foreground">{event.message}</div>
-                                <Badge variant={event.level === "error" ? "destructive" : "outline"}>
-                                  {event.event_type}
-                                </Badge>
-                              </div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {formatDateTime(event.created_at)}
-                                {typeof event.progress === "number" ? ` · ${event.progress}%` : ""}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="py-12 text-center text-sm text-muted-foreground">
-                            暂无事件，刷新任务后再试。
-                          </div>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </div>
+                        ))
+                      ) : (
+                        <div className="py-12 text-center text-sm text-muted-foreground">
+                          暂无事件，刷新任务后再试。
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
                 </div>
-              ) : (
-                <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  选择一个任务查看事件和元信息。
-                </div>
-              )}
-            </section>
-          </div>
-        </TabsContent>
-      </Tabs>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  disabled={isPending}
+                  onClick={refreshSelected}
+                  type="button"
+                  variant="outline"
+                >
+                  <RefreshCw className={cn(isPending ? "animate-spin" : "")} />
+                  刷新
+                </Button>
+                <Button onClick={() => setIsTaskDetailOpen(false)} type="button">
+                  关闭
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeleteTask(null);
+          }
+        }}
+        open={Boolean(pendingDeleteTask)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteTask?.name ?? "这个任务"} 会从任务列表移除，部署节点和历史事件会保留。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isPending || !pendingDeleteTask || isTaskRunning(pendingDeleteTask)}
+              onClick={() => {
+                if (!pendingDeleteTask) {
+                  return;
+                }
+                removeTask(pendingDeleteTask);
+                setPendingDeleteTask(null);
+              }}
+            >
+              删除任务
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         onOpenChange={(open) => {

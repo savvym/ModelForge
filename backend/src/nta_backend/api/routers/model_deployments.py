@@ -153,6 +153,19 @@ async def check_deployment_passive_health(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.delete("/{deployment_id}/tasks/{task_kind}", response_model=ModelDeploymentSummary)
+async def delete_deployment_task(
+    deployment_id: UUID,
+    task_kind: str,
+) -> ModelDeploymentSummary:
+    try:
+        return await service.delete_task(deployment_id, task_kind)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Deployment not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/{deployment_id}/chat/stream")
 async def stream_deployment_chat(
     deployment_id: UUID,

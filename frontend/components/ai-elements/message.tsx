@@ -21,7 +21,7 @@ export function Message({ className, from, ...props }: MessageProps) {
   return (
     <div
       className={cn(
-        "group flex w-full max-w-[95%] flex-col gap-2",
+        "group flex w-full max-w-[92%] flex-col gap-2",
         from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
         className
       )}
@@ -41,7 +41,7 @@ export function MessageContent({
     <div
       className={cn(
         "flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-        "group-[.is-user]:ml-auto group-[.is-user]:max-w-[80%] group-[.is-user]:rounded-[20px] group-[.is-user]:bg-muted/40 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+        "group-[.is-user]:ml-auto group-[.is-user]:max-w-[78%] group-[.is-user]:rounded-[22px] group-[.is-user]:rounded-br-md group-[.is-user]:bg-primary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-primary-foreground group-[.is-user]:shadow-sm",
         "group-[.is-assistant]:text-foreground",
         className
       )}
@@ -98,7 +98,7 @@ export const MessageResponse = memo(
     );
 
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         {blocks.map((block, index) => {
           const codeFence = parseCodeFence(block);
           if (codeFence) {

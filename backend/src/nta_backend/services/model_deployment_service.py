@@ -45,6 +45,19 @@ from nta_backend.services.inference_machine_service import (
 from nta_backend.services.system_config_service import load_system_huggingface_config
 
 DEPLOYMENT_ENDPOINT_TYPE = "infer-agent-vllm"
+TASK_KINDS = {"deployment", "unload"}
+RUNNING_TASK_PHASES = {
+    "deploying",
+    "downloading",
+    "pending",
+    "running",
+    "smoke_testing",
+    "starting",
+    "stopping",
+    "stopping_previous",
+    "unloading",
+    "warming",
+}
 DEFAULT_HUGGINGFACE_ALLOW_PATTERNS = [
     "*.json",
     "*.model",
@@ -55,6 +68,14 @@ DEFAULT_HUGGINGFACE_ALLOW_PATTERNS = [
     "tokenizer*",
     "vocab.*",
 ]
+VLLM_REASONING_PARSER_RULES: tuple[tuple[str, str], ...] = (
+    ("qwen3", "qwen3"),
+    ("deepseek-r1", "deepseek_r1"),
+    ("deepseek_r1", "deepseek_r1"),
+    ("qwq", "deepseek_r1"),
+    ("glm-4.5", "glm45"),
+    ("glm45", "glm45"),
+)
 
 
 def _now() -> datetime:
@@ -103,6 +124,34 @@ def _read_deployment_hints(model: Model) -> RegistryModelDeploymentHints | None:
         except ValueError:
             continue
     return None
+
+
+def _infer_vllm_reasoning_extra_args(
+    model: Model,
+    deployment_hints: RegistryModelDeploymentHints | None,
+    *,
+    huggingface_metadata: dict[str, str],
+    object_storage_metadata: dict[str, str],
+) -> dict[str, Any]:
+    candidates: list[str] = [
+        str(getattr(model, "name", "") or ""),
+        str(getattr(model, "model_code", "") or ""),
+        str(getattr(model, "base_model", "") or ""),
+        huggingface_metadata.get("repo_id", ""),
+        huggingface_metadata.get("source_uri", ""),
+        object_storage_metadata.get("source_uri", ""),
+    ]
+    if deployment_hints is not None:
+        candidates.append(deployment_hints.model_type or "")
+        candidates.extend(deployment_hints.architectures)
+
+    searchable = " ".join(candidate.lower() for candidate in candidates if candidate)
+    for marker, parser in VLLM_REASONING_PARSER_RULES:
+        if marker in searchable:
+            return {
+                "reasoning_parser": parser,
+            }
+    return {}
 
 
 def _redact_spec(spec: AgentDeploymentSpec) -> dict[str, Any]:
@@ -178,6 +227,14 @@ def _extract_chat_completion_text(payload: dict[str, Any]) -> str | None:
     return content.strip() if isinstance(content, str) and content.strip() else None
 
 
+def _extract_reasoning_delta(delta_data: dict[str, Any]) -> str | None:
+    for key in ("reasoning", "reasoning_content", "reasoning_text"):
+        value = delta_data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def _is_http_status(exc: httpx.HTTPError, status_code: int) -> bool:
     return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == status_code
 
@@ -196,6 +253,32 @@ def _unload_task_summary_fields(config: dict[str, Any]) -> dict[str, Any]:
         "unload_task_message": str(task.get("message")) if task.get("message") else None,
         "unload_task_warning": str(task.get("warning")) if task.get("warning") else None,
     }
+
+
+def _deleted_task_kinds(config: dict[str, Any]) -> list[str]:
+    task_kinds = config.get("deleted_task_kinds")
+    if not isinstance(task_kinds, list):
+        return []
+    seen: set[str] = set()
+    deleted: list[str] = []
+    for task_kind in task_kinds:
+        if not isinstance(task_kind, str) or task_kind not in TASK_KINDS:
+            continue
+        if task_kind in seen:
+            continue
+        seen.add(task_kind)
+        deleted.append(task_kind)
+    return deleted
+
+
+def _clear_deleted_task_kind(config: dict[str, Any], task_kind: str) -> dict[str, Any]:
+    next_config = {**config}
+    deleted = [kind for kind in _deleted_task_kinds(config) if kind != task_kind]
+    if deleted:
+        next_config["deleted_task_kinds"] = deleted
+    else:
+        next_config.pop("deleted_task_kinds", None)
+    return next_config
 
 
 def _sse_payload(payload: dict[str, Any]) -> str:
@@ -293,6 +376,7 @@ def _serialize_deployment(
             str(passive_health.get("error")) if passive_health.get("error") else None
         ),
         **_unload_task_summary_fields(config),
+        deleted_task_kinds=_deleted_task_kinds(config),
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
     )
@@ -316,7 +400,21 @@ def _serialize_deployment_task(
         if isinstance(agent_status.get("error"), dict)
         else None
     )
-    if endpoint.status == "failed" or raw_phase == "error":
+    if raw_phase == "superseded":
+        task_phase = "superseded"
+        task_status = "stopped"
+        progress = 100
+        last_event = agent_status.get("last_event") or "已被同一推理机器上的新部署替换"
+        error_message = None
+    elif raw_phase in {"stopped", "unloaded"}:
+        task_phase = raw_phase
+        task_status = "stopped"
+        progress = 100
+        last_event = agent_status.get("last_event") or (
+            "部署已卸载" if raw_phase == "unloaded" else "部署已停止"
+        )
+        error_message = None
+    elif endpoint.status == "failed" or raw_phase == "error":
         task_phase = "failed"
         task_status = "failed"
         progress = 100
@@ -373,6 +471,7 @@ def _serialize_deployment_task(
             str(passive_health.get("error")) if passive_health.get("error") else None
         ),
         **_unload_task_summary_fields(config),
+        deleted_task_kinds=_deleted_task_kinds(config),
         created_at=endpoint.created_at,
         updated_at=endpoint.updated_at,
     )
@@ -554,6 +653,52 @@ class ModelDeploymentService:
             endpoint, model_name = row
             return _serialize_deployment(endpoint, model_name)
 
+    async def delete_task(
+        self,
+        deployment_id: UUID,
+        task_kind: str,
+    ) -> ModelDeploymentSummary:
+        if task_kind not in TASK_KINDS:
+            raise ValueError("不支持的任务类型。")
+
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            rows = await session.execute(
+                select(Endpoint, Model.name)
+                .join(Model, Endpoint.model_id == Model.id, isouter=True)
+                .where(
+                    Endpoint.id == deployment_id,
+                    Endpoint.project_id == project_id,
+                    Endpoint.endpoint_type == DEPLOYMENT_ENDPOINT_TYPE,
+                )
+            )
+            row = rows.one_or_none()
+            if row is None:
+                raise KeyError(str(deployment_id))
+
+            endpoint, model_name = row
+            config = _deployment_config(endpoint)
+            if task_kind == "deployment":
+                task_summary = _serialize_deployment_task(endpoint, model_name)
+                task_phase = task_summary.phase or task_summary.status
+                if task_phase in RUNNING_TASK_PHASES:
+                    raise ValueError("进行中的任务不能删除。")
+            else:
+                unload_task = _unload_task_config(config)
+                task_status = str(unload_task.get("status") or "")
+                if not task_status:
+                    raise ValueError("卸载任务不存在。")
+                if task_status in RUNNING_TASK_PHASES:
+                    raise ValueError("进行中的任务不能删除。")
+
+            deleted = _deleted_task_kinds(config)
+            if task_kind not in deleted:
+                deleted.append(task_kind)
+            endpoint.config_json = {**config, "deleted_task_kinds": deleted}
+            await session.commit()
+            await session.refresh(endpoint)
+            return _serialize_deployment_task(endpoint, model_name)
+
     async def refresh_deployment(self, deployment_id: UUID) -> ModelDeploymentSummary:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
@@ -682,6 +827,7 @@ class ModelDeploymentService:
                     "unloaded_reason",
                 }
             }
+            next_config = _clear_deleted_task_kind(next_config, "deployment")
             endpoint.config_json = {
                 **next_config,
                 "endpoint_url": None,
@@ -709,7 +855,7 @@ class ModelDeploymentService:
                 or endpoint.endpoint_type != DEPLOYMENT_ENDPOINT_TYPE
             ):
                 raise KeyError(str(deployment_id))
-            config = _deployment_config(endpoint)
+            config = _clear_deleted_task_kind(_deployment_config(endpoint), "unload")
             if _is_unloaded_config(config):
                 return _serialize_deployment(endpoint)
             unload_started_at = _now().isoformat()
@@ -971,8 +1117,8 @@ class ModelDeploymentService:
                                                 "delta": content,
                                             }
                                         )
-                                    reasoning_delta = delta_data.get("reasoning_content")
-                                    if isinstance(reasoning_delta, str) and reasoning_delta:
+                                    reasoning_delta = _extract_reasoning_delta(delta_data)
+                                    if reasoning_delta:
                                         yielded_reasoning = True
                                         yield _sse_payload(
                                             {
@@ -1160,6 +1306,12 @@ class ModelDeploymentService:
                 f"Tensor Parallel Size {tensor_parallel_size} 与模型 config.json 不匹配，"
                 f"可选值：{option_text}。"
             )
+        vllm_extra_args = _infer_vllm_reasoning_extra_args(
+            model,
+            deployment_hints,
+            huggingface_metadata=huggingface_metadata,
+            object_storage_metadata=object_storage_metadata,
+        )
         model_source = self._build_model_source(
             object_storage_metadata=object_storage_metadata,
             huggingface_metadata=huggingface_metadata,
@@ -1183,6 +1335,7 @@ class ModelDeploymentService:
                 gpu_memory_utilization=inference_machine.gpu_memory_utilization,
                 max_model_len=payload.max_model_len or inference_machine.max_model_len,
                 api_key=inference_machine.runtime_api_key,
+                extra_args=vllm_extra_args,
             ),
         )
 

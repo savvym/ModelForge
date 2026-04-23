@@ -69,7 +69,7 @@ export function formatInferenceMode(mode: string): string {
   }
 
   if (mode === "endpoint") {
-    return "在线推理";
+    return "我的部署";
   }
 
   return mode;

@@ -311,7 +311,7 @@ export function ExperienceChatConsole({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background/40">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         {!selectedModel ? (
           <div className="flex flex-1 items-center justify-center px-6 py-10">
             <div className="space-y-4 rounded-lg border border-dashed border-border bg-card/80 px-8 py-10 text-center">
@@ -337,7 +337,7 @@ export function ExperienceChatConsole({
             <div className="flex min-h-0 flex-1 overflow-hidden">
               <Conversation className="h-full min-h-0 w-full">
                 <ConversationContent
-                  className="mx-auto w-full max-w-[900px] gap-5 px-5 py-5 md:px-8"
+                  className="mx-auto w-full max-w-[820px] gap-6 px-4 pb-8 pt-8 md:px-8"
                   scrollClassName="console-scrollbar-subtle"
                 >
                   {messages.length ? (
@@ -355,7 +355,7 @@ export function ExperienceChatConsole({
                           <MessageContent
                             className={
                               message.role === "assistant"
-                                ? "space-y-3"
+                                ? "flex flex-col gap-3"
                                 : "whitespace-pre-wrap text-[15px] leading-7"
                             }
                           >
@@ -363,11 +363,10 @@ export function ExperienceChatConsole({
                               <>
                                 {reasoning ? (
                                   <Reasoning
-                                    className="mb-4 w-full"
+                                    className="mb-3"
                                     isStreaming={isReasoningStreaming}
-                                    open
                                   >
-                                    <ReasoningTrigger className="pointer-events-none hover:text-muted-foreground" />
+                                    <ReasoningTrigger />
                                     <ReasoningContent className="text-[13px] leading-6 text-muted-foreground [&_blockquote]:text-muted-foreground [&_code]:bg-muted/40 [&_pre]:border-border [&_pre]:bg-card/80">
                                       {reasoning}
                                     </ReasoningContent>
@@ -425,17 +424,15 @@ export function ExperienceChatConsole({
                     })
                   ) : (
                     <ConversationEmptyState
-                      className="min-h-0 flex-1 px-0 py-6"
-                      icon={
-                        <div className="rounded-full border border-border bg-muted/40 p-3">
-                          <Bot className="h-5 w-5" />
-                        </div>
-                      }
+                      className="min-h-0 flex-1 px-0 pb-12 pt-2"
                       title="从一个简洁的问题开始"
                     >
-                      <div className="space-y-5">
-                        <div className="space-y-2">
-                          <div className="text-lg font-medium text-foreground">
+                      <div className="flex w-full max-w-[720px] flex-col items-center gap-6">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="flex size-10 items-center justify-center rounded-full bg-muted/45 text-muted-foreground">
+                            <Bot className="size-4" />
+                          </div>
+                          <div className="text-xl font-semibold text-foreground">
                             从一个简洁的问题开始
                           </div>
                           <div className="text-sm leading-6 text-muted-foreground">
@@ -443,19 +440,19 @@ export function ExperienceChatConsole({
                           </div>
                         </div>
 
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="grid w-full gap-2 sm:grid-cols-2">
                           {starterPrompts.map((item) => (
                             <button
-                              className="rounded-md border border-border bg-muted/35 px-4 py-3 text-left transition-colors hover:bg-muted/55"
+                              className="group rounded-2xl border border-border/65 bg-background/70 px-4 py-3.5 text-left shadow-sm transition-colors hover:border-border hover:bg-muted/35"
                               key={item.title}
                               onClick={() => submitPrompt(item.prompt)}
                               type="button"
                             >
-                              <div className="flex items-start gap-3">
-                                <div className="mt-0.5 text-muted-foreground">
-                                  <item.icon className="h-4 w-4" />
+                              <div className="flex items-center gap-3">
+                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted/45 text-muted-foreground transition-colors group-hover:bg-background group-hover:text-foreground">
+                                  <item.icon className="size-4" />
                                 </div>
-                                <div className="space-y-1">
+                                <div className="flex min-w-0 flex-col gap-1">
                                   <div className="text-sm font-medium text-foreground">
                                     {item.title}
                                   </div>
@@ -475,8 +472,8 @@ export function ExperienceChatConsole({
               </Conversation>
             </div>
 
-            <div className="border-t border-border bg-card/90 px-5 py-3 backdrop-blur-xl md:px-8">
-              <div className="mx-auto w-full max-w-[900px] space-y-2.5">
+            <div className="bg-gradient-to-t from-background via-background/95 to-transparent px-4 pb-5 pt-8 backdrop-blur-sm md:px-8">
+              <div className="mx-auto flex w-full max-w-[760px] flex-col gap-2.5">
                 <PromptInputProvider>
                   <ExperienceComposer
                     modelOptions={modelOptions}
@@ -560,21 +557,24 @@ function ExperienceComposer({
     onResetConversation();
   }
 
+  const isGenerating = status === "submitted" || status === "streaming";
+
   return (
     <PromptInput
       className="experience-composer w-full"
+      inputGroupClassName="rounded-3xl border-border/70 bg-card/95 shadow-[0_18px_55px_-36px_hsl(var(--foreground)/0.9)] ring-1 ring-border/30 transition-all focus-within:border-ring/70 focus-within:ring-ring/20"
       onSubmit={({ text }) => onSubmitPrompt(text)}
     >
       <PromptInputBody>
         <PromptInputTextarea
-          className="px-4 pb-0 pt-4"
-          disabled={status === "submitted" || status === "streaming"}
-          placeholder="输入问题，支持多轮追问。"
+          className="min-h-[92px] px-5 pb-2 pt-5 text-[15px] leading-7 placeholder:text-muted-foreground/75"
+          disabled={isGenerating}
+          placeholder="输入问题，支持多轮追问"
         />
       </PromptInputBody>
 
-      <PromptInputFooter className="flex-wrap gap-2">
-        <PromptInputTools className="flex-1 flex-wrap gap-2">
+      <PromptInputFooter className="items-center gap-2 px-3 pb-3 pt-2 sm:px-4">
+        <PromptInputTools className="min-w-0 flex-1 flex-wrap gap-2">
           <ModelSelector
             onOpenChange={handleModelSelectorOpenChange}
             open={isModelSelectorOpen}
@@ -582,13 +582,22 @@ function ExperienceComposer({
             <ModelSelectorTrigger
               className={cn(
                 buttonVariants({ size: "sm", variant: "secondary" }),
-                "max-w-[320px] justify-between gap-2 rounded-full border-border bg-muted/40 px-3 text-foreground hover:bg-muted/40"
+                "h-9 max-w-full justify-between gap-2 rounded-full border border-border/70 bg-muted/35 px-3 text-foreground shadow-none hover:bg-muted/55 sm:max-w-[420px]"
               )}
             >
+              <span
+                className={cn(
+                  "h-2 w-2 shrink-0 rounded-full",
+                  selectedModel?.source === "deployment"
+                    ? "bg-emerald-500"
+                    : "bg-primary"
+                )}
+              />
               <span className="min-w-0 truncate text-left">
-                {selectedModel
-                  ? `${selectedModel.name} · ${selectedModel.providerName}`
-                  : "选择一个语言模型"}
+                {selectedModel ? selectedModel.name : "选择一个语言模型"}
+              </span>
+              <span className="hidden shrink-0 text-xs font-normal text-muted-foreground sm:inline">
+                {selectedModel ? selectedModel.providerName : activeSourceLabel}
               </span>
               <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </ModelSelectorTrigger>
@@ -660,10 +669,12 @@ function ExperienceComposer({
 
           {messagesLength ? (
             <PromptInputButton
+              className="rounded-full px-3 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
               onClick={onResetConversation}
               size="sm"
               variant="ghost"
             >
+              <SquarePen className="h-3.5 w-3.5" />
               新对话
             </PromptInputButton>
           ) : (
@@ -672,8 +683,8 @@ function ExperienceComposer({
         </PromptInputTools>
 
         <PromptInputSubmit
-          className="h-9 w-9 rounded-full"
-          disabled={!value.trim() && status !== "submitted" && status !== "streaming"}
+          className="h-10 w-10 rounded-full shadow-sm"
+          disabled={!value.trim() && !isGenerating}
           onStop={stop}
           status={status}
         />

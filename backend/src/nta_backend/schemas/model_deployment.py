@@ -127,6 +127,7 @@ class ModelDeploymentSummary(BaseModel):
     unload_task_finished_at: datetime | None = None
     unload_task_message: str | None = None
     unload_task_warning: str | None = None
+    deleted_task_kinds: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

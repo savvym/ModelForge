@@ -64,6 +64,18 @@ export async function unloadModelDeployment(
   });
 }
 
+export async function deleteModelDeploymentTask(
+  deploymentId: string,
+  taskKind: "deployment" | "unload"
+): Promise<ModelDeploymentSummary> {
+  return apiFetch<ModelDeploymentSummary>(
+    `/model-deployments/${deploymentId}/tasks/${taskKind}`,
+    {
+      method: "DELETE"
+    }
+  );
+}
+
 export async function checkModelDeploymentPassiveHealth(
   deploymentId: string
 ): Promise<ModelDeploymentPassiveHealth> {

@@ -1312,6 +1312,7 @@ export interface ModelDeploymentSummary {
   unload_task_finished_at?: string | null;
   unload_task_message?: string | null;
   unload_task_warning?: string | null;
+  deleted_task_kinds: string[];
   created_at: string;
   updated_at: string;
 }

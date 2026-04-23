@@ -4,7 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "r
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Database,
+  FileSearch,
   FolderOpen,
   Globe2,
   HardDrive,
@@ -16,10 +16,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  ConsoleListHeader,
   consoleListSearchInputClassName,
   ConsoleListTableSurface,
-  ConsoleListToolbar
+  ConsoleListToolbar,
+  ConsoleListToolbarCluster
 } from "@/components/console/list-surface";
 import {
   AlertDialog,
@@ -41,14 +41,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle
-} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -686,175 +678,150 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     });
   }
 
+  const modelRangeStart = filteredModels.length ? (currentModelPage - 1) * MODEL_PAGE_SIZE + 1 : 0;
+  const modelRangeEnd = Math.min(currentModelPage * MODEL_PAGE_SIZE, filteredModels.length);
+
   return (
     <>
       <div className="flex flex-col gap-4">
-        <ConsoleListHeader
-          actions={
-            <Button onClick={openImportSheet} size="sm">
-              <UploadCloud />
-              导入模型
-            </Button>
-          }
-          description={`集中管理 ${myModels.length} 个自有模型资产，支持从 Hugging Face 或 COS / S3 登记 safetensors checkpoint。`}
-          title="我的模型"
-        />
-
-        <section className="overflow-hidden rounded-lg border border-border bg-card/80">
-          <div className="flex flex-col gap-3 border-b border-border px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-sm font-medium text-foreground">模型资产</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {filteredModels.length} of {myModels.length}
-              </div>
+        <ConsoleListToolbar className="gap-y-1 border-b-0 pb-0">
+          <ConsoleListToolbarCluster className="min-w-0 flex-1 gap-2">
+            <div className="relative w-full max-w-[540px] min-w-[260px] sm:min-w-[320px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className={cn(consoleListSearchInputClassName, "w-full")}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索模型名称或基础模型"
+                type="search"
+                value={query}
+              />
             </div>
-            <ConsoleListToolbar className="justify-start lg:justify-end">
-              <div className="relative min-w-[260px] flex-1 lg:flex-none">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className={cn(consoleListSearchInputClassName, "w-full")}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="搜索模型名称或基础模型"
-                  type="search"
-                  value={query}
-                />
-              </div>
-            </ConsoleListToolbar>
-          </div>
+          </ConsoleListToolbarCluster>
+
+          <Button onClick={openImportSheet} size="sm">
+            <UploadCloud />
+            导入模型
+          </Button>
+        </ConsoleListToolbar>
+
+        <ConsoleListTableSurface>
+          <Table className="w-full table-fixed">
+            <TableHeader className="bg-transparent">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={modelStickyHeadClassName}>模型名称</TableHead>
+                <TableHead className="w-[220px] min-w-[220px]">基础模型</TableHead>
+                <TableHead className="w-[148px] min-w-[148px]">来源</TableHead>
+                <TableHead className="w-[128px] min-w-[128px]">状态</TableHead>
+                <TableHead className="w-[132px] min-w-[132px]">创建时间</TableHead>
+                <TableHead className="w-[156px] min-w-[156px]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pagedModels.length ? (
+                pagedModels.map((model) => (
+                  <TableRow className="bg-transparent" key={model.id}>
+                    <TableCell className={modelStickyCellClassName}>
+                      <div className="min-w-0">
+                        <div className="block truncate font-medium text-foreground">
+                          {model.name}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {model.model_code ?? model.id}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="truncate font-mono text-xs">
+                      {model.base_model ?? "--"}
+                    </TableCell>
+                    <TableCell className="text-sm">{formatModelSource(model)}</TableCell>
+                    <TableCell>
+                      <Badge
+                        className={statusTone(model.status)}
+                        variant={statusVariant(model.status)}
+                      >
+                        <span
+                          className={cn("size-1.5 rounded-full", statusDotTone(model.status))}
+                        />
+                        {formatStatusLabel(model.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatDateTime(model.created_at)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          disabled={isPending}
+                          onClick={() => openDeployDialog(model)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          <Rocket />
+                          部署
+                        </Button>
+                        <Button
+                          aria-label="删除模型"
+                          className="h-7 w-7 px-0 text-destructive hover:text-destructive"
+                          disabled={isPending}
+                          onClick={() => setPendingDelete({ id: model.id, name: model.name })}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow className="bg-transparent hover:bg-transparent">
+                  <TableCell className={modelStickyCellClassName} colSpan={6}>
+                    <div className="flex min-h-[180px] flex-col items-center justify-center gap-3 py-10 text-center">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground">
+                        <FileSearch className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium text-foreground">暂无模型</div>
+                        <div className="text-xs text-muted-foreground">
+                          请调整搜索词，或导入一个自有模型
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
 
           {filteredModels.length ? (
-            <ConsoleListTableSurface>
-              <ScrollArea className="max-h-[68vh]">
-                <Table className="text-sm">
-                  <TableHeader className="sticky top-0 z-10 bg-card/90 backdrop-blur">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="h-10 min-w-[220px] px-3 normal-case tracking-normal">
-                        模型名称
-                      </TableHead>
-                      <TableHead className="h-10 min-w-[180px] px-3 normal-case tracking-normal">
-                        基础模型
-                      </TableHead>
-                      <TableHead className="h-10 min-w-[140px] px-3 normal-case tracking-normal">
-                        来源
-                      </TableHead>
-                      <TableHead className="h-10 w-[140px] px-3 normal-case tracking-normal">
-                        状态
-                      </TableHead>
-                      <TableHead className="h-10 w-[180px] px-3 normal-case tracking-normal">
-                        创建时间
-                      </TableHead>
-                      <TableHead className="h-10 w-[180px] px-3 text-right normal-case tracking-normal">
-                        操作
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagedModels.map((model) => (
-                      <TableRow key={model.id}>
-                        <TableCell className="px-3 py-2.5">
-                          <div className="truncate font-medium text-foreground">{model.name}</div>
-                        </TableCell>
-                        <TableCell className="px-3 py-2.5">
-                          <span className="font-mono text-xs text-foreground">
-                            {model.base_model ?? "--"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-3 py-2.5">
-                          <span className="text-sm text-foreground">{formatModelSource(model)}</span>
-                        </TableCell>
-                        <TableCell className="px-3 py-2.5">
-                          <Badge className={statusTone(model.status)} variant={statusVariant(model.status)}>
-                            <span className={cn("size-1.5 rounded-full", statusDotTone(model.status))} />
-                            {formatStatusLabel(model.status)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="px-3 py-2.5 text-sm text-muted-foreground">
-                          {formatDateTime(model.created_at)}
-                        </TableCell>
-                        <TableCell className="px-3 py-2.5">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              disabled={isPending}
-                              onClick={() => openDeployDialog(model)}
-                              size="sm"
-                              variant="outline"
-                            >
-                              <Rocket />
-                              部署
-                            </Button>
-                            <Button
-                              className="text-destructive hover:text-destructive"
-                              disabled={isPending}
-                              onClick={() => setPendingDelete({ id: model.id, name: model.name })}
-                              size="sm"
-                              variant="ghost"
-                            >
-                              <Trash2 />
-                              删除
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="text-xs text-muted-foreground">
-                  {(currentModelPage - 1) * MODEL_PAGE_SIZE + 1}
-                  {" - "}
-                  {Math.min(currentModelPage * MODEL_PAGE_SIZE, filteredModels.length)} of{" "}
-                  {filteredModels.length}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    disabled={currentModelPage <= 1}
-                    onClick={() => setModelPage((page) => Math.max(1, page - 1))}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    上一页
-                  </Button>
-                  <div className="min-w-[56px] text-center text-xs text-muted-foreground">
-                    {currentModelPage} / {totalModelPages}
-                  </div>
-                  <Button
-                    disabled={currentModelPage >= totalModelPages}
-                    onClick={() => setModelPage((page) => Math.min(totalModelPages, page + 1))}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    下一页
-                  </Button>
-                </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div className="text-xs text-muted-foreground">
+                {modelRangeStart}
+                {" - "}
+                {modelRangeEnd} of {filteredModels.length}
               </div>
-            </ConsoleListTableSurface>
-          ) : (
-            <div className="flex min-h-[460px] items-center justify-center p-8">
-              <Empty className="w-full max-w-md border border-dashed border-border bg-card/80 px-6 py-8">
-                <EmptyContent>
-                  <EmptyHeader>
-                    <EmptyMedia
-                      className="border border-border bg-card/80 text-foreground"
-                      variant="icon"
-                    >
-                      <Database />
-                    </EmptyMedia>
-                    <EmptyTitle className="text-base text-foreground">还没有我的模型</EmptyTitle>
-                    <EmptyDescription className="text-sm leading-6 text-muted-foreground">
-                      从 Hugging Face 或对象存储登记一个 safetensors checkpoint 后，会在这里统一管理。
-                    </EmptyDescription>
-                  </EmptyHeader>
-                  <Button onClick={openImportSheet} size="sm">
-                    <UploadCloud />
-                    导入模型
-                  </Button>
-                </EmptyContent>
-              </Empty>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  disabled={currentModelPage <= 1}
+                  onClick={() => setModelPage((page) => Math.max(1, page - 1))}
+                  size="sm"
+                  variant="ghost"
+                >
+                  上一页
+                </Button>
+                <div className="min-w-[56px] text-center text-xs text-muted-foreground">
+                  {currentModelPage} / {totalModelPages}
+                </div>
+                <Button
+                  disabled={currentModelPage >= totalModelPages}
+                  onClick={() => setModelPage((page) => Math.min(totalModelPages, page + 1))}
+                  size="sm"
+                  variant="ghost"
+                >
+                  下一页
+                </Button>
+              </div>
             </div>
-          )}
-        </section>
+          ) : null}
+        </ConsoleListTableSurface>
       </div>
 
       <Sheet
@@ -1122,7 +1089,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
             <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center">
               <div className="text-sm text-foreground">还没有可用的推理机器</div>
               <div className="mt-1 text-xs leading-6 text-muted-foreground">
-                先在“在线推理”页面添加已部署 infer-agent 的 H20 机器。
+                先在“我的部署”页面添加已部署 infer-agent 的 H20 机器。
               </div>
               <Button className="mt-4" onClick={() => router.push("/endpoint")} size="sm">
                 去添加机器
@@ -1392,3 +1359,11 @@ function SourceTypeButton({
     </button>
   );
 }
+
+const modelStickyHeadClassName =
+  "sticky left-0 z-20 w-[260px] min-w-[260px] bg-card/80 pr-4 backdrop-blur";
+
+const modelStickyCellClassName = cn(
+  "sticky left-0 z-10 w-[260px] min-w-[260px] bg-card/80 pr-4 align-top",
+  "after:absolute after:right-0 after:top-0 after:h-full after:w-px after:bg-card/80"
+);

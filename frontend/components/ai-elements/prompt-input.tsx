@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChatStatus } from "ai";
-import { CornerDownLeft, Square, Sparkles } from "lucide-react";
+import { ArrowUp, Square, Sparkles } from "lucide-react";
 import type {
   ChangeEvent,
   ComponentProps,
@@ -82,6 +82,7 @@ export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit"
 > & {
+  inputGroupClassName?: string;
   onSubmit: (
     message: { text: string },
     event: FormEvent<HTMLFormElement>
@@ -91,6 +92,7 @@ export type PromptInputProps = Omit<
 export function PromptInput({
   children,
   className,
+  inputGroupClassName,
   onSubmit,
   ...props
 }: PromptInputProps) {
@@ -125,7 +127,7 @@ export function PromptInput({
       onSubmit={handleSubmit}
       {...props}
     >
-      <InputGroup>{children}</InputGroup>
+      <InputGroup className={inputGroupClassName}>{children}</InputGroup>
     </form>
   );
 }
@@ -282,7 +284,7 @@ export function PromptInputSubmit({
     [isGenerating, onClick, onStop]
   );
 
-  let icon = <CornerDownLeft className="h-4 w-4" />;
+  let icon = <ArrowUp className="h-4 w-4" />;
   if (status === "submitted") {
     icon = <Spinner />;
   } else if (status === "streaming") {
