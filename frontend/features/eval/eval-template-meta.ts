@@ -26,6 +26,7 @@ export interface TemplatePresetMeta {
   scoreMin?: string;
   scoreMax?: string;
   passThreshold?: string;
+  scoreScale?: "normalized" | "raw";
 }
 
 export const TEMPLATE_TYPES: TemplateTypeMeta[] = [
@@ -160,6 +161,24 @@ export const LLM_CATEGORICAL_PRESETS: TemplatePresetMeta[] = [
 ];
 
 export const LLM_NUMERIC_PRESETS: TemplatePresetMeta[] = [
+  {
+    id: "rubric-average",
+    label: "Rubric 平均分",
+    description: "逐条 rubric 按配置分数范围打分，并把各项得分取平均作为最终结果。",
+    prompt:
+      "You are a strict but fair rubric grader.\n" +
+      "Score each rubric item independently using the configured numeric score range.\n" +
+      "Treat the minimum score as not satisfied and the maximum score as fully satisfied.\n" +
+      "Use the average of all rubric item scores as the final score. " +
+      "The final score may be a decimal.\n\n" +
+      "Rubric items:\n{{target}}\n\n" +
+      "Question or context:\n{{input}}\n\n" +
+      "Response:\n{{output}}",
+    scoreMin: "1",
+    scoreMax: "5",
+    passThreshold: "3",
+    scoreScale: "raw",
+  },
   {
     id: "quality-score-1-5",
     label: "质量评分 (1-5)",

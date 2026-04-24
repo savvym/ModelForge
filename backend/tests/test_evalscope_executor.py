@@ -141,6 +141,84 @@ def test_evalscope_executor_runs_template_judge_pipeline(
     assert sample_score["prediction_text"] == "The answer is 4."
 
 
+def test_evalscope_executor_runs_template_judge_numeric_raw_average(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dataset_path = tmp_path / "dataset.jsonl"
+    output_dir = tmp_path / "out"
+    dataset_path.write_text(
+        json.dumps(
+            {
+                "question": "Explain how the model behaves.",
+                "rubric": ["Covers correctness", "Covers limitations"],
+                "uid": "q-raw-1",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fake_generate(self, input, tools, tool_choice, config):
+        del tools, tool_choice, config
+        prompt = "\n".join(message.text for message in input)
+        if "Return only valid JSON" in prompt:
+            assert "average" in prompt.lower()
+            assert "Covers correctness" in prompt
+            assert "<number 1-10>" in prompt
+            return ModelOutput.from_content(
+                model=self.model_name,
+                content='{"reasoning":"scores 8 and 7","score":7.5}',
+            ).model_copy(update={"usage": ModelUsage(total_tokens=19)})
+        return ModelOutput.from_content(
+            model=self.model_name,
+            content="It is correct but misses some limitations.",
+        ).model_copy(update={"usage": ModelUsage(total_tokens=11)})
+
+    monkeypatch.setattr(NTAOpenAICompatibleAPI, "generate", fake_generate)
+
+    result = EvalScopeExecutor().execute(
+        EvalExecutionRequest(
+            benchmark_name="template-raw-benchmark",
+            dataset_path=str(dataset_path),
+            output_dir=output_dir,
+            eval_method="judge-template",
+            eval_model=_model_config("eval-model"),
+            judge_model=_model_config("judge-model"),
+            field_mapping={
+                "input_field": "question",
+                "target_field": "rubric",
+                "id_field": "uid",
+            },
+            template_config=ExecutorTemplateConfig(
+                prompt=(
+                    "Question: {{input}}\n"
+                    "Rubrics: {{target}}\n"
+                    "Answer: {{output}}\n"
+                    "Return the average rubric score."
+                ),
+                vars=["input", "target", "output"],
+                output_type="numeric",
+                output_config={
+                    "score_min": 1,
+                    "score_max": 10,
+                    "pass_threshold": 6,
+                    "score_scale": "raw",
+                },
+            ),
+        )
+    )
+
+    subset_report = result.report_payload["subset_reports"][0]
+    sample_score = subset_report["sample_scores"][0]
+    assert subset_report["metrics"][0]["value"] == 7.5
+    assert sample_score["sample_id"] == "q-raw-1"
+    assert sample_score["metric"] == "judge_template"
+    assert sample_score["score"] == 7.5
+    assert sample_score["raw_score"] == 7.5
+    assert sample_score["passed"] is True
+
+
 def test_evalscope_executor_respects_cancellation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

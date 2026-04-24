@@ -141,11 +141,12 @@ def _score_numeric(
     clamped = max(score_min, min(score_max, value))
     score_range = score_max - score_min
     normalized = (clamped - score_min) / score_range if score_range > 0 else 0.0
+    reported_score = clamped if config.get("score_scale") == "raw" else normalized
 
     return SampleScore(
         sample_id=sample_id,
         metric=metric_name,
-        score=normalized,
+        score=reported_score,
         passed=clamped >= pass_threshold,
         reason=reasoning,
         extra={"judge_response": parsed, "raw_score": clamped},

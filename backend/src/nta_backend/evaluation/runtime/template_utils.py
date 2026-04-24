@@ -96,5 +96,5 @@ def build_output_instruction(output_type: str, output_config: dict) -> str:
     score_max = output_config.get("score_max", 5)
     return (
         f"Return only valid JSON with this schema:\n"
-        f'{{"reasoning": "{reasoning_hint}", "score": <integer {score_min}-{score_max}>}}'
+        f'{{"reasoning": "{reasoning_hint}", "score": <number {score_min}-{score_max}>}}'
     )

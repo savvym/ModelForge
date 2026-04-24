@@ -833,9 +833,10 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
         clamped = max(score_min, min(score_max, numeric_value))
         score_range = score_max - score_min
         normalized = (clamped - score_min) / score_range if score_range > 0 else 0.0
+        reported_score = clamped if output_config.get("score_scale") == "raw" else normalized
         return {
             **common,
-            "score": normalized,
+            "score": reported_score,
             "raw_score": clamped,
             "passed": clamped >= pass_threshold,
             "reason": reasoning,

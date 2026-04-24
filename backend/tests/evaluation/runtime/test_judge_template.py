@@ -55,6 +55,7 @@ def test_collect_template_vars_reads_rule_templates() -> None:
 def test_build_output_instruction_numeric() -> None:
     instruction = build_output_instruction("numeric", {"score_min": 1, "score_max": 10})
     assert "1-10" in instruction
+    assert "<number 1-10>" in instruction
     assert "JSON" in instruction
 
 
@@ -130,6 +131,22 @@ def test_numeric_scoring(monkeypatch) -> None:
     assert score.score == (4 - 1) / (5 - 1)  # 0.75
     assert score.passed is True
     assert score.extra["raw_score"] == 4
+
+
+def test_numeric_raw_score_scale(monkeypatch) -> None:
+    metric = _make_metric(
+        "numeric",
+        {"score_min": 1, "score_max": 10, "pass_threshold": 6, "score_scale": "raw"},
+        {"reasoning": "Average rubric score.", "score": 7.5},
+        monkeypatch,
+    )
+    score = metric.score(
+        Sample(id="s1", input="Q"),
+        ModelOutput(sample_id="s1", text="A"),
+    )
+    assert score.score == 7.5
+    assert score.passed is True
+    assert score.extra["raw_score"] == 7.5
 
 
 def test_numeric_below_threshold(monkeypatch) -> None:

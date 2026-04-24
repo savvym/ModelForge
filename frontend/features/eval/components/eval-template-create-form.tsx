@@ -44,6 +44,8 @@ type NumericState = {
   passThreshold: string;
 };
 
+type NumericScoreScale = "normalized" | "raw";
+
 type EvalTemplateCreateFormProps = {
   initialTemplate?: EvalTemplateSummary | null;
   mode?: "create" | "edit";
@@ -100,6 +102,9 @@ export function EvalTemplateCreateForm({
   const [numericState, setNumericState] = React.useState<NumericState>(
     readNumericState(initialOutputConfig, initialTemplateType)
   );
+  const [numericScoreScale, setNumericScoreScale] = React.useState<NumericScoreScale>(
+    readNumericScoreScale(initialOutputConfig)
+  );
 
   const [leftTemplate, setLeftTemplate] = React.useState(
     readTextSource(initialOutputConfig, "left_template", "{{output}}")
@@ -150,6 +155,7 @@ export function EvalTemplateCreateForm({
       scoreMax: "5",
       passThreshold: "3",
     });
+    setNumericScoreScale("normalized");
     setLeftTemplate("{{output}}");
     setRightTemplate("{{target}}");
     setStringOperator("equals");
@@ -161,6 +167,7 @@ export function EvalTemplateCreateForm({
         scoreMax: "1",
         passThreshold: "0.8",
       });
+      setNumericScoreScale("normalized");
     }
   }
 
@@ -180,6 +187,7 @@ export function EvalTemplateCreateForm({
         scoreMax: preset.scoreMax ?? "5",
         passThreshold: preset.passThreshold ?? "3",
       });
+      setNumericScoreScale(preset.scoreScale ?? "normalized");
     }
   }
 
@@ -295,6 +303,7 @@ export function EvalTemplateCreateForm({
           failLabels,
           leftTemplate,
           numericState,
+          numericScoreScale,
           passLabels,
           rightTemplate,
           selectedTemplateType,
@@ -774,6 +783,10 @@ function readNumericState(
   };
 }
 
+function readNumericScoreScale(outputConfig: Record<string, unknown>): NumericScoreScale {
+  return outputConfig.score_scale === "raw" ? "raw" : "normalized";
+}
+
 function readTextSource(
   outputConfig: Record<string, unknown>,
   key: "left_template" | "right_template",
@@ -862,6 +875,7 @@ function buildOutputConfig({
   failLabels,
   leftTemplate,
   numericState,
+  numericScoreScale,
   passLabels,
   rightTemplate,
   selectedTemplateType,
@@ -871,6 +885,7 @@ function buildOutputConfig({
   failLabels: string[];
   leftTemplate: string;
   numericState: NumericState;
+  numericScoreScale: NumericScoreScale;
   passLabels: string[];
   rightTemplate: string;
   selectedTemplateType: TemplateTypeId;
@@ -902,8 +917,12 @@ function buildOutputConfig({
       score_min: scoreMin,
       score_max: scoreMax,
       pass_threshold: passThreshold,
+      score_scale: numericScoreScale,
       reasoning_hint: "Explain your reasoning",
-      score_hint: `Rate ${scoreMin}-${scoreMax}`,
+      score_hint:
+        numericScoreScale === "raw"
+          ? `Return the raw ${scoreMin}-${scoreMax} score; decimals are allowed`
+          : `Rate ${scoreMin}-${scoreMax}`,
     };
   }
 
