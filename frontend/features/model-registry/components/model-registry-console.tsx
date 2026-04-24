@@ -68,7 +68,7 @@ const DEFAULT_TEST_PROMPT = "请用一句话介绍你自己，并说明你当前
 
 function statusTone(status: string) {
   if (status === "active") {
-    return "border-emerald-400/25 bg-emerald-400/12 text-emerald-100 hover:bg-emerald-400/12";
+    return "border-emerald-500/60 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-400/60 dark:bg-emerald-500/20 dark:text-emerald-100 dark:hover:bg-emerald-500/20";
   }
   if (status === "inactive") {
     return "border-border bg-card/80 text-muted-foreground";
@@ -349,6 +349,13 @@ export function ModelRegistryConsole({
   return (
     <>
       <div className="space-y-4">
+        <div className="flex justify-end">
+          <Button onClick={() => navigate("/model-square/provider/new")} size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            新增 Provider
+          </Button>
+        </div>
+
         {pendingDelete ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/80 px-4 py-3">
             <div className="text-sm text-foreground">

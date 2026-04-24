@@ -3,7 +3,14 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-const LIVE_STATUSES = new Set(["queued", "running", "cancelling"]);
+const LIVE_STATUSES = new Set([
+  "queued",
+  "preparing",
+  "running",
+  "inferencing",
+  "scoring",
+  "cancelling"
+]);
 
 type EvaluationRunLiveRefreshProps = {
   statuses: string[];
