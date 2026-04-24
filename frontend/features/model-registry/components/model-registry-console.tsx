@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Bot, Copy, MoreHorizontal, Plus, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
-  ConsoleListHeader,
   consoleListSearchInputClassName,
   ConsoleListTableSurface,
   ConsoleListToolbar
@@ -156,13 +155,11 @@ function isLocalDeploymentProviderName(value?: string | null) {
 export function ModelRegistryConsole({
   initialProviders,
   initialModels,
-  initialSelectedProviderId,
-  title = "模型广场"
+  initialSelectedProviderId
 }: {
   initialProviders: ModelProviderSummary[];
   initialModels: RegistryModelSummary[];
   initialSelectedProviderId?: string | null;
-  title?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -352,17 +349,6 @@ export function ModelRegistryConsole({
   return (
     <>
       <div className="space-y-4">
-        <ConsoleListHeader
-          actions={
-            <Button onClick={() => navigate("/model-square/provider/new")} size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              增加 Provider
-            </Button>
-          }
-          description={`管理外部模型 Provider，并统一维护 ${providerOptions.length} 个连接、${initialModels.length} 个模型。`}
-          title={title}
-        />
-
         {pendingDelete ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/80 px-4 py-3">
             <div className="text-sm text-foreground">
@@ -382,17 +368,6 @@ export function ModelRegistryConsole({
 
         <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
           <section className="overflow-hidden rounded-lg border border-border bg-card/80">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Providers</div>
-                <div className="mt-1 text-sm font-medium text-foreground">{providerOptions.length} active connections</div>
-              </div>
-              <Button onClick={() => navigate("/model-square/provider/new")} size="sm" variant="outline">
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                新增
-              </Button>
-            </div>
-
             <ScrollArea className="max-h-[72vh]">
               <div className="space-y-2 px-3 py-3">
                 {providerOptions.length ? (
@@ -458,9 +433,11 @@ export function ModelRegistryConsole({
                       <Badge variant="outline">{formatProviderFormat(selectedProvider.api_format)}</Badge>
                     </div>
                     <div className="text-sm text-muted-foreground">{selectedProvider.base_url}</div>
-                    <div className="max-w-3xl text-sm leading-7 text-muted-foreground">
-                      {selectedProvider.description || "统一维护该 Provider 下的模型同步、上下线和连通性测试。"}
-                    </div>
+                    {selectedProvider.description ? (
+                      <div className="max-w-3xl text-sm leading-7 text-muted-foreground">
+                        {selectedProvider.description}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-wrap gap-2">

@@ -93,6 +93,7 @@ type PendingDeploy = RegistryModelSummary | null;
 type ImportSourceType = "object-storage" | "huggingface";
 
 const MODEL_PAGE_SIZE = 12;
+const MY_MODEL_SOURCES = new Set(["object-storage-import", "huggingface-import", "finetune"]);
 
 function createInitialImportForm() {
   return {
@@ -106,7 +107,7 @@ function createInitialImportForm() {
 }
 
 function isMyModel(model: RegistryModelSummary) {
-  return !model.is_provider_managed && model.source !== "provider-sync";
+  return !model.is_provider_managed && MY_MODEL_SOURCES.has(model.source ?? "");
 }
 
 function statusTone(status: string) {

@@ -24,7 +24,6 @@ export default async function ModelSquarePage({
       initialModels={models}
       initialProviders={providers}
       initialSelectedProviderId={initialSelectedProviderId}
-      title="模型广场"
     />
   );
 }
