@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Cpu,
   ExternalLink,
+  Gauge,
   KeyRound,
   Play,
   Plus,
@@ -70,6 +71,7 @@ import {
   getModelDeployments,
   getModelDeploymentEvents,
   getInferenceMachines,
+  getInferenceMachineRuntimeMetrics,
   refreshModelDeployment,
   startModelDeployment,
   stopModelDeployment,
@@ -80,6 +82,7 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   InferenceMachineHealth,
+  InferenceMachineRuntimeMetrics,
   InferenceMachineSummary,
   ModelDeploymentEvent,
   ModelDeploymentSummary
@@ -237,6 +240,42 @@ function readStringField(value: Record<string, unknown> | undefined, key: string
   return typeof rawValue === "string" && rawValue.trim() ? rawValue : null;
 }
 
+function readRuntimeMetricValue(
+  metrics: InferenceMachineRuntimeMetrics | undefined,
+  key: string
+) {
+  const value = metrics?.summary[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatCompactMetric(value: number | null) {
+  if (value == null) {
+    return "--";
+  }
+  return new Intl.NumberFormat("zh-CN", {
+    maximumFractionDigits: value >= 1000 ? 1 : 0,
+    notation: value >= 10000 ? "compact" : "standard"
+  }).format(value);
+}
+
+function formatPercentMetric(value: number | null) {
+  if (value == null) {
+    return "--";
+  }
+  const percent = value <= 1 ? value * 100 : value;
+  return `${percent.toFixed(percent < 10 ? 1 : 0)}%`;
+}
+
+function formatLatencyMetric(value: number | null) {
+  if (value == null) {
+    return "--";
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)} s`;
+  }
+  return `${Math.round(value)} ms`;
+}
+
 function formatGpuSummary(machine: InferenceMachineSummary) {
   const firstGpu = machine.last_gpus[0];
   const count = machine.last_gpu_count ?? machine.last_gpus.length;
@@ -390,6 +429,12 @@ export function ModelDeploymentsConsole({
   const [isMachineAdvancedOpen, setIsMachineAdvancedOpen] = useState(false);
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
   const [probingMachineIds, setProbingMachineIds] = useState<Set<string>>(() => new Set());
+  const [runtimeMetricsByMachineId, setRuntimeMetricsByMachineId] = useState<
+    Record<string, InferenceMachineRuntimeMetrics>
+  >({});
+  const [probingRuntimeMetricIds, setProbingRuntimeMetricIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [machineForm, setMachineForm] = useState(createInitialMachineForm);
   const [pendingUnloadDeployment, setPendingUnloadDeployment] =
     useState<ModelDeploymentSummary | null>(null);
@@ -738,11 +783,56 @@ export function ModelDeploymentsConsole({
     });
   }
 
+  function refreshRuntimeMetrics(machineId: string, machineName: string) {
+    setProbingRuntimeMetricIds((current) => {
+      const next = new Set(current);
+      next.add(machineId);
+      return next;
+    });
+    startMachineTransition(() => {
+      void getInferenceMachineRuntimeMetrics(machineId)
+        .then((metrics) => {
+          setRuntimeMetricsByMachineId((current) => ({
+            ...current,
+            [machineId]: metrics
+          }));
+          if (metrics.status === "ok") {
+            toast.success(`${machineName} 运行指标已更新。`);
+          } else {
+            toast.warning(metrics.error ?? `${machineName} 暂无可用运行指标。`);
+          }
+        })
+        .catch((error: unknown) => {
+          toast.error(error instanceof Error ? error.message : "读取运行指标失败。");
+        })
+        .finally(() => {
+          setProbingRuntimeMetricIds((current) => {
+            const next = new Set(current);
+            next.delete(machineId);
+            return next;
+          });
+        });
+    });
+  }
+
+  function refreshDeploymentRuntimeMetrics(deployment: ModelDeploymentSummary) {
+    if (!deployment.machine_id) {
+      toast.error("这个部署缺少推理机器信息，无法读取运行指标。");
+      return;
+    }
+    refreshRuntimeMetrics(deployment.machine_id, deployment.machine_name ?? deployment.name);
+  }
+
   function removeMachine(machine: InferenceMachineSummary) {
     startMachineTransition(() => {
       void deleteInferenceMachine(machine.id)
         .then(() => {
           setMachines((current) => current.filter((item) => item.id !== machine.id));
+          setRuntimeMetricsByMachineId((current) => {
+            const next = { ...current };
+            delete next[machine.id];
+            return next;
+          });
           toast.success(`${machine.name} 已删除。`);
         })
         .catch((error: unknown) => {
@@ -790,6 +880,12 @@ export function ModelDeploymentsConsole({
                     const canStop = isDeploymentRunning(deployment);
                     const canStart = isDeploymentStopped(deployment);
                     const isBusy = isDeploymentBusy(deployment);
+                    const runtimeMetrics = deployment.machine_id
+                      ? runtimeMetricsByMachineId[deployment.machine_id]
+                      : undefined;
+                    const isRuntimeMetricsPending = deployment.machine_id
+                      ? probingRuntimeMetricIds.has(deployment.machine_id)
+                      : false;
 
                     return (
                       <div
@@ -823,6 +919,8 @@ export function ModelDeploymentsConsole({
                             value={deployment.error_message ?? deployment.last_passive_health_error ?? "--"}
                           />
                         </div>
+
+                        <MachineRuntimeMetricsPanel metrics={runtimeMetrics} />
 
                         <div className="mt-4 flex items-center gap-2">
                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -858,6 +956,21 @@ export function ModelDeploymentsConsole({
                           >
                             <Activity />
                             被动检查
+                          </Button>
+                          <Button
+                            disabled={
+                              isPending ||
+                              !deployment.machine_id ||
+                              isBusy ||
+                              isRuntimeMetricsPending
+                            }
+                            onClick={() => refreshDeploymentRuntimeMetrics(deployment)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            <Gauge />
+                            {isRuntimeMetricsPending ? "读取中..." : "运行指标"}
                           </Button>
                           <Button
                             disabled={isPending || !canStart || isBusy}
@@ -1525,6 +1638,91 @@ export function ModelDeploymentsConsole({
         </DialogContent>
       </Dialog>
     </ConsolePage>
+  );
+}
+
+function MachineRuntimeMetricsPanel({
+  metrics
+}: {
+  metrics?: InferenceMachineRuntimeMetrics;
+}) {
+  if (!metrics) {
+    return null;
+  }
+  const statusLabel =
+    metrics.status === "ok"
+      ? "已采样"
+      : metrics.status === "unavailable"
+        ? "未就绪"
+        : "失败";
+  const statusVariant =
+    metrics.status === "ok"
+      ? "outline"
+      : metrics.status === "unavailable"
+        ? "secondary"
+        : "destructive";
+  const items = [
+    {
+      label: "运行请求",
+      value: formatCompactMetric(readRuntimeMetricValue(metrics, "requests_running"))
+    },
+    {
+      label: "等待队列",
+      value: formatCompactMetric(readRuntimeMetricValue(metrics, "requests_waiting"))
+    },
+    {
+      label: "GPU KV",
+      value: formatPercentMetric(readRuntimeMetricValue(metrics, "gpu_cache_usage_pct"))
+    },
+    {
+      label: "CPU KV",
+      value: formatPercentMetric(readRuntimeMetricValue(metrics, "cpu_cache_usage_pct"))
+    },
+    {
+      label: "输入 token",
+      value: formatCompactMetric(readRuntimeMetricValue(metrics, "prompt_tokens_total"))
+    },
+    {
+      label: "输出 token",
+      value: formatCompactMetric(readRuntimeMetricValue(metrics, "generation_tokens_total"))
+    },
+    {
+      label: "成功请求",
+      value: formatCompactMetric(readRuntimeMetricValue(metrics, "request_success_total"))
+    },
+    {
+      label: "平均延迟",
+      value: formatLatencyMetric(readRuntimeMetricValue(metrics, "e2e_latency_avg_ms"))
+    }
+  ];
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-foreground">
+          <Activity className="size-3.5 shrink-0" />
+          <span className="truncate">Runtime 指标</span>
+        </div>
+        <Badge variant={statusVariant}>{statusLabel}</Badge>
+      </div>
+      {metrics.status === "ok" ? (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            {items.map((item) => (
+              <MachineMetric key={item.label} label={item.label} value={item.value} />
+            ))}
+          </div>
+          <div className="mt-2 truncate text-xs text-muted-foreground">
+            {formatDateTime(metrics.checked_at)} · {metrics.latency_ms ?? "--"} ms ·{" "}
+            {metrics.metric_count} metrics
+          </div>
+        </>
+      ) : (
+        <div className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+          {metrics.error ?? "当前 runtime 暂无可读指标。"}
+        </div>
+      )}
+    </div>
   );
 }
 

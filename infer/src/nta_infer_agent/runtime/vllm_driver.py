@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
 
 import httpx
 
@@ -66,6 +67,16 @@ class VllmDriver:
                 json=payload,
             )
             response.raise_for_status()
+
+    async def fetch_metrics(self, spec: DeploymentSpec) -> tuple[str, int]:
+        started_at = perf_counter()
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(
+                f"{self.local_base_url(spec)}/metrics",
+                headers=self._headers(spec),
+            )
+            response.raise_for_status()
+            return response.text, int((perf_counter() - started_at) * 1000)
 
     def _headers(self, spec: DeploymentSpec) -> dict[str, str]:
         return {"Authorization": f"Bearer {spec.engine.api_key.get_secret_value()}"}

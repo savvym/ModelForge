@@ -123,3 +123,20 @@ class HealthResponse(BaseModel):
     node_name: str
     current: DeploymentStatus
     gpus: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RuntimeMetricSample(BaseModel):
+    name: str
+    value: float
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class RuntimeMetricsResponse(BaseModel):
+    status: Literal["ok", "unavailable", "error"]
+    checked_at: datetime
+    endpoint: str | None = None
+    latency_ms: int | None = None
+    metric_count: int = 0
+    summary: dict[str, float] = Field(default_factory=dict)
+    metrics: list[RuntimeMetricSample] = Field(default_factory=list)
+    error: str | None = None

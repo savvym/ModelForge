@@ -1409,6 +1409,24 @@ export interface InferenceMachineHealth {
   error?: string | null;
 }
 
+export interface RuntimeMetricSample {
+  name: string;
+  value: number;
+  labels: Record<string, string>;
+}
+
+export interface InferenceMachineRuntimeMetrics {
+  machine_id: string;
+  status: string;
+  checked_at: string;
+  endpoint?: string | null;
+  latency_ms?: number | null;
+  metric_count: number;
+  summary: Record<string, number>;
+  metrics: RuntimeMetricSample[];
+  error?: string | null;
+}
+
 export interface ObjectStorePrefixEntry {
   name: string;
   prefix: string;

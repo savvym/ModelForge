@@ -3,6 +3,7 @@ import type {
   DeployModelInput,
   InferenceMachineCreateInput,
   InferenceMachineHealth,
+  InferenceMachineRuntimeMetrics,
   InferenceMachineSummary,
   ModelDeploymentEvent,
   ModelDeploymentPassiveHealth,
@@ -121,4 +122,12 @@ export async function checkInferenceMachineHealth(
   return apiFetch<InferenceMachineHealth>(`/model-deployments/machines/${machineId}/health`, {
     method: "POST"
   });
+}
+
+export async function getInferenceMachineRuntimeMetrics(
+  machineId: string
+): Promise<InferenceMachineRuntimeMetrics> {
+  return apiFetch<InferenceMachineRuntimeMetrics>(
+    `/model-deployments/machines/${machineId}/runtime-metrics`
+  );
 }

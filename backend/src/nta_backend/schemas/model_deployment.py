@@ -222,3 +222,21 @@ class InferenceMachineHealth(BaseModel):
     gpus: list[dict[str, Any]] = Field(default_factory=list)
     checked_at: datetime
     error: str | None = None
+
+
+class RuntimeMetricSample(BaseModel):
+    name: str
+    value: float
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class InferenceMachineRuntimeMetrics(BaseModel):
+    machine_id: UUID
+    status: str
+    checked_at: datetime
+    endpoint: str | None = None
+    latency_ms: int | None = None
+    metric_count: int = 0
+    summary: dict[str, float] = Field(default_factory=dict)
+    metrics: list[RuntimeMetricSample] = Field(default_factory=list)
+    error: str | None = None

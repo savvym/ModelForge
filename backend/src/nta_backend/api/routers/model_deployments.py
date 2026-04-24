@@ -10,6 +10,7 @@ from nta_backend.schemas.model_deployment import (
     DeployModelRequest,
     InferenceMachineCreate,
     InferenceMachineHealth,
+    InferenceMachineRuntimeMetrics,
     InferenceMachineSummary,
     ModelDeploymentEvent,
     ModelDeploymentPassiveHealth,
@@ -59,6 +60,21 @@ async def check_inference_machine_health(machine_id: UUID) -> InferenceMachineHe
         return await machine_service.check_machine_health(machine_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Inference machine not found") from exc
+
+
+@router.get(
+    "/machines/{machine_id}/runtime-metrics",
+    response_model=InferenceMachineRuntimeMetrics,
+)
+async def get_inference_machine_runtime_metrics(
+    machine_id: UUID,
+) -> InferenceMachineRuntimeMetrics:
+    try:
+        return await machine_service.get_runtime_metrics(machine_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Inference machine not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/machines/{machine_id}", status_code=status.HTTP_204_NO_CONTENT)

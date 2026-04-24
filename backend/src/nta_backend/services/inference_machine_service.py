@@ -18,6 +18,7 @@ from nta_backend.models.modeling import InferenceMachine
 from nta_backend.schemas.model_deployment import (
     InferenceMachineCreate,
     InferenceMachineHealth,
+    InferenceMachineRuntimeMetrics,
     InferenceMachineSummary,
 )
 
@@ -460,3 +461,33 @@ class InferenceMachineService:
             checked_at=checked_at,
             error=error,
         )
+
+    async def get_runtime_metrics(self, machine_id: UUID) -> InferenceMachineRuntimeMetrics:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            machine = await session.get(InferenceMachine, machine_id)
+            if machine is None or machine.project_id != project_id or machine.status == "deleted":
+                raise KeyError(str(machine_id))
+            runtime = machine_runtime_config(machine)
+
+        checked_at = _now()
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                response = await client.get(
+                    f"{runtime.agent_base_url}/v1/deployments/current/runtime-metrics",
+                    headers=agent_headers(runtime),
+                )
+                response.raise_for_status()
+                payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError("infer-agent returned an invalid runtime metrics payload.")
+            payload = {**payload, "machine_id": machine_id}
+            payload.setdefault("checked_at", checked_at)
+            return InferenceMachineRuntimeMetrics.model_validate(payload)
+        except (httpx.HTTPError, ValueError) as exc:
+            return InferenceMachineRuntimeMetrics(
+                machine_id=machine_id,
+                status="error",
+                checked_at=checked_at,
+                error=str(exc),
+            )

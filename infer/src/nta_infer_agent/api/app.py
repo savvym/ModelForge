@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
@@ -10,7 +12,8 @@ from nta_infer_agent import __version__
 from nta_infer_agent.config import get_settings
 from nta_infer_agent.process import run_command
 from nta_infer_agent.reconciler import DeploymentReconciler
-from nta_infer_agent.schemas import DeploymentSpec, HealthResponse
+from nta_infer_agent.runtime.metrics import parse_vllm_metrics
+from nta_infer_agent.schemas import DeploymentSpec, HealthResponse, RuntimeMetricsResponse
 from nta_infer_agent.state import EventBus, StateStore
 
 logger = logging.getLogger(__name__)
@@ -70,6 +73,47 @@ def create_app() -> FastAPI:
     @app.get("/v1/deployments/current")
     async def get_current(_: None = Depends(require_token)):
         return await state.get_status()
+
+    @app.get(
+        "/v1/deployments/current/runtime-metrics",
+        response_model=RuntimeMetricsResponse,
+    )
+    async def get_runtime_metrics(_: None = Depends(require_token)) -> RuntimeMetricsResponse:
+        checked_at = datetime.now(UTC)
+        desired = await state.get_desired()
+        current = await state.get_status()
+        if desired is None or desired.desired_phase != "running":
+            return RuntimeMetricsResponse(
+                status="unavailable",
+                checked_at=checked_at,
+                error="No running deployment desired state.",
+            )
+        if current.phase not in {"ready", "smoke_testing", "warming"}:
+            return RuntimeMetricsResponse(
+                status="unavailable",
+                checked_at=checked_at,
+                endpoint=current.endpoint or reconciler.vllm.endpoint(desired),
+                error=f"Runtime is not ready for metrics: phase={current.phase}.",
+            )
+        try:
+            metrics_text, latency_ms = await reconciler.vllm.fetch_metrics(desired)
+            parsed = parse_vllm_metrics(metrics_text)
+            return RuntimeMetricsResponse(
+                status="ok",
+                checked_at=checked_at,
+                endpoint=current.endpoint or reconciler.vllm.endpoint(desired),
+                latency_ms=latency_ms,
+                metric_count=parsed.metric_count,
+                summary=parsed.summary,
+                metrics=parsed.samples,
+            )
+        except httpx.HTTPError as exc:
+            return RuntimeMetricsResponse(
+                status="error",
+                checked_at=checked_at,
+                endpoint=current.endpoint or reconciler.vllm.endpoint(desired),
+                error=str(exc),
+            )
 
     @app.put("/v1/deployments/current")
     async def put_current(spec: DeploymentSpec, _: None = Depends(require_token)):
