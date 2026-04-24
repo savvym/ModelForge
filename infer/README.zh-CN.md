@@ -213,5 +213,6 @@ http://{RUNTIME_PUBLIC_HOST}:8000/v1
 - 不要暴露 Docker socket。
 - `INFER_AGENT_TOKEN` 是必填项，使用长随机字符串；未配置或为空时 infer-agent 不会启动。
 - `9000` 上所有 HTTP URL 都必须使用 `Authorization: Bearer $INFER_AGENT_TOKEN` 访问。
-- vLLM runtime 启动时必须带 `--api-key`，`/v1/models`、`/v1/chat/completions` 等 runtime API 都必须使用 Runtime API Key。
+- vLLM runtime 启动时必须带 `--api-key`，并会额外挂载鉴权 middleware；`/v1/models`、`/v1/chat/completions`、`/health`、`/metrics`、`/docs`、`/redoc`、`/openapi.json` 等 runtime URL 都必须使用 Runtime API Key。
+- vLLM runtime 文档页允许带 Runtime API Key 访问，未带 token 或 token 错误时返回 401。
 - 生产环境把对象存储长期 AK/SK 替换为 STS 临时凭据。

@@ -8,12 +8,19 @@ from nta_infer_agent.runtime.docker_runtime import DockerRuntime
 from nta_infer_agent.schemas import DeploymentSpec, EngineSpec, ModelBinding, ModelSource
 
 
-def _settings() -> AgentSettings:
-    return AgentSettings(INFER_AGENT_TOKEN="test-token", _env_file=None)
+def _settings(tmp_path: Path) -> AgentSettings:
+    return AgentSettings(
+        INFER_AGENT_TOKEN="test-token",
+        runtime_dir=tmp_path / "runtime",
+        _env_file=None,
+    )
 
 
 @pytest.mark.asyncio
-async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_start_vllm_uses_all_gpus(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     commands: list[list[str]] = []
 
     async def fake_run_command(command: list[str], **_: object) -> str:
@@ -21,7 +28,7 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
         return "container-id"
 
     monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
-    runtime = DockerRuntime(_settings())
+    runtime = DockerRuntime(_settings(tmp_path))
     spec = DeploymentSpec(
         deployment_id="deployment-id",
         generation=1,
@@ -48,6 +55,20 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
     assert run_command[restart_index + 1] == "on-failure:3"
     api_key_index = run_command.index("--api-key")
     assert run_command[api_key_index + 1] == "runtime-token"
+    assert "--disable-fastapi-docs" not in run_command
+    middleware_index = run_command.index("--middleware")
+    assert run_command[middleware_index + 1] == "vllm_runtime_auth.require_runtime_token"
+    assert "PYTHONPATH=/nta-runtime" in run_command
+    assert "NTA_VLLM_RUNTIME_API_KEY=runtime-token" in run_command
+    middleware_mount = next(
+        item
+        for item in run_command
+        if item.endswith(":/nta-runtime/vllm_runtime_auth.py:ro")
+    )
+    middleware_path = Path(middleware_mount.split(":", 1)[0])
+    middleware_source = middleware_path.read_text(encoding="utf-8")
+    assert "NTA_VLLM_RUNTIME_API_KEY" in middleware_source
+    assert "DISABLED_PATHS" not in middleware_source
     image_index = run_command.index("vllm/vllm-openai:latest")
     assert run_command[image_index + 1] == "/model"
     assert "--model" not in run_command
@@ -56,6 +77,7 @@ async def test_start_vllm_uses_all_gpus(monkeypatch: pytest.MonkeyPatch) -> None
 @pytest.mark.asyncio
 async def test_start_vllm_passes_reasoning_parser_extra_arg(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     commands: list[list[str]] = []
 
@@ -64,7 +86,7 @@ async def test_start_vllm_passes_reasoning_parser_extra_arg(
         return "container-id"
 
     monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
-    runtime = DockerRuntime(_settings())
+    runtime = DockerRuntime(_settings(tmp_path))
     spec = DeploymentSpec(
         deployment_id="deployment-id",
         generation=1,
@@ -94,13 +116,14 @@ async def test_start_vllm_passes_reasoning_parser_extra_arg(
 @pytest.mark.asyncio
 async def test_inspect_state_parses_container_restart_count(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     async def fake_run_command(command: list[str], **_: object) -> str:
         assert command[:3] == ["docker", "inspect", "-f"]
         return '{"Status":"exited","ExitCode":1,"Error":""}|3'
 
     monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
-    runtime = DockerRuntime(_settings())
+    runtime = DockerRuntime(_settings(tmp_path))
 
     state = await runtime.inspect_state()
 

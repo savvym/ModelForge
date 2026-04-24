@@ -3,10 +3,30 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import dedent
 
 from nta_infer_agent.config import AgentSettings
 from nta_infer_agent.process import run_command
 from nta_infer_agent.schemas import DeploymentSpec
+
+VLLM_RUNTIME_AUTH_MIDDLEWARE = dedent(
+    """
+    from __future__ import annotations
+
+    import os
+
+    from starlette.responses import JSONResponse
+
+
+    async def require_runtime_token(request, call_next):
+        token = os.environ.get("NTA_VLLM_RUNTIME_API_KEY", "").strip()
+        expected = f"Bearer {token}" if token else ""
+        if request.headers.get("authorization") != expected:
+            return JSONResponse(status_code=401, content={"detail": "Invalid runtime token"})
+
+        return await call_next(request)
+    """
+).strip()
 
 
 @dataclass(frozen=True)
@@ -29,6 +49,8 @@ class DockerRuntime:
 
     async def start_vllm(self, spec: DeploymentSpec, model_path: Path) -> str:
         await self.stop_current()
+        middleware_path = self._write_runtime_auth_middleware()
+        runtime_api_key = spec.engine.api_key.get_secret_value()
         command = [
             self.settings.docker_bin,
             "run",
@@ -48,6 +70,12 @@ class DockerRuntime:
             f"{spec.engine.listen_port}:{self.settings.vllm_container_port}",
             "-v",
             f"{model_path}:/model:ro",
+            "-v",
+            f"{middleware_path}:/nta-runtime/vllm_runtime_auth.py:ro",
+            "-e",
+            "PYTHONPATH=/nta-runtime",
+            "-e",
+            f"NTA_VLLM_RUNTIME_API_KEY={runtime_api_key}",
             spec.engine.image,
             "/model",
             "--served-model-name",
@@ -64,6 +92,8 @@ class DockerRuntime:
             spec.engine.dtype,
             "--gpu-memory-utilization",
             str(spec.engine.gpu_memory_utilization),
+            "--middleware",
+            "vllm_runtime_auth.require_runtime_token",
         ]
         if spec.engine.max_model_len is not None:
             command.extend(["--max-model-len", str(spec.engine.max_model_len)])
@@ -81,6 +111,12 @@ class DockerRuntime:
                 command.extend([option, str(value)])
 
         return await run_command(command)
+
+    def _write_runtime_auth_middleware(self) -> Path:
+        self.settings.runtime_root.mkdir(parents=True, exist_ok=True)
+        middleware_path = self.settings.runtime_root / "vllm_runtime_auth.py"
+        middleware_path.write_text(VLLM_RUNTIME_AUTH_MIDDLEWARE + "\n", encoding="utf-8")
+        return middleware_path
 
     async def inspect_state(self) -> ContainerState | None:
         output = await run_command(

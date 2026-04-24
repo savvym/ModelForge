@@ -31,7 +31,10 @@ class VllmDriver:
         async with httpx.AsyncClient(timeout=5.0) as client:
             while datetime.now(UTC) < deadline:
                 try:
-                    response = await client.get(f"{self.local_base_url(spec)}/health")
+                    response = await client.get(
+                        f"{self.local_base_url(spec)}/health",
+                        headers=headers,
+                    )
                     if response.status_code < 500:
                         models = await client.get(
                             f"{self.local_base_url(spec)}/v1/models",
