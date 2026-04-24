@@ -13,9 +13,10 @@ import {
 import { getEvaluationRun } from "@/features/eval/api";
 import { EvaluationRunDetailActions } from "@/features/eval/components/evaluation-run-detail-actions";
 import { EvaluationRunLiveRefresh } from "@/features/eval/components/evaluation-run-live-refresh";
+import { EvaluationRunSamplesPanel } from "@/features/eval/components/evaluation-run-samples-panel";
 import { formatEvaluationRunKind, getEvalStatusMeta } from "@/features/eval/status";
 import { getCurrentProjectIdFromCookie } from "@/features/project/server";
-import type { EvaluationRunDetailV2, EvaluationRunItemV2, EvaluationRunMetricV2 } from "@/types/api";
+import type { EvaluationRunDetailV2, EvaluationRunMetricV2 } from "@/types/api";
 
 export default async function ModelEvalDetailPage({
   params
@@ -198,56 +199,7 @@ export default async function ModelEvalDetailPage({
         </CardContent>
       </Card>
 
-      <Card className="border-border bg-card/80 shadow-none">
-        <CardHeader className="gap-2">
-          <CardTitle className="text-base text-foreground">样本级结果</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            展示运行项返回的 canonical sample report。若某些内置 benchmark 不产出样本细节，这里会保持为空。
-          </p>
-        </CardHeader>
-        <CardContent>
-          {flattenSamples(detail.items).length ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>运行项</TableHead>
-                  <TableHead>样本 ID</TableHead>
-                  <TableHead>子集</TableHead>
-                  <TableHead>分数</TableHead>
-                  <TableHead>通过</TableHead>
-                  <TableHead>原因</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {flattenSamples(detail.items).map((row) => (
-                  <TableRow key={`${row.item.id}-${row.sample.sample_id}`}>
-                    <TableCell className="align-top text-foreground">{row.item.display_name}</TableCell>
-                    <TableCell className="align-top font-mono text-xs text-foreground">
-                      {row.sample.sample_id}
-                    </TableCell>
-                    <TableCell className="align-top text-foreground">
-                      {row.sample.subset_name ?? "--"}
-                    </TableCell>
-                    <TableCell className="align-top text-foreground">
-                      {typeof row.sample.score === "number" ? row.sample.score.toFixed(4) : "--"}
-                    </TableCell>
-                    <TableCell className="align-top text-foreground">
-                      {row.sample.passed ? "是" : "否"}
-                    </TableCell>
-                    <TableCell className="max-w-[720px] whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                      {row.sample.reason || row.sample.error || "--"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border px-4 py-10 text-sm text-muted-foreground">
-              当前任务还没有样本级结果。
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <EvaluationRunSamplesPanel runId={detail.id} />
 
       <Card className="border-border bg-card/80 shadow-none">
         <CardHeader className="gap-2">
@@ -334,8 +286,4 @@ function formatDateTime(value?: string | null) {
     minute: "2-digit",
     second: "2-digit"
   });
-}
-
-function flattenSamples(items: EvaluationRunItemV2[]) {
-  return items.flatMap((item) => item.samples.map((sample) => ({ item, sample })));
 }

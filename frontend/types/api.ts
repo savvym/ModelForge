@@ -416,6 +416,8 @@ export interface BenchmarkDefinitionSummary {
   eval_template_version?: number | null;
   eval_template_type?: string | null;
   eval_template_preset_id?: string | null;
+  eval_template_model?: string | null;
+  eval_template_provider?: string | null;
   version_count: number;
   enabled_version_count: number;
   evaluation_run_count: number;
@@ -777,6 +779,22 @@ export interface EvaluationRunSampleV2 {
   latency_ms?: number | null;
   total_tokens?: number | null;
   metadata_json: Record<string, unknown>;
+}
+
+export interface EvaluationRunSampleRowV2 {
+  run_item_id: string;
+  item_key: string;
+  item_display_name: string;
+  group_name?: string | null;
+  sample: EvaluationRunSampleV2;
+}
+
+export interface EvaluationRunSamplePageV2 {
+  run_id: string;
+  page: number;
+  page_size: number;
+  total: number;
+  samples: EvaluationRunSampleRowV2[];
 }
 
 export interface EvaluationRunItemV2 {

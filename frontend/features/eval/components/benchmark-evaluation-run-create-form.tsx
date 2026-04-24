@@ -264,6 +264,15 @@ export function BenchmarkEvaluationRunCreateForm({
                 : "未绑定"}
           </div>
         </FieldBlock>
+
+        <FieldBlock
+          description="用于 LLM-as-a-judge 打分；未单独指定时会跟随评测模型。"
+          label="教师打分模型"
+        >
+          <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-sm text-foreground">
+            {formatBenchmarkJudgeModel(selectedBenchmark, selectedModel)}
+          </div>
+        </FieldBlock>
       </div>
 
       <div className="rounded-lg border border-border bg-card/80 p-5">
@@ -278,12 +287,12 @@ export function BenchmarkEvaluationRunCreateForm({
             </div>
           </div>
           <div className="rounded-lg border border-border bg-card/80 px-4 py-3 text-right">
-            <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Model Binding</div>
+            <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">评测模型绑定</div>
             <div className="mt-2 text-sm font-medium text-foreground">
               {selectedModel?.name ?? "未选择模型"}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {mode === "builtin" ? "Benchmark 类型 · 基线评测" : "Benchmark 类型 · 自定义评测"}
+              教师打分 · {formatBenchmarkJudgeModel(selectedBenchmark, selectedModel)}
             </div>
           </div>
         </div>
@@ -298,14 +307,8 @@ export function BenchmarkEvaluationRunCreateForm({
             }
           />
           <InfoCard
-            label="评测维度"
-            value={
-              selectedBenchmark?.eval_template_name
-                ? `${selectedBenchmark.eval_template_name}${selectedBenchmark.eval_template_type ? ` · ${selectedBenchmark.eval_template_type}` : ""}`
-                : mode === "builtin"
-                  ? "平台预置"
-                  : "未绑定"
-            }
+            label="Benchmark 类型"
+            value={mode === "builtin" ? "基线评测" : "自定义评测"}
           />
         </div>
       </div>
@@ -355,6 +358,24 @@ function buildRunDescription(
   version: BenchmarkVersionSummary
 ) {
   return `${benchmark.display_name} / ${version.display_name}`;
+}
+
+function formatBenchmarkJudgeModel(
+  benchmark: BenchmarkDefinitionSummary | null,
+  selectedModel: EvalModelTargetOption | null
+) {
+  if (!benchmark) {
+    return "未选择 Benchmark";
+  }
+  if (!benchmark.requires_judge_model) {
+    return "不需要";
+  }
+  const model = benchmark.eval_template_model?.trim();
+  const provider = benchmark.eval_template_provider?.trim();
+  if (model) {
+    return provider ? `${model} · ${provider}` : model;
+  }
+  return selectedModel ? `跟随评测模型 · ${selectedModel.name}` : "跟随评测模型";
 }
 
 function formatVersionLabel(version: BenchmarkVersionSummary) {

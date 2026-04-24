@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nta_backend.core.auth_context import resolve_current_user
@@ -46,7 +46,9 @@ from nta_backend.schemas.evaluation_v2 import (
     EvaluationRunDetail,
     EvaluationRunItemResponse,
     EvaluationRunMetricResponse,
+    EvaluationRunSamplePageResponse,
     EvaluationRunSampleResponse,
+    EvaluationRunSampleRowResponse,
     EvaluationRunSummary,
 )
 
@@ -960,7 +962,6 @@ class EvaluationRunV2Service:
             )
             item_ids = [item.id for item in item_rows]
             item_metrics_rows = []
-            item_samples_rows = []
             if item_ids:
                 item_metrics_rows = (
                     (
@@ -975,26 +976,10 @@ class EvaluationRunV2Service:
                     .scalars()
                     .all()
                 )
-                item_samples_rows = (
-                    (
-                        await session.execute(
-                            select(EvaluationRunSample)
-                            .where(EvaluationRunSample.run_item_id.in_(item_ids))
-                            .order_by(
-                                EvaluationRunSample.created_at.asc(), EvaluationRunSample.id.asc()
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
             metrics_by_item: dict[UUID, list[EvaluationRunMetric]] = {}
             for metric in item_metrics_rows:
                 if metric.run_item_id is not None:
                     metrics_by_item.setdefault(metric.run_item_id, []).append(metric)
-            samples_by_item: dict[UUID, list[EvaluationRunSample]] = {}
-            for sample in item_samples_rows:
-                samples_by_item.setdefault(sample.run_item_id, []).append(sample)
             return EvaluationRunDetail(
                 **_serialize_run_summary(run, items=item_rows).model_dump(),
                 source_spec_id=run.source_spec_id,
@@ -1010,9 +995,67 @@ class EvaluationRunV2Service:
                     _serialize_item(
                         item,
                         metrics=metrics_by_item.get(item.id, []),
-                        samples=samples_by_item.get(item.id, []),
+                        samples=[],
                     )
                     for item in item_rows
+                ],
+            )
+
+    async def list_run_samples(
+        self,
+        run_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> EvaluationRunSamplePageResponse:
+        normalized_page = max(1, page)
+        normalized_page_size = min(max(1, page_size), 100)
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            run = await _get_run_or_raise(session, project_id=project_id, run_id=UUID(run_id))
+            total = (
+                await session.execute(
+                    select(func.count(EvaluationRunSample.id))
+                    .join(
+                        EvaluationRunItem,
+                        EvaluationRunSample.run_item_id == EvaluationRunItem.id,
+                    )
+                    .where(EvaluationRunItem.run_id == run.id)
+                )
+            ).scalar_one()
+            offset = (normalized_page - 1) * normalized_page_size
+            rows = (
+                await session.execute(
+                    select(EvaluationRunSample, EvaluationRunItem)
+                    .join(
+                        EvaluationRunItem,
+                        EvaluationRunSample.run_item_id == EvaluationRunItem.id,
+                    )
+                    .where(EvaluationRunItem.run_id == run.id)
+                    .order_by(
+                        EvaluationRunItem.created_at.asc(),
+                        EvaluationRunItem.id.asc(),
+                        EvaluationRunSample.created_at.asc(),
+                        EvaluationRunSample.id.asc(),
+                    )
+                    .offset(offset)
+                    .limit(normalized_page_size)
+                )
+            ).all()
+            return EvaluationRunSamplePageResponse(
+                run_id=run.id,
+                page=normalized_page,
+                page_size=normalized_page_size,
+                total=int(total or 0),
+                samples=[
+                    EvaluationRunSampleRowResponse(
+                        run_item_id=item.id,
+                        item_key=item.item_key,
+                        item_display_name=item.display_name,
+                        group_name=item.group_name,
+                        sample=_serialize_sample(sample),
+                    )
+                    for sample, item in rows
                 ],
             )
 

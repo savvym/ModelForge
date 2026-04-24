@@ -26,6 +26,7 @@ import type {
   EvaluationRunCancelResponseV2,
   EvaluationRunCreateInputV2,
   EvaluationRunDetailV2,
+  EvaluationRunSamplePageV2,
   EvaluationRunSummaryV2,
   EvalSpecCreateInputV2,
   EvalSpecUpdateInputV2,
@@ -254,6 +255,20 @@ export async function getEvaluationRun(
   projectId?: string | null
 ): Promise<EvaluationRunDetailV2> {
   return apiFetch<EvaluationRunDetailV2>(`/api/v2/evaluation-runs/${runId}`, { projectId });
+}
+
+export async function getEvaluationRunSamples(
+  runId: string,
+  params: { page?: number; pageSize?: number } = {},
+  projectId?: string | null
+): Promise<EvaluationRunSamplePageV2> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", String(params.page ?? 1));
+  searchParams.set("page_size", String(params.pageSize ?? 20));
+  return apiFetch<EvaluationRunSamplePageV2>(
+    `/api/v2/evaluation-runs/${runId}/samples?${searchParams.toString()}`,
+    { projectId }
+  );
 }
 
 export async function createEvaluationRun(

@@ -73,6 +73,8 @@ class _EvalTemplateRef:
     version: int
     template_type: str
     preset_id: str | None
+    model: str | None
+    provider: str | None
 
 
 _BENCHMARK_SUPPORTED_TEMPLATE_TYPES = {"llm_categorical", "llm_numeric"}
@@ -275,6 +277,8 @@ def _serialize_definition(
         eval_template_version=eval_template.version if eval_template else None,
         eval_template_type=eval_template.template_type if eval_template else None,
         eval_template_preset_id=eval_template.preset_id if eval_template else None,
+        eval_template_model=eval_template.model if eval_template else None,
+        eval_template_provider=eval_template.provider if eval_template else None,
         version_count=len(serialized_versions),
         enabled_version_count=sum(1 for v in serialized_versions if v.enabled),
         evaluation_run_count=benchmark_usage.evaluation_run_count,
@@ -547,6 +551,8 @@ async def _load_eval_template_refs(
             version=template.version,
             template_type=template.template_type,
             preset_id=template.preset_id,
+            model=template.model,
+            provider=template.provider,
         )
     return refs
 

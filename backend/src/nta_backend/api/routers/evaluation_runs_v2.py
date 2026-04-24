@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from nta_backend.schemas.evaluation_v2 import (
     BenchmarkEvaluationRunCreate,
     EvaluationRunCancelResponse,
     EvaluationRunCreate,
     EvaluationRunDetail,
+    EvaluationRunSamplePageResponse,
     EvaluationRunSummary,
 )
 from nta_backend.services.evaluation_run_v2_service import EvaluationRunV2Service
@@ -23,7 +24,25 @@ async def get_evaluation_run(run_id: str) -> EvaluationRunDetail:
     try:
         return await service.get_run(run_id)
     except KeyError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        ) from exc
+
+
+@router.get("/{run_id}/samples", response_model=EvaluationRunSamplePageResponse)
+async def list_evaluation_run_samples(
+    run_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+) -> EvaluationRunSamplePageResponse:
+    try:
+        return await service.list_run_samples(run_id, page=page, page_size=page_size)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        ) from exc
 
 
 @router.post("", response_model=EvaluationRunSummary, status_code=status.HTTP_202_ACCEPTED)
@@ -53,7 +72,10 @@ async def cancel_evaluation_run(run_id: str) -> EvaluationRunCancelResponse:
     try:
         return await service.cancel_run(run_id)
     except KeyError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
@@ -63,7 +85,10 @@ async def delete_evaluation_run(run_id: str) -> Response:
     try:
         await service.delete_run(run_id)
     except KeyError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluation run not found") from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation run not found",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -17,14 +17,14 @@ from nta_backend.models.modeling import Endpoint, Model, ModelProvider
 from nta_backend.schemas.evaluation_v2 import (
     EvalSpecCreate,
     EvalSpecDatasetFileCreate,
-    EvalSpecVersionCreate,
     EvalSpecUpdate,
+    EvalSpecVersionCreate,
     EvalSpecVersionUpdate,
     EvalSuiteCreate,
     EvalSuiteItemCreate,
     EvalSuiteItemUpdate,
-    EvalSuiteVersionCreate,
     EvalSuiteUpdate,
+    EvalSuiteVersionCreate,
     EvalSuiteVersionUpdate,
     EvaluationRunCreate,
     EvaluationTargetRef,
@@ -541,7 +541,12 @@ async def test_sync_spec_version_dataset_files_marks_file_available(tmp_path) ->
     local_file.write_text('{"input":"hello","target":"world"}\n', encoding="utf-8")
     bucket = get_settings().s3_bucket_dataset_raw
     object_key = f"nta-dev/tests/evaluation-v2/{created_spec_name}/dataset.jsonl"
-    put_object_bytes(bucket, object_key, local_file.read_bytes(), content_type="application/x-ndjson")
+    put_object_bytes(
+        bucket,
+        object_key,
+        local_file.read_bytes(),
+        content_type="application/x-ndjson",
+    )
 
     try:
         spec = await catalog_service.create_spec(
@@ -630,7 +635,11 @@ async def test_create_run_rejects_spec_with_missing_required_dataset_file(
         with pytest.raises(ValueError, match="请先在评测管理中拉取数据集"):
             await run_service.create_run(
                 EvaluationRunCreate(
-                    target=EvaluationTargetRef(kind="spec", name=created_spec_name, version="dataset-v1"),
+                    target=EvaluationTargetRef(
+                        kind="spec",
+                        name=created_spec_name,
+                        version="dataset-v1",
+                    ),
                     model_id=model_id,
                 )
             )
@@ -767,7 +776,12 @@ async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
     )
     bucket = get_settings().s3_bucket_dataset_raw
     object_key = f"nta-dev/tests/evaluation-v2/{created_spec_name}/dataset.jsonl"
-    put_object_bytes(bucket, object_key, dataset_path.read_bytes(), content_type="application/x-ndjson")
+    put_object_bytes(
+        bucket,
+        object_key,
+        dataset_path.read_bytes(),
+        content_type="application/x-ndjson",
+    )
 
     try:
         spec = await catalog_service.create_spec(
@@ -798,7 +812,11 @@ async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
 
         summary = await service.create_run(
             EvaluationRunCreate(
-                target=EvaluationTargetRef(kind="spec", name=created_spec_name, version="dataset-v1"),
+                target=EvaluationTargetRef(
+                    kind="spec",
+                    name=created_spec_name,
+                    version="dataset-v1",
+                ),
                 model_id=model_id,
             )
         )
@@ -823,8 +841,13 @@ async def test_dataset_spec_run_executes_via_evalscope_dataset_engine(
         assert detail.status == "completed"
         assert detail.items[0].execution_mode == "dataset"
         assert detail.metrics[0].metric_value == pytest.approx(1.0)
-        assert detail.items[0].samples[0].sample_id == "sample-1"
-        assert detail.items[0].samples[0].passed is True
+        assert detail.items[0].samples == []
+
+        sample_page = await service.list_run_samples(str(run_id), page=1, page_size=20)
+        assert sample_page.total == 1
+        assert sample_page.samples[0].run_item_id == detail.items[0].id
+        assert sample_page.samples[0].sample.sample_id == "sample-1"
+        assert sample_page.samples[0].sample.passed is True
     finally:
         await _cleanup_run_provider_model(run_id=run_id, model_id=model_id, provider_id=provider_id)
         async with SessionLocal() as session:

@@ -354,6 +354,22 @@ class EvaluationRunSampleResponse(BaseModel):
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
+class EvaluationRunSampleRowResponse(BaseModel):
+    run_item_id: UUID
+    item_key: str
+    item_display_name: str
+    group_name: str | None = None
+    sample: EvaluationRunSampleResponse
+
+
+class EvaluationRunSamplePageResponse(BaseModel):
+    run_id: UUID
+    page: int
+    page_size: int
+    total: int
+    samples: list[EvaluationRunSampleRowResponse] = Field(default_factory=list)
+
+
 class EvaluationRunItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

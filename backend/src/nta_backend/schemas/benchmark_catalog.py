@@ -36,6 +36,8 @@ class BenchmarkDefinitionSummary(BaseModel):
     eval_template_version: int | None = None
     eval_template_type: str | None = None
     eval_template_preset_id: str | None = None
+    eval_template_model: str | None = None
+    eval_template_provider: str | None = None
     version_count: int = 0
     enabled_version_count: int = 0
     evaluation_run_count: int = 0
