@@ -34,7 +34,7 @@ from nta_backend.models.benchmark_catalog import (
 from nta_backend.models.benchmark_catalog import (
     BenchmarkVersion as BenchmarkVersionRecord,
 )
-from nta_backend.models.evaluation_v2 import EvalSpec, EvaluationRun
+from nta_backend.models.evaluation_v2 import EvalSpec, EvaluationLeaderboard, EvaluationRun
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
     BenchmarkDefinitionDetail,
@@ -732,7 +732,17 @@ async def _load_benchmark_usage(
     rows = await session.execute(
         select(
             EvaluationRun.created_at,
+            BenchmarkDefinitionRecord.name,
+            BenchmarkVersionRecord.version_id,
             EvaluationRun.execution_plan_json,
+        )
+        .outerjoin(
+            BenchmarkDefinitionRecord,
+            EvaluationRun.source_benchmark_id == BenchmarkDefinitionRecord.id,
+        )
+        .outerjoin(
+            BenchmarkVersionRecord,
+            EvaluationRun.source_benchmark_version_id == BenchmarkVersionRecord.id,
         )
         .where(
             EvaluationRun.project_id == project_id,
@@ -745,8 +755,10 @@ async def _load_benchmark_usage(
     aggregate_counts: dict[str, int] = defaultdict(int)
     aggregate_latest: dict[str, datetime | None] = {}
 
-    for latest_eval_at, plan in rows.all():
-        benchmark_name, version_id = _benchmark_ref_from_plan(plan)
+    for latest_eval_at, stored_benchmark_name, stored_version_id, plan in rows.all():
+        fallback_benchmark_name, fallback_version_id = _benchmark_ref_from_plan(plan)
+        benchmark_name = stored_benchmark_name or fallback_benchmark_name
+        version_id = stored_version_id or fallback_version_id
         if benchmark_name is None or version_id is None:
             continue
         existing_usage = version_usage.get((benchmark_name, version_id))
@@ -790,6 +802,20 @@ def _benchmark_ref_from_plan(plan: dict | None) -> tuple[str | None, str | None]
     version = benchmark.get("version")
     benchmark_name = name.strip() if isinstance(name, str) and name.strip() else None
     version_id = version.strip() if isinstance(version, str) and version.strip() else None
+    if benchmark_name is None:
+        target_name = plan.get("target_name")
+        benchmark_name = (
+            target_name.strip()
+            if isinstance(target_name, str) and target_name.strip()
+            else None
+        )
+    if version_id is None:
+        target_version = plan.get("target_version")
+        version_id = (
+            target_version.strip()
+            if isinstance(target_version, str) and target_version.strip()
+            else None
+        )
     return benchmark_name, version_id
 
 
@@ -860,6 +886,7 @@ async def _list_benchmark_run_references(
     project_id: UUID,
     benchmark_name: str,
     version_id: str,
+    benchmark_version_row_id: UUID,
 ) -> list[EvaluationRun]:
     rows = await session.execute(
         select(EvaluationRun)
@@ -871,10 +898,30 @@ async def _list_benchmark_run_references(
     )
     runs: list[EvaluationRun] = []
     for run in rows.scalars().all():
+        if run.source_benchmark_version_id == benchmark_version_row_id:
+            runs.append(run)
+            continue
         run_benchmark_name, run_version_id = _benchmark_ref_from_plan(run.execution_plan_json)
         if run_benchmark_name == benchmark_name and run_version_id == version_id:
             runs.append(run)
     return runs
+
+
+async def _list_benchmark_leaderboard_references(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    benchmark_version_row_id: UUID,
+) -> list[EvaluationLeaderboard]:
+    rows = await session.execute(
+        select(EvaluationLeaderboard)
+        .where(
+            EvaluationLeaderboard.project_id == project_id,
+            EvaluationLeaderboard.source_benchmark_version_id == benchmark_version_row_id,
+        )
+        .order_by(EvaluationLeaderboard.created_at.asc(), EvaluationLeaderboard.id.asc())
+    )
+    return list(rows.scalars().all())
 
 
 def _build_benchmark_eval_reference_error(runs: list[EvaluationRun]) -> str:
@@ -882,6 +929,15 @@ def _build_benchmark_eval_reference_error(runs: list[EvaluationRun]) -> str:
     if len(runs) > 3:
         preview = f"{preview} 等 {len(runs)} 个任务"
     return f"该 Version 已被评测任务引用：{preview}。请先处理相关评测任务后再删除。"
+
+
+def _build_benchmark_leaderboard_reference_error(
+    leaderboards: list[EvaluationLeaderboard],
+) -> str:
+    preview = "、".join(leaderboard.name for leaderboard in leaderboards[:3])
+    if len(leaderboards) > 3:
+        preview = f"{preview} 等 {len(leaderboards)} 个排行榜"
+    return f"该 Version 已被排行榜引用：{preview}。请先处理相关排行榜后再删除。"
 
 
 def _resolve_managed_version_prefix(
@@ -1368,9 +1424,20 @@ class BenchmarkCatalogService:
                 project_id=project_id,
                 benchmark_name=definition.name,
                 version_id=version.version_id,
+                benchmark_version_row_id=version.id,
             )
             if references:
                 raise ValueError(_build_benchmark_eval_reference_error(references))
+
+            leaderboard_references = await _list_benchmark_leaderboard_references(
+                session,
+                project_id=project_id,
+                benchmark_version_row_id=version.id,
+            )
+            if leaderboard_references:
+                raise ValueError(
+                    _build_benchmark_leaderboard_reference_error(leaderboard_references)
+                )
 
             managed_prefix = _resolve_managed_version_prefix(
                 benchmark_name=definition.name,

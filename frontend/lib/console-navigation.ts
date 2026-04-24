@@ -75,7 +75,7 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
   "model-probes": { title: "Probe", description: "Probe 节点与 Probe 任务管理。", group: "workspace" },
   "model-eval-leaderboards": {
     title: "排行榜",
-    description: "按 Eval Spec / Suite Version 组织和管理模型排行榜。",
+    description: "按 Benchmark / Eval Spec / Suite Version 组织和管理模型排行榜。",
     group: "workspace"
   },
   "model-eval-create": { title: "创建评测任务", description: "按 Benchmark 与 Version 创建真实评测任务。", group: "workspace" },

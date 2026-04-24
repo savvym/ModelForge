@@ -25,6 +25,7 @@ import {
   getAvailableEvaluationLeaderboardRuns
 } from "@/features/eval/api";
 import type {
+  BenchmarkDefinitionSummary,
   EvaluationCatalogResponseV2,
   EvaluationLeaderboardRunCandidateV2
 } from "@/types/api";
@@ -45,14 +46,28 @@ function formatDateTime(value?: string | null) {
 
 type EvaluationLeaderboardCreateFormProps = {
   catalog: EvaluationCatalogResponseV2;
+  benchmarks: BenchmarkDefinitionSummary[];
+};
+
+type LeaderboardTargetKind = "benchmark" | "spec" | "suite";
+
+type LeaderboardTargetOption = {
+  name: string;
+  displayName: string;
+  versions: Array<{
+    value: string;
+    displayName: string;
+  }>;
 };
 
 export function EvaluationLeaderboardCreateForm({
+  benchmarks,
   catalog
 }: EvaluationLeaderboardCreateFormProps) {
   const router = useRouter();
-  const defaultKind = catalog.suites.length > 0 ? "suite" : "spec";
-  const [targetKind, setTargetKind] = React.useState<"spec" | "suite">(defaultKind);
+  const defaultKind: LeaderboardTargetKind =
+    benchmarks.length > 0 ? "benchmark" : catalog.suites.length > 0 ? "suite" : "spec";
+  const [targetKind, setTargetKind] = React.useState<LeaderboardTargetKind>(defaultKind);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [targetName, setTargetName] = React.useState("");
@@ -64,7 +79,27 @@ export function EvaluationLeaderboardCreateForm({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const targetOptions = targetKind === "suite" ? catalog.suites : catalog.specs;
+  const targetOptions = React.useMemo<LeaderboardTargetOption[]>(() => {
+    if (targetKind === "benchmark") {
+      return benchmarks.map((benchmark) => ({
+        name: benchmark.name,
+        displayName: benchmark.display_name,
+        versions: benchmark.versions.map((version) => ({
+          value: version.id,
+          displayName: version.display_name
+        }))
+      }));
+    }
+    const catalogTargets = targetKind === "suite" ? catalog.suites : catalog.specs;
+    return catalogTargets.map((target) => ({
+      name: target.name,
+      displayName: target.display_name,
+      versions: target.versions.map((version) => ({
+        value: version.version,
+        displayName: version.display_name
+      }))
+    }));
+  }, [benchmarks, catalog.specs, catalog.suites, targetKind]);
   const selectedTarget =
     targetOptions.find((item) => item.name === targetName) ?? targetOptions[0] ?? null;
   const versionOptions = selectedTarget?.versions ?? [];
@@ -77,8 +112,8 @@ export function EvaluationLeaderboardCreateForm({
   }, [targetKind, targetName, targetOptions]);
 
   React.useEffect(() => {
-    const nextVersion = versionOptions[0]?.version ?? "";
-    if (!targetVersion || !versionOptions.some((item) => item.version === targetVersion)) {
+    const nextVersion = versionOptions[0]?.value ?? "";
+    if (!targetVersion || !versionOptions.some((item) => item.value === targetVersion)) {
       setTargetVersion(nextVersion);
     }
   }, [targetVersion, versionOptions]);
@@ -215,11 +250,12 @@ export function EvaluationLeaderboardCreateForm({
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label>目标类型</Label>
-            <Select value={targetKind} onValueChange={(value) => setTargetKind(value as "spec" | "suite")}>
+            <Select value={targetKind} onValueChange={(value) => setTargetKind(value as LeaderboardTargetKind)}>
               <SelectTrigger>
                 <SelectValue placeholder="选择目标类型" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="benchmark">Benchmark</SelectItem>
                 <SelectItem value="suite">评测套件</SelectItem>
                 <SelectItem value="spec">评测类型</SelectItem>
               </SelectContent>
@@ -235,7 +271,7 @@ export function EvaluationLeaderboardCreateForm({
               <SelectContent>
                 {targetOptions.map((item) => (
                   <SelectItem key={item.name} value={item.name}>
-                    {item.display_name}
+                    {item.displayName}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -250,8 +286,8 @@ export function EvaluationLeaderboardCreateForm({
               </SelectTrigger>
               <SelectContent>
                 {versionOptions.map((version) => (
-                  <SelectItem key={version.id} value={version.version}>
-                    {version.display_name}
+                  <SelectItem key={version.value} value={version.value}>
+                    {version.displayName}
                   </SelectItem>
                 ))}
               </SelectContent>

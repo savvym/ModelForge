@@ -25,7 +25,7 @@ class EvalSpecVersionSummary(BaseModel):
     enabled: bool
     is_recommended: bool
     sample_count: int | None = None
-    dataset_files: list["EvalSpecDatasetFileSummary"] = Field(default_factory=list)
+    dataset_files: list[EvalSpecDatasetFileSummary] = Field(default_factory=list)
 
 
 class EvalSpecSummary(BaseModel):
@@ -191,7 +191,7 @@ class EvalSuiteVersionCreate(BaseModel):
     items: list[EvalSuiteItemCreate] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_items(self) -> "EvalSuiteVersionCreate":
+    def _validate_items(self) -> EvalSuiteVersionCreate:
         if not self.items:
             raise ValueError("Suite version must include at least one item.")
         return self
@@ -225,7 +225,7 @@ class EvalSuiteVersionUpdate(BaseModel):
     items: list[EvalSuiteItemUpdate] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_items(self) -> "EvalSuiteVersionUpdate":
+    def _validate_items(self) -> EvalSuiteVersionUpdate:
         if not self.items:
             raise ValueError("Suite version must include at least one item.")
         return self
@@ -290,6 +290,12 @@ class EvaluationTargetRef(BaseModel):
     name: str
     version: str
     item_keys: list[str] = Field(default_factory=list)
+
+
+class EvaluationLeaderboardTargetRef(BaseModel):
+    kind: Literal["spec", "suite", "benchmark"]
+    name: str
+    version: str
 
 
 class EvaluationRunCreate(BaseModel):
@@ -399,6 +405,8 @@ class EvaluationRunDetail(EvaluationRunSummary):
     source_spec_version_id: UUID | None = None
     source_suite_id: UUID | None = None
     source_suite_version_id: UUID | None = None
+    source_benchmark_id: UUID | None = None
+    source_benchmark_version_id: UUID | None = None
     judge_policy_id: UUID | None = None
     execution_plan_json: dict[str, Any] = Field(default_factory=dict)
     metrics: list[EvaluationRunMetricResponse] = Field(default_factory=list)
@@ -451,7 +459,7 @@ class EvaluationLeaderboardSummary(BaseModel):
     id: UUID
     name: str
     description: str | None = None
-    target_kind: Literal["spec", "suite"]
+    target_kind: Literal["spec", "suite", "benchmark"]
     target_name: str
     target_display_name: str
     target_version: str
@@ -470,7 +478,7 @@ class EvaluationLeaderboardDetail(EvaluationLeaderboardSummary):
 class EvaluationLeaderboardCreate(BaseModel):
     name: str
     description: str | None = None
-    target: EvaluationTargetRef
+    target: EvaluationLeaderboardTargetRef
     score_metric_name: str = "score"
     run_ids: list[UUID] = Field(default_factory=list)
 
@@ -522,7 +530,7 @@ class CompiledRunPlan(BaseModel):
     overrides: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_items(self) -> "CompiledRunPlan":
+    def _validate_items(self) -> CompiledRunPlan:
         if not self.items:
             raise ValueError("Compiled plan must include at least one run item.")
         return self

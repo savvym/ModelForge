@@ -6,6 +6,12 @@ from sqlalchemy import delete, select
 
 from nta_backend.core.db import SessionLocal, dispose_engine
 from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.models.benchmark_catalog import (
+    BenchmarkDefinition as BenchmarkDefinitionRecord,
+)
+from nta_backend.models.benchmark_catalog import (
+    BenchmarkVersion as BenchmarkVersionRecord,
+)
 from nta_backend.models.evaluation_v2 import (
     EvalSpec,
     EvalSpecVersion,
@@ -18,7 +24,7 @@ from nta_backend.models.evaluation_v2 import (
 from nta_backend.schemas.evaluation_v2 import (
     EvaluationLeaderboardAddRuns,
     EvaluationLeaderboardCreate,
-    EvaluationTargetRef,
+    EvaluationLeaderboardTargetRef,
 )
 from nta_backend.services.evaluation_leaderboard_v2_service import EvaluationLeaderboardV2Service
 
@@ -43,6 +49,7 @@ async def _resolve_spec_version_id(name: str, version: str):
             )
         )
         spec_version = row.scalar_one()
+        await session.commit()
         return project_id, spec_version.id
 
 
@@ -58,7 +65,15 @@ async def _resolve_suite_version_id(name: str, version: str):
             )
         )
         suite_version = row.scalar_one()
+        await session.commit()
         return project_id, suite_version.id
+
+
+async def _resolve_project_id():
+    async with SessionLocal() as session:
+        project_id = await resolve_active_project_id(session)
+        await session.commit()
+        return project_id
 
 
 async def _create_completed_run(
@@ -68,18 +83,30 @@ async def _create_completed_run(
     model_name: str,
     score: float,
     created_at: datetime,
+    kind: str | None = None,
     source_spec_version_id=None,
     source_suite_version_id=None,
+    source_benchmark_id=None,
+    source_benchmark_version_id=None,
 ):
     async with SessionLocal() as session:
+        run_kind = kind or (
+            "benchmark"
+            if source_benchmark_version_id is not None
+            else "suite"
+            if source_suite_version_id is not None
+            else "spec"
+        )
         run = EvaluationRun(
             project_id=project_id,
             name=name,
-            kind="suite" if source_suite_version_id is not None else "spec",
+            kind=run_kind,
             status="completed",
             model_name=model_name,
             source_spec_version_id=source_spec_version_id,
             source_suite_version_id=source_suite_version_id,
+            source_benchmark_id=source_benchmark_id,
+            source_benchmark_version_id=source_benchmark_version_id,
             progress_total=1,
             progress_done=1,
             created_at=created_at,
@@ -104,6 +131,37 @@ async def _create_completed_run(
         )
         await session.commit()
         return run.id
+
+
+async def _create_benchmark_version(*, name: str):
+    async with SessionLocal() as session:
+        definition = BenchmarkDefinitionRecord(
+            name=name,
+            display_name="Custom Benchmark",
+            description="custom benchmark for leaderboard tests",
+            default_eval_method="accuracy",
+            sample_schema_json={},
+            prompt_schema_json={},
+            prompt_config_json={},
+            requires_judge_model=False,
+            supports_custom_dataset=True,
+            tags=[],
+            metric_names=["score"],
+            aggregator_names=[],
+            subset_list=[],
+            source_type="custom",
+        )
+        version = BenchmarkVersionRecord(
+            benchmark=definition,
+            version_id="v1",
+            display_name="Version 1",
+            description="",
+            sample_count=10,
+            enabled=True,
+        )
+        session.add(definition)
+        await session.commit()
+        return definition.id, version.id
 
 
 async def test_evaluation_leaderboard_v2_crud_and_ranking_for_spec() -> None:
@@ -142,11 +200,25 @@ async def test_evaluation_leaderboard_v2_crud_and_ranking_for_spec() -> None:
             source_spec_version_id=spec_version_id,
         )
         run_ids.append(mid_run_id)
+        benchmark_kind_run_id = await _create_completed_run(
+            project_id=project_id,
+            name="Builtin Benchmark Run",
+            model_name="GPT-5.4",
+            score=0.99,
+            created_at=base_time + timedelta(minutes=15),
+            kind="benchmark",
+            source_spec_version_id=spec_version_id,
+        )
+        run_ids.append(benchmark_kind_run_id)
 
         created = await service.create_leaderboard(
             EvaluationLeaderboardCreate(
                 name=f"spec-leaderboard-{uuid4().hex[:8]}",
-                target=EvaluationTargetRef(kind="spec", name="gsm8k", version="builtin-v1"),
+                target=EvaluationLeaderboardTargetRef(
+                    kind="spec",
+                    name="gsm8k",
+                    version="builtin-v1",
+                ),
                 run_ids=[low_run_id, high_run_id],
             )
         )
@@ -249,7 +321,11 @@ async def test_suite_leaderboard_lists_completed_suite_runs() -> None:
         created = await service.create_leaderboard(
             EvaluationLeaderboardCreate(
                 name=f"suite-leaderboard-{uuid4().hex[:8]}",
-                target=EvaluationTargetRef(kind="suite", name="baseline-general", version="v1"),
+                target=EvaluationLeaderboardTargetRef(
+                    kind="suite",
+                    name="baseline-general",
+                    version="v1",
+                ),
                 run_ids=[suite_a, suite_b],
             )
         )
@@ -270,4 +346,92 @@ async def test_suite_leaderboard_lists_completed_suite_runs() -> None:
                     delete(EvaluationRunMetric).where(EvaluationRunMetric.run_id.in_(run_ids))
                 )
                 await session.execute(delete(EvaluationRun).where(EvaluationRun.id.in_(run_ids)))
+            await session.commit()
+
+
+async def test_benchmark_leaderboard_lists_completed_benchmark_runs() -> None:
+    service = EvaluationLeaderboardV2Service()
+    benchmark_name = f"leaderboard_benchmark_{uuid4().hex[:8]}"
+    benchmark_id, benchmark_version_id = await _create_benchmark_version(name=benchmark_name)
+    project_id = None
+    run_ids = []
+    leaderboard_id = None
+
+    try:
+        project_id = await _resolve_project_id()
+
+        base_time = datetime.now(UTC)
+        strong_run = await _create_completed_run(
+            project_id=project_id,
+            name="Benchmark Strong Run",
+            model_name="GPT-5.4",
+            score=0.91,
+            created_at=base_time,
+            source_benchmark_id=benchmark_id,
+            source_benchmark_version_id=benchmark_version_id,
+        )
+        run_ids.append(strong_run)
+        weak_run = await _create_completed_run(
+            project_id=project_id,
+            name="Benchmark Weak Run",
+            model_name="Qwen3-32B",
+            score=0.52,
+            created_at=base_time + timedelta(minutes=2),
+            source_benchmark_id=benchmark_id,
+            source_benchmark_version_id=benchmark_version_id,
+        )
+        run_ids.append(weak_run)
+
+        candidates = await service.list_available_runs(
+            kind="benchmark",
+            name=benchmark_name,
+            version="v1",
+        )
+        assert [candidate.run_name for candidate in candidates] == [
+            "Benchmark Weak Run",
+            "Benchmark Strong Run",
+        ]
+
+        created = await service.create_leaderboard(
+            EvaluationLeaderboardCreate(
+                name=f"benchmark-leaderboard-{uuid4().hex[:8]}",
+                target=EvaluationLeaderboardTargetRef(
+                    kind="benchmark",
+                    name=benchmark_name,
+                    version="v1",
+                ),
+                run_ids=[weak_run, strong_run],
+            )
+        )
+        leaderboard_id = created.id
+        assert created.target_kind == "benchmark"
+        assert created.target_name == benchmark_name
+        assert created.target_version == "v1"
+
+        detail = await service.get_leaderboard(created.id)
+        assert [entry.run_name for entry in detail.entries] == [
+            "Benchmark Strong Run",
+            "Benchmark Weak Run",
+        ]
+    finally:
+        async with SessionLocal() as session:
+            if leaderboard_id is not None:
+                await session.execute(
+                    delete(EvaluationLeaderboard).where(EvaluationLeaderboard.id == leaderboard_id)
+                )
+            if run_ids:
+                await session.execute(
+                    delete(EvaluationRunMetric).where(EvaluationRunMetric.run_id.in_(run_ids))
+                )
+                await session.execute(delete(EvaluationRun).where(EvaluationRun.id.in_(run_ids)))
+            await session.execute(
+                delete(BenchmarkVersionRecord).where(
+                    BenchmarkVersionRecord.benchmark_id == benchmark_id
+                )
+            )
+            await session.execute(
+                delete(BenchmarkDefinitionRecord).where(
+                    BenchmarkDefinitionRecord.id == benchmark_id
+                )
+            )
             await session.commit()

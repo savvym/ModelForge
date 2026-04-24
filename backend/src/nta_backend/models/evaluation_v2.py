@@ -1,5 +1,4 @@
 from sqlalchemy import BigInteger, Boolean, Float, ForeignKey, Integer, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from nta_backend.models.base import (
@@ -296,6 +295,18 @@ class EvaluationRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, CreatedByMixin):
         ForeignKey("eval_suite_versions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    source_benchmark_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("benchmark_definitions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_benchmark_version_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("benchmark_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     judge_policy_id: Mapped[PythonUUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("judge_policies.id", ondelete="SET NULL"),
@@ -318,6 +329,11 @@ class EvaluationRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, CreatedByMixin):
         back_populates="run",
         cascade="all, delete-orphan",
         order_by="EvaluationRunItem.created_at.asc()",
+    )
+    source_benchmark = relationship("BenchmarkDefinition", foreign_keys=[source_benchmark_id])
+    source_benchmark_version = relationship(
+        "BenchmarkVersion",
+        foreign_keys=[source_benchmark_version_id],
     )
 
 
@@ -488,6 +504,18 @@ class EvaluationLeaderboard(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("eval_suite_versions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    source_benchmark_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("benchmark_definitions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_benchmark_version_id: Mapped[PythonUUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("benchmark_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     score_metric_name: Mapped[str] = mapped_column(String(120), nullable=False, default="score")
     score_metric_scope: Mapped[str] = mapped_column(String(32), nullable=False, default="overall")
 
@@ -495,6 +523,11 @@ class EvaluationLeaderboard(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     source_spec_version = relationship("EvalSpecVersion")
     source_suite = relationship("EvalSuite")
     source_suite_version = relationship("EvalSuiteVersion")
+    source_benchmark = relationship("BenchmarkDefinition", foreign_keys=[source_benchmark_id])
+    source_benchmark_version = relationship(
+        "BenchmarkVersion",
+        foreign_keys=[source_benchmark_version_id],
+    )
     runs = relationship(
         "EvaluationLeaderboardRun",
         back_populates="leaderboard",

@@ -310,7 +310,7 @@ export async function getEvaluationLeaderboard(
 
 export async function getAvailableEvaluationLeaderboardRuns(
   params: {
-    kind: "spec" | "suite";
+    kind: "spec" | "suite" | "benchmark";
     name: string;
     version: string;
     excludeLeaderboardId?: string | null;

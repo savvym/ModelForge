@@ -16,7 +16,7 @@ from nta_backend.models.benchmark_catalog import (
     BenchmarkVersion as BenchmarkVersionRecord,
 )
 from nta_backend.models.eval_template import EvalTemplate
-from nta_backend.models.evaluation_v2 import EvaluationRun
+from nta_backend.models.evaluation_v2 import EvaluationLeaderboard, EvaluationRun
 from nta_backend.schemas.benchmark_catalog import (
     BenchmarkDefinitionCreate,
     BenchmarkDefinitionUpdate,
@@ -407,6 +407,7 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
     version_id: str | None = None
     managed_object_key: str | None = None
     run_id = None
+    leaderboard_id = None
 
     try:
         async with SessionLocal() as session:
@@ -520,6 +521,38 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
                 await session.execute(delete(EvaluationRun).where(EvaluationRun.id == run_id))
                 await session.commit()
 
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            definition, version_record = await resolve_benchmark_version_record(
+                session,
+                benchmark_name=created.name,
+                version_id=version.id,
+            )
+            assert definition is not None
+            assert version_record is not None
+            leaderboard = EvaluationLeaderboard(
+                project_id=project_id,
+                name=f"benchmark-delete-guard-{uuid4().hex[:8]}",
+                target_kind="benchmark",
+                source_benchmark_id=definition.id,
+                source_benchmark_version_id=version_record.id,
+                score_metric_name="score",
+                score_metric_scope="overall",
+            )
+            session.add(leaderboard)
+            await session.commit()
+            await session.refresh(leaderboard)
+            leaderboard_id = leaderboard.id
+
+        with pytest.raises(ValueError, match="已被排行榜引用"):
+            await service.delete_benchmark_version(created.name, version.id)
+
+        async with SessionLocal() as session:
+            await session.execute(
+                delete(EvaluationLeaderboard).where(EvaluationLeaderboard.id == leaderboard_id)
+            )
+            await session.commit()
+
         await service.delete_benchmark_version(created.name, version.id)
 
         async with SessionLocal() as session:
@@ -534,6 +567,10 @@ async def test_benchmark_version_delete_respects_references_and_cleans_managed_f
             get_object_bytes(bucket, managed_object_key)
     finally:
         async with SessionLocal() as session:
+            if leaderboard_id is not None:
+                await session.execute(
+                    delete(EvaluationLeaderboard).where(EvaluationLeaderboard.id == leaderboard_id)
+                )
             if run_id is not None:
                 await session.execute(delete(EvaluationRun).where(EvaluationRun.id == run_id))
             if version_id is not None:

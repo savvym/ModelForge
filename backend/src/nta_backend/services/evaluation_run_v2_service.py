@@ -19,7 +19,6 @@ from nta_backend.core.db import SessionLocal
 from nta_backend.core.object_store import (
     create_object_prefix,
     delete_object_prefix,
-    get_object_bytes,
     put_object_bytes,
 )
 from nta_backend.core.project_context import resolve_active_project_id
@@ -38,13 +37,6 @@ from nta_backend.models.evaluation_v2 import (
     EvaluationRunItem,
     EvaluationRunMetric,
     EvaluationRunSample,
-    EvalSpec,
-    EvalSpecVersion,
-    EvalSuite,
-    EvalSuiteVersion,
-    JudgePolicy,
-    TemplateSpec,
-    TemplateSpecVersion,
 )
 from nta_backend.schemas.evaluation_v2 import (
     BenchmarkEvaluationRunCreate,
@@ -368,10 +360,12 @@ async def _reconcile_non_terminal_run(run_id: UUID) -> None:
                 run_id,
                 item_status="cancelled" if cancel_requested else "failed",
                 run_error_message=(
-                    "Temporal workflow completed before all evaluation items reached a terminal state."
+                    "Temporal workflow completed before all evaluation items reached "
+                    "a terminal state."
                 ),
                 item_error_message=(
-                    "Temporal workflow completed before this evaluation item reached a terminal state."
+                    "Temporal workflow completed before this evaluation item reached "
+                    "a terminal state."
                 ),
             )
             return
@@ -820,6 +814,8 @@ async def _persist_compiled_run(
         source_spec_version_id=compiled.source_spec_version_id,
         source_suite_id=compiled.source_suite_id,
         source_suite_version_id=compiled.source_suite_version_id,
+        source_benchmark_id=compiled.source_benchmark_id,
+        source_benchmark_version_id=compiled.source_benchmark_version_id,
         judge_policy_id=compiled.judge_policy_id,
         execution_plan_json=compiled.plan.model_dump(mode="json"),
         progress_total=len(compiled.plan.items),
@@ -1005,6 +1001,8 @@ class EvaluationRunV2Service:
                 source_spec_version_id=run.source_spec_version_id,
                 source_suite_id=run.source_suite_id,
                 source_suite_version_id=run.source_suite_version_id,
+                source_benchmark_id=run.source_benchmark_id,
+                source_benchmark_version_id=run.source_benchmark_version_id,
                 judge_policy_id=run.judge_policy_id,
                 execution_plan_json=dict(run.execution_plan_json or {}),
                 metrics=[_serialize_metric(metric) for metric in metric_rows],

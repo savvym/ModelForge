@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from nta_backend.core.config import get_settings
-from nta_backend.core.db import Base
-from nta_backend.models import *  # noqa: F403
+SRC_PATH = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from nta_backend.core.config import get_settings  # noqa: E402
+from nta_backend.core.db import Base  # noqa: E402
+from nta_backend.models import *  # noqa: E402,F403
 
 config = context.config
 settings = get_settings()

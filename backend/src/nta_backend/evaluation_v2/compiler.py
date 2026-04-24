@@ -12,6 +12,9 @@ from sqlalchemy.orm import selectinload
 from nta_backend.models.benchmark_catalog import (
     BenchmarkDefinition as BenchmarkDefinitionRecord,
 )
+from nta_backend.models.benchmark_catalog import (
+    BenchmarkVersion as BenchmarkVersionRecord,
+)
 from nta_backend.models.eval_template import EvalTemplate
 from nta_backend.models.evaluation_v2 import (
     EvalSpec,
@@ -41,6 +44,8 @@ class CompiledRunContext:
     source_spec_version_id: UUID | None = None
     source_suite_id: UUID | None = None
     source_suite_version_id: UUID | None = None
+    source_benchmark_id: UUID | None = None
+    source_benchmark_version_id: UUID | None = None
     judge_policy_id: UUID | None = None
 
 
@@ -116,7 +121,9 @@ async def compile_run_request(
         )
         spec_version = spec_version_row.scalar_one_or_none()
         if spec_version is None or not spec_version.enabled:
-            raise ValueError(f"Suite item {suite_item.item_key} references an unavailable spec version.")
+            raise ValueError(
+                f"Suite item {suite_item.item_key} references an unavailable spec version."
+            )
         spec = await session.get(EvalSpec, spec_version.spec_id)
         if spec is None:
             raise ValueError(f"Suite item {suite_item.item_key} references a missing spec.")
@@ -242,7 +249,11 @@ async def compile_benchmark_run_request(
                     "file_key": "primary",
                     "display_name": version.display_name,
                     "role": "dataset",
-                    "file_name": _guess_dataset_file_name(source_uri, definition.name, version.version_id),
+                    "file_name": _guess_dataset_file_name(
+                        source_uri,
+                        definition.name,
+                        version.version_id,
+                    ),
                     "format": _guess_dataset_format(source_uri),
                     "source_uri": source_uri,
                     "status": "external",
@@ -283,7 +294,11 @@ async def compile_benchmark_run_request(
             }
         },
     )
-    return CompiledRunContext(plan=plan)
+    return CompiledRunContext(
+        plan=plan,
+        source_benchmark_id=definition.id,
+        source_benchmark_version_id=version.id,
+    )
 
 
 async def _build_item_plan(
@@ -553,7 +568,7 @@ async def _load_custom_benchmark_version(
     *,
     benchmark_name: str,
     version_id: str,
-) -> tuple[BenchmarkDefinitionRecord, Any]:
+) -> tuple[BenchmarkDefinitionRecord, BenchmarkVersionRecord]:
     row = await session.execute(
         select(BenchmarkDefinitionRecord)
         .options(selectinload(BenchmarkDefinitionRecord.versions))
@@ -561,7 +576,9 @@ async def _load_custom_benchmark_version(
     )
     definition = row.scalar_one_or_none()
     if definition is None or definition.source_type != "custom":
-        raise ValueError("指定 Benchmark 不存在，或当前仅支持通过已创建的 Benchmark 发起自定义评测。")
+        raise ValueError(
+            "指定 Benchmark 不存在，或当前仅支持通过已创建的 Benchmark 发起自定义评测。"
+        )
     version = next(
         (item for item in definition.versions if item.version_id == version_id.strip()),
         None,
@@ -766,7 +783,8 @@ def _ensure_required_dataset_files_ready(spec_version: EvalSpecVersion) -> None:
         return
     joined = "、".join(blocking_files)
     raise ValueError(
-        f"评测版本 {spec_version.display_name} 缺少已就绪的数据集文件：{joined}。请先在评测管理中拉取数据集。"
+        f"评测版本 {spec_version.display_name} 缺少已就绪的数据集文件：{joined}。"
+        "请先在评测管理中拉取数据集。"
     )
 
 

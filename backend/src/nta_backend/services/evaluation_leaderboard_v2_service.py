@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from nta_backend.core.db import SessionLocal
 from nta_backend.core.project_context import resolve_active_project_id
+from nta_backend.models.benchmark_catalog import BenchmarkDefinition, BenchmarkVersion
 from nta_backend.models.evaluation_v2 import (
     EvalSpec,
     EvalSpecVersion,
@@ -43,9 +44,17 @@ class _ResolvedTarget:
     spec_version: EvalSpecVersion | None = None
     suite: EvalSuite | None = None
     suite_version: EvalSuiteVersion | None = None
+    benchmark: BenchmarkDefinition | None = None
+    benchmark_version: BenchmarkVersion | None = None
 
     @property
     def display_name(self) -> str:
+        if self.kind == "benchmark":
+            if self.benchmark is not None:
+                return self.benchmark.display_name
+            if self.spec is not None:
+                return self.spec.display_name
+            raise ValueError("Leaderboard benchmark target is missing.")
         if self.kind == "suite":
             if self.suite is None:
                 raise ValueError("Leaderboard target suite is missing.")
@@ -56,6 +65,12 @@ class _ResolvedTarget:
 
     @property
     def version(self) -> str:
+        if self.kind == "benchmark":
+            if self.benchmark_version is not None:
+                return self.benchmark_version.version_id
+            if self.spec_version is not None:
+                return self.spec_version.version
+            raise ValueError("Leaderboard benchmark version is missing.")
         if self.kind == "suite":
             if self.suite_version is None:
                 raise ValueError("Leaderboard target suite version is missing.")
@@ -66,6 +81,12 @@ class _ResolvedTarget:
 
     @property
     def version_display_name(self) -> str:
+        if self.kind == "benchmark":
+            if self.benchmark_version is not None:
+                return self.benchmark_version.display_name
+            if self.spec_version is not None:
+                return self.spec_version.display_name
+            raise ValueError("Leaderboard benchmark version is missing.")
         if self.kind == "suite":
             if self.suite_version is None:
                 raise ValueError("Leaderboard target suite version is missing.")
@@ -76,6 +97,12 @@ class _ResolvedTarget:
 
     @property
     def name(self) -> str:
+        if self.kind == "benchmark":
+            if self.benchmark is not None:
+                return self.benchmark.name
+            if self.spec is not None:
+                return self.spec.name
+            raise ValueError("Leaderboard benchmark target is missing.")
         if self.kind == "suite":
             if self.suite is None:
                 raise ValueError("Leaderboard target suite is missing.")
@@ -113,23 +140,66 @@ async def _resolve_target(
             spec_version=spec_version,
         )
 
+    if kind == "suite":
+        rows = await session.execute(
+            select(EvalSuiteVersion)
+            .join(EvalSuite, EvalSuite.id == EvalSuiteVersion.suite_id)
+            .options(selectinload(EvalSuiteVersion.suite))
+            .where(
+                EvalSuite.name == name,
+                EvalSuiteVersion.version == version,
+                or_(EvalSuite.project_id == project_id, EvalSuite.project_id.is_(None)),
+            )
+        )
+        suite_version = rows.scalar_one_or_none()
+        if suite_version is None:
+            raise KeyError(name)
+        return _ResolvedTarget(
+            kind="suite",
+            suite=suite_version.suite,
+            suite_version=suite_version,
+        )
+
+    if kind != "benchmark":
+        raise KeyError(name)
+
     rows = await session.execute(
-        select(EvalSuiteVersion)
-        .join(EvalSuite, EvalSuite.id == EvalSuiteVersion.suite_id)
-        .options(selectinload(EvalSuiteVersion.suite))
+        select(BenchmarkVersion)
+        .join(BenchmarkDefinition, BenchmarkDefinition.id == BenchmarkVersion.benchmark_id)
+        .options(selectinload(BenchmarkVersion.benchmark))
         .where(
-            EvalSuite.name == name,
-            EvalSuiteVersion.version == version,
-            or_(EvalSuite.project_id == project_id, EvalSuite.project_id.is_(None)),
+            BenchmarkDefinition.name == name,
+            BenchmarkVersion.version_id == version,
         )
     )
-    suite_version = rows.scalar_one_or_none()
-    if suite_version is None:
+    benchmark_version = rows.scalar_one_or_none()
+    if benchmark_version is not None:
+        return _ResolvedTarget(
+            kind="benchmark",
+            benchmark=benchmark_version.benchmark,
+            benchmark_version=benchmark_version,
+        )
+
+    # Built-in benchmarks are still represented by EvalSpec/EvalSpecVersion rows.
+    rows = await session.execute(
+        select(EvalSpecVersion)
+        .join(EvalSpec, EvalSpec.id == EvalSpecVersion.spec_id)
+        .options(selectinload(EvalSpecVersion.spec))
+        .where(
+            EvalSpec.name == name,
+            EvalSpecVersion.version == version,
+            EvalSpec.project_id.is_(None),
+            EvalSpec.capability_group == "基线评测",
+            EvalSpecVersion.execution_mode == "builtin",
+        )
+    )
+    spec_version = rows.scalar_one_or_none()
+    if spec_version is None:
         raise KeyError(name)
     return _ResolvedTarget(
-        kind="suite",
-        suite=suite_version.suite,
-        suite_version=suite_version,
+        kind="benchmark",
+        spec=spec_version.spec,
+        spec_version=spec_version,
     )
 
 
@@ -179,10 +249,28 @@ async def _list_eligible_runs(
         EvaluationRun.status == "completed",
     )
     if target.kind == "suite":
-        query = query.where(EvaluationRun.source_suite_version_id == target.suite_version.id)
+        query = query.where(
+            EvaluationRun.kind == "suite",
+            EvaluationRun.source_suite_version_id == target.suite_version.id,
+        )
+    elif target.kind == "benchmark":
+        query = query.where(EvaluationRun.kind == "benchmark")
+        if target.benchmark_version is not None:
+            query = query.where(
+                EvaluationRun.source_benchmark_version_id == target.benchmark_version.id
+            )
+        else:
+            query = query.where(EvaluationRun.source_spec_version_id == target.spec_version.id)
     else:
-        query = query.where(EvaluationRun.source_spec_version_id == target.spec_version.id)
-    query = query.order_by(EvaluationRun.finished_at.desc(), EvaluationRun.created_at.desc(), EvaluationRun.id.desc())
+        query = query.where(
+            EvaluationRun.kind == "spec",
+            EvaluationRun.source_spec_version_id == target.spec_version.id,
+        )
+    query = query.order_by(
+        EvaluationRun.finished_at.desc(),
+        EvaluationRun.created_at.desc(),
+        EvaluationRun.id.desc(),
+    )
 
     rows = await session.execute(query)
     runs = list(rows.scalars().all())
@@ -227,6 +315,8 @@ async def _load_leaderboard(
             selectinload(EvaluationLeaderboard.source_spec_version),
             selectinload(EvaluationLeaderboard.source_suite),
             selectinload(EvaluationLeaderboard.source_suite_version),
+            selectinload(EvaluationLeaderboard.source_benchmark),
+            selectinload(EvaluationLeaderboard.source_benchmark_version),
             selectinload(EvaluationLeaderboard.runs).selectinload(EvaluationLeaderboardRun.run),
         )
         .where(
@@ -250,7 +340,20 @@ def _latest_run_at(record: EvaluationLeaderboard) -> datetime | None:
 
 
 def _serialize_summary(record: EvaluationLeaderboard) -> EvaluationLeaderboardSummary:
-    if record.target_kind == "suite":
+    if record.target_kind == "benchmark":
+        if record.source_benchmark is not None and record.source_benchmark_version is not None:
+            target_name = record.source_benchmark.name
+            target_display_name = record.source_benchmark.display_name
+            target_version = record.source_benchmark_version.version_id
+            target_version_display_name = record.source_benchmark_version.display_name
+        elif record.source_spec is not None and record.source_spec_version is not None:
+            target_name = record.source_spec.name
+            target_display_name = record.source_spec.display_name
+            target_version = record.source_spec_version.version
+            target_version_display_name = record.source_spec_version.display_name
+        else:
+            raise ValueError("Leaderboard benchmark target is missing.")
+    elif record.target_kind == "suite":
         if record.source_suite is None or record.source_suite_version is None:
             raise ValueError("Leaderboard suite target is missing.")
         target_name = record.source_suite.name
@@ -336,6 +439,8 @@ class EvaluationLeaderboardV2Service:
                     selectinload(EvaluationLeaderboard.source_spec_version),
                     selectinload(EvaluationLeaderboard.source_suite),
                     selectinload(EvaluationLeaderboard.source_suite_version),
+                    selectinload(EvaluationLeaderboard.source_benchmark),
+                    selectinload(EvaluationLeaderboard.source_benchmark_version),
                     selectinload(EvaluationLeaderboard.runs).selectinload(EvaluationLeaderboardRun.run),
                 )
                 .where(EvaluationLeaderboard.project_id == project_id)
@@ -346,7 +451,11 @@ class EvaluationLeaderboardV2Service:
     async def get_leaderboard(self, leaderboard_id: UUID) -> EvaluationLeaderboardDetail:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            record = await _load_leaderboard(session, project_id=project_id, leaderboard_id=leaderboard_id)
+            record = await _load_leaderboard(
+                session,
+                project_id=project_id,
+                leaderboard_id=leaderboard_id,
+            )
             if record is None:
                 raise KeyError(str(leaderboard_id))
             entries = await _build_entries(session, record=record)
@@ -427,9 +536,17 @@ class EvaluationLeaderboardV2Service:
                 description=payload.description,
                 target_kind=payload.target.kind,
                 source_spec_id=target.spec.id if target.spec is not None else None,
-                source_spec_version_id=target.spec_version.id if target.spec_version is not None else None,
+                source_spec_version_id=target.spec_version.id
+                if target.spec_version is not None
+                else None,
                 source_suite_id=target.suite.id if target.suite is not None else None,
-                source_suite_version_id=target.suite_version.id if target.suite_version is not None else None,
+                source_suite_version_id=target.suite_version.id
+                if target.suite_version is not None
+                else None,
+                source_benchmark_id=target.benchmark.id if target.benchmark is not None else None,
+                source_benchmark_version_id=target.benchmark_version.id
+                if target.benchmark_version is not None
+                else None,
                 score_metric_name=payload.score_metric_name,
                 score_metric_scope="overall",
             )
@@ -448,7 +565,11 @@ class EvaluationLeaderboardV2Service:
                 await session.rollback()
                 raise ValueError("排行榜创建失败，名称可能已存在。") from exc
 
-            reloaded = await _load_leaderboard(session, project_id=project_id, leaderboard_id=record.id)
+            reloaded = await _load_leaderboard(
+                session,
+                project_id=project_id,
+                leaderboard_id=record.id,
+            )
             if reloaded is None:
                 raise ValueError("排行榜创建失败。")
             return _serialize_summary(reloaded)
@@ -460,7 +581,11 @@ class EvaluationLeaderboardV2Service:
     ) -> EvaluationLeaderboardDetail:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            record = await _load_leaderboard(session, project_id=project_id, leaderboard_id=leaderboard_id)
+            record = await _load_leaderboard(
+                session,
+                project_id=project_id,
+                leaderboard_id=leaderboard_id,
+            )
             if record is None:
                 raise KeyError(str(leaderboard_id))
 
@@ -470,6 +595,8 @@ class EvaluationLeaderboardV2Service:
                 spec_version=record.source_spec_version,
                 suite=record.source_suite,
                 suite_version=record.source_suite_version,
+                benchmark=record.source_benchmark,
+                benchmark_version=record.source_benchmark_version,
             )
             existing_run_ids = {link.run_id for link in record.runs}
             eligible_runs = await _list_eligible_runs(
@@ -498,7 +625,11 @@ class EvaluationLeaderboardV2Service:
     async def remove_run(self, leaderboard_id: UUID, run_id: UUID) -> None:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            record = await _load_leaderboard(session, project_id=project_id, leaderboard_id=leaderboard_id)
+            record = await _load_leaderboard(
+                session,
+                project_id=project_id,
+                leaderboard_id=leaderboard_id,
+            )
             if record is None:
                 raise KeyError(str(leaderboard_id))
             target = next((link for link in record.runs if link.run_id == run_id), None)
@@ -510,7 +641,11 @@ class EvaluationLeaderboardV2Service:
     async def delete_leaderboard(self, leaderboard_id: UUID) -> None:
         async with SessionLocal() as session:
             project_id = await resolve_active_project_id(session)
-            record = await _load_leaderboard(session, project_id=project_id, leaderboard_id=leaderboard_id)
+            record = await _load_leaderboard(
+                session,
+                project_id=project_id,
+                leaderboard_id=leaderboard_id,
+            )
             if record is None:
                 raise KeyError(str(leaderboard_id))
             await session.delete(record)

@@ -868,6 +868,8 @@ export interface EvaluationRunDetailV2 extends EvaluationRunSummaryV2 {
   source_spec_version_id?: string | null;
   source_suite_id?: string | null;
   source_suite_version_id?: string | null;
+  source_benchmark_id?: string | null;
+  source_benchmark_version_id?: string | null;
   judge_policy_id?: string | null;
   execution_plan_json: CompiledRunPlanV2;
   metrics: EvaluationRunMetricV2[];
@@ -916,7 +918,7 @@ export interface EvaluationLeaderboardSummaryV2 {
   id: string;
   name: string;
   description?: string | null;
-  target_kind: "spec" | "suite";
+  target_kind: "spec" | "suite" | "benchmark";
   target_name: string;
   target_display_name: string;
   target_version: string;
@@ -935,9 +937,15 @@ export interface EvaluationLeaderboardDetailV2 extends EvaluationLeaderboardSumm
 export interface EvaluationLeaderboardCreateInputV2 {
   name: string;
   description?: string | null;
-  target: EvaluationTargetRefV2;
+  target: EvaluationLeaderboardTargetRefV2;
   score_metric_name?: string;
   run_ids?: string[];
+}
+
+export interface EvaluationLeaderboardTargetRefV2 {
+  kind: "spec" | "suite" | "benchmark";
+  name: string;
+  version: string;
 }
 
 export interface EvaluationLeaderboardAddRunsInputV2 {
