@@ -90,6 +90,19 @@ def _guess_content_type(path: Path) -> str | None:
     return None
 
 
+def _coerce_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _progress_percent(done: int | None, total: int | None) -> tuple[int | None, int | None]:
     if total is None or total <= 0:
         return done, total
@@ -459,6 +472,24 @@ async def _persist_item_result(
             )
         )
     for sample in report_payload.get("samples") or []:
+        sample_metadata = dict(sample.get("metadata") or {})
+        category = sample.get("category")
+        if category is not None and "category" not in sample_metadata:
+            sample_metadata["category"] = str(category)
+        label_group = sample.get("label_group")
+        if label_group is not None and "label_group" not in sample_metadata:
+            sample_metadata["label_group"] = str(label_group)
+        original_raw_score = sample.get("raw_score")
+        raw_score = _coerce_optional_float(original_raw_score)
+        if (
+            original_raw_score is not None
+            and raw_score is None
+            and "category" not in sample_metadata
+            and "raw_score_label" not in sample_metadata
+        ):
+            sample_metadata["raw_score_label"] = str(original_raw_score)
+        if raw_score is None:
+            raw_score = _coerce_optional_float(sample.get("score"))
         session.add(
             EvaluationRunSample(
                 run_item_id=item.id,
@@ -467,14 +498,14 @@ async def _persist_item_result(
                 input_preview=sample.get("input_preview"),
                 prediction_text=sample.get("prediction_text"),
                 reference_answers_json=list(sample.get("reference_answers") or []),
-                score=sample.get("score"),
-                raw_score=sample.get("raw_score"),
+                score=_coerce_optional_float(sample.get("score")),
+                raw_score=raw_score,
                 passed=bool(sample.get("passed")),
                 reason=sample.get("reason"),
                 error=sample.get("error"),
                 latency_ms=sample.get("latency_ms"),
                 total_tokens=sample.get("total_tokens"),
-                metadata_json=dict(sample.get("metadata") or {}),
+                metadata_json=sample_metadata,
             )
         )
     for artifact in artifact_rows:

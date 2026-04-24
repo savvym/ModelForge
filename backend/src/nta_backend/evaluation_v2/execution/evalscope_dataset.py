@@ -31,6 +31,19 @@ _UNSUPPORTED_JUDGE_STRATEGIES = {"pairwise"}
 _EXECUTOR = EvalScopeExecutor()
 
 
+def _coerce_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 class EvalScopeDatasetExecutor(EvaluationEngineAdapter):
     def execute(
         self,
@@ -276,11 +289,31 @@ def _normalize_legacy_report(
             sample_id = str(sample.get("sample_id") or "")
             sample_score = sample.get("score")
             numeric_score = float(sample_score) if isinstance(sample_score, (int, float)) else None
+            original_raw_score = sample.get("raw_score", sample_score)
+            raw_score = _coerce_optional_float(original_raw_score)
+            sample_metadata = {
+                "metric": str(sample.get("metric") or normalized_metric_name),
+                "judge_model_name": sample.get("judge_model_name"),
+            }
+            category = sample.get("category")
+            if category is not None:
+                sample_metadata["category"] = str(category)
+            label_group = sample.get("label_group")
+            if label_group is not None:
+                sample_metadata["label_group"] = str(label_group)
+            if (
+                original_raw_score is not None
+                and raw_score is None
+                and "category" not in sample_metadata
+            ):
+                sample_metadata["raw_score_label"] = str(original_raw_score)
+            if raw_score is None:
+                raw_score = numeric_score
             sample_payload = {
                 "sample_id": sample_id,
-                "metric": str(sample.get("metric") or normalized_metric_name),
+                "metric": sample_metadata["metric"],
                 "score": numeric_score,
-                "raw_score": sample.get("raw_score", sample_score),
+                "raw_score": raw_score,
                 "passed": bool(sample.get("passed")),
                 "reason": sample.get("reason"),
                 "error": sample.get("error"),
@@ -290,6 +323,8 @@ def _normalize_legacy_report(
                 "latency_ms": sample.get("latency_ms"),
                 "total_tokens": sample.get("total_tokens"),
                 "judge_model_name": sample.get("judge_model_name"),
+                "category": sample_metadata.get("category"),
+                "label_group": sample_metadata.get("label_group"),
             }
             sample_payloads.append(sample_payload)
             samples.append(
@@ -306,10 +341,7 @@ def _normalize_legacy_report(
                     error=sample_payload["error"],
                     latency_ms=sample_payload["latency_ms"],
                     total_tokens=sample_payload["total_tokens"],
-                    metadata={
-                        "metric": sample_payload["metric"],
-                        "judge_model_name": sample_payload["judge_model_name"],
-                    },
+                    metadata=sample_metadata,
                 )
             )
         subset_payloads.append(

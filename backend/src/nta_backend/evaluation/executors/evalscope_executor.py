@@ -795,7 +795,7 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
                     return {
                         **common,
                         "score": 1.0 if passed else 0.0,
-                        "raw_score": category,
+                        "raw_score": 1.0 if passed else 0.0,
                         "passed": passed,
                         "reason": reasoning,
                         "error": None,
@@ -811,7 +811,7 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
             return {
                 **common,
                 "score": normalized,
-                "raw_score": category,
+                "raw_score": normalized,
                 "passed": normalized > 0,
                 "reason": reasoning,
                 "error": None,
@@ -828,7 +828,7 @@ class NTAEvalScopeBenchmarkAdapter(DefaultDataAdapter):
             return {
                 **common,
                 "score": 0.0,
-                "raw_score": raw_score,
+                "raw_score": 0.0,
                 "passed": False,
                 "reason": f"Invalid numeric score: {raw_score}",
                 "error": None,
@@ -1313,6 +1313,8 @@ def _build_subset_report(review_file: Path) -> dict[str, Any]:
                 "latency_ms": metadata.get("latency_ms"),
                 "total_tokens": metadata.get("total_tokens"),
                 "judge_model_name": metadata.get("judge_model_name"),
+                "category": metadata.get("category"),
+                "label_group": metadata.get("label_group"),
             }
         )
 

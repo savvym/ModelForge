@@ -122,6 +122,8 @@ def test_evalscope_executor_runs_template_judge_pipeline(
     assert sample_score["sample_id"] == "q-1"
     assert sample_score["metric"] == "judge_template"
     assert sample_score["passed"] is True
+    assert sample_score["raw_score"] == 1.0
+    assert sample_score["category"] == "Pass"
     assert sample_score["prediction_text"] == "The answer is 4."
 
 
