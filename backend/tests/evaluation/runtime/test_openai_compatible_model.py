@@ -99,6 +99,54 @@ def _load_target_module():
 TARGET_MODULE, CHAT_MESSAGE = _load_target_module()
 
 
+def test_call_openai_compatible_chat_uses_registry_base_url_for_chat_completions(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"choices": [{"message": {"content": "ok"}}]}
+
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return _FakeResponse()
+
+    monkeypatch.setattr(TARGET_MODULE.httpx, "post", fake_post)
+
+    output = TARGET_MODULE.call_openai_compatible_chat(
+        sample_id="sample-1",
+        api_url="http://api.taiji.woa.com/openapi/v2",
+        api_key="test-token",
+        model_name="hy3-preview",
+        messages=[CHAT_MESSAGE(role="user", content="Say ok.")],
+        api_format="chat-completions",
+        timeout_s=30.0,
+        temperature=0.2,
+        max_tokens=64,
+    )
+
+    assert captured["url"] == "http://api.taiji.woa.com/openapi/v2/chat/completions"
+    assert captured["headers"] == {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-token",
+    }
+    assert captured["json"] == {
+        "model": "hy3-preview",
+        "messages": [{"role": "user", "content": "Say ok."}],
+        "temperature": 0.2,
+        "max_tokens": 64,
+    }
+    assert captured["timeout"] == 30.0
+    assert output.text == "ok"
+
+
 def test_call_openai_compatible_chat_supports_google_format(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

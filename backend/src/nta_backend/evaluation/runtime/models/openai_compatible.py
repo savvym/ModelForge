@@ -127,18 +127,14 @@ def _normalize_chat_completions_url(api_url: str) -> str:
     normalized = api_url.strip().rstrip("/")
     if normalized.endswith("/chat/completions"):
         return normalized
-    if normalized.endswith("/v1"):
-        return f"{normalized}/chat/completions"
-    return f"{normalized}/v1/chat/completions"
+    return f"{normalized}/chat/completions"
 
 
 def _normalize_responses_url(api_url: str) -> str:
     normalized = api_url.strip().rstrip("/")
     if normalized.endswith("/responses"):
         return normalized
-    if normalized.endswith("/v1"):
-        return f"{normalized}/responses"
-    return f"{normalized}/v1/responses"
+    return f"{normalized}/responses"
 
 
 def _normalize_google_generate_content_url(api_url: str, model_name: str) -> str:

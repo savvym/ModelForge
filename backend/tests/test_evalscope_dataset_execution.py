@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from nta_backend.evaluation_v2.execution.evalscope_builtin import _normalize_request_url
 from nta_backend.evaluation_v2.execution.evalscope_dataset import _normalize_legacy_report
 from nta_backend.schemas.evaluation_v2 import CompiledRunItemPlan, ModelBindingSnapshot
 
@@ -18,6 +19,17 @@ def _item_plan() -> CompiledRunItemPlan:
             api_url="https://example.com/v1",
             api_format="chat-completions",
         ),
+    )
+
+
+def test_evalscope_builtin_uses_registry_base_url_for_chat_completions() -> None:
+    assert (
+        _normalize_request_url(
+            "http://api.taiji.woa.com/openapi/v2",
+            "chat-completions",
+            model_name="hy3-preview",
+        )
+        == "http://api.taiji.woa.com/openapi/v2/chat/completions"
     )
 
 

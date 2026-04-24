@@ -12,7 +12,10 @@ from nta_backend.evaluation.executors import (
     ExecutorModelConfig,
     ExecutorTemplateConfig,
 )
-from nta_backend.evaluation.executors.evalscope_executor import NTAOpenAICompatibleAPI
+from nta_backend.evaluation.executors.evalscope_executor import (
+    NTAOpenAICompatibleAPI,
+    _normalize_request_url,
+)
 
 
 def _model_config(name: str) -> ExecutorModelConfig:
@@ -22,6 +25,17 @@ def _model_config(name: str) -> ExecutorModelConfig:
         api_url="https://example.com",
         api_key=None,
         api_format="chat-completions",
+    )
+
+
+def test_evalscope_executor_uses_registry_base_url_for_chat_completions() -> None:
+    assert (
+        _normalize_request_url(
+            "http://api.taiji.woa.com/openapi/v2",
+            "chat-completions",
+            model_name="hy3-preview",
+        )
+        == "http://api.taiji.woa.com/openapi/v2/chat/completions"
     )
 
 
