@@ -59,6 +59,8 @@ type JsonlPreviewResult = {
   totalLines: number;
 };
 
+const JSONL_PREVIEW_PAGE_SIZE = 20;
+
 const PREFERRED_JSONL_COLUMNS = [
   "id",
   "instruction",
@@ -476,7 +478,16 @@ function BenchmarkVersionPreviewTab({
   version: BenchmarkVersionSummary;
 }) {
   const previewContent = preview?.content ?? "";
+  const [previewPage, setPreviewPage] = React.useState(1);
   const jsonlPreview = React.useMemo(() => buildJsonlPreview(previewContent), [previewContent]);
+  const totalPreviewRows = jsonlPreview.rows.length;
+  const previewPageCount = Math.max(1, Math.ceil(totalPreviewRows / JSONL_PREVIEW_PAGE_SIZE));
+  const boundedPreviewPage = Math.min(previewPage, previewPageCount);
+  const previewPageStart = (boundedPreviewPage - 1) * JSONL_PREVIEW_PAGE_SIZE;
+  const pagedPreviewRows = jsonlPreview.rows.slice(
+    previewPageStart,
+    previewPageStart + JSONL_PREVIEW_PAGE_SIZE
+  );
   const previewLineLabel = React.useMemo(() => {
     if (preview?.truncated) {
       const totalCount =
@@ -489,6 +500,14 @@ function BenchmarkVersionPreviewTab({
 
     return `${jsonlPreview.totalLines} 行预览`;
   }, [jsonlPreview.totalLines, preview?.truncated, version.sample_count]);
+
+  React.useEffect(() => {
+    setPreviewPage(1);
+  }, [previewContent, version.id]);
+
+  React.useEffect(() => {
+    setPreviewPage((current) => Math.min(current, previewPageCount));
+  }, [previewPageCount]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -538,7 +557,18 @@ function BenchmarkVersionPreviewTab({
             message={`当前对象是 ${preview.preview_kind} 类型，暂不支持结构化预览，请直接下载查看。`}
           />
         ) : previewMode === "table" ? (
-          <JsonlTableView columns={jsonlPreview.columns} rows={jsonlPreview.rows} />
+          <JsonlTableView
+            columns={jsonlPreview.columns}
+            loading={loading}
+            page={boundedPreviewPage}
+            pageCount={previewPageCount}
+            pageSize={JSONL_PREVIEW_PAGE_SIZE}
+            rows={pagedPreviewRows}
+            totalRows={totalPreviewRows}
+            truncated={preview.truncated}
+            versionSampleCount={version.sample_count}
+            onPageChange={setPreviewPage}
+          />
         ) : (
           <JsonlRawView
             content={previewContent}
@@ -553,52 +583,106 @@ function BenchmarkVersionPreviewTab({
 
 function JsonlTableView({
   columns,
-  rows
+  loading,
+  onPageChange,
+  page,
+  pageCount,
+  pageSize,
+  rows,
+  totalRows,
+  truncated,
+  versionSampleCount
 }: {
   columns: string[];
+  loading: boolean;
+  onPageChange: (page: number) => void;
+  page: number;
+  pageCount: number;
+  pageSize: number;
   rows: JsonlPreviewRow[];
+  totalRows: number;
+  truncated: boolean;
+  versionSampleCount: number;
 }) {
-  return rows.length > 0 ? (
-    <ConsoleListTableSurface className="min-h-0 flex-1">
-      <div className="console-scrollbar-subtle h-full overflow-auto">
-        <Table className="min-w-[980px] table-fixed">
-          <TableHeader className="bg-transparent">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-card/80">
-                行
-              </TableHead>
-              {columns.map((column) => (
-                <TableHead
-                  className="sticky top-0 z-10 min-w-[180px] bg-card/80"
-                  key={column}
-                >
-                  {column}
+  const start = totalRows ? (page - 1) * pageSize + 1 : 0;
+  const end = Math.min(page * pageSize, totalRows);
+  const totalLabel =
+    truncated && versionSampleCount > totalRows
+      ? `已预览 ${formatNumber(totalRows)} 条 · 共 ${formatNumber(versionSampleCount)} 条`
+      : `共 ${formatNumber(totalRows)} 条`;
+
+  return totalRows > 0 ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ConsoleListTableSurface className="min-h-0 flex-1">
+        <div className="console-scrollbar-subtle h-full overflow-auto">
+          <Table className="min-w-[980px] table-fixed">
+            <TableHeader className="bg-transparent">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-card/80">
+                  行
                 </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow className="bg-transparent" key={row.lineNumber}>
-                <TableCell className="sticky left-0 z-10 w-[96px] min-w-[96px] bg-card/80 align-top font-medium text-muted-foreground">
-                  {row.lineNumber}
-                </TableCell>
                 {columns.map((column) => (
-                  <TableCell
-                    className="max-w-[320px] align-top text-[13px] leading-6 text-foreground"
-                    key={`${row.lineNumber}-${column}`}
+                  <TableHead
+                    className="sticky top-0 z-10 min-w-[180px] bg-card/80"
+                    key={column}
                   >
-                    <div className="line-clamp-3 break-words">
-                      {formatJsonlValuePreview(row.record[column])}
-                    </div>
-                  </TableCell>
+                    {column}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow className="bg-transparent" key={row.lineNumber}>
+                  <TableCell className="sticky left-0 z-10 w-[96px] min-w-[96px] bg-card/80 align-top font-medium text-muted-foreground">
+                    {row.lineNumber}
+                  </TableCell>
+                  {columns.map((column) => (
+                    <TableCell
+                      className="max-w-[320px] align-top text-[13px] leading-6 text-foreground"
+                      key={`${row.lineNumber}-${column}`}
+                    >
+                      <div className="line-clamp-3 break-words">
+                        {formatJsonlValuePreview(row.record[column])}
+                      </div>
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </ConsoleListTableSurface>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card/80 px-4 py-3">
+        <div className="text-xs text-muted-foreground">
+          {start} - {end} / {totalLabel}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            disabled={loading || page <= 1}
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            上一页
+          </Button>
+          <div className="min-w-[64px] text-center text-xs text-muted-foreground">
+            {page} / {pageCount}
+          </div>
+          <Button
+            disabled={loading || page >= pageCount}
+            onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            下一页
+          </Button>
+        </div>
       </div>
-    </ConsoleListTableSurface>
+    </div>
   ) : (
     <EmptyPreviewPanel
       description="当前预览内容还不足以生成结构化表格。"
