@@ -23,6 +23,7 @@ class SystemTrainingCosSettings(BaseModel):
     bucket_alias: str | None = None
     target_prefix: str | None = None
     addressing_style: str = "virtual"
+    hosts: str | None = None
     has_secret_id: bool = False
     has_secret_key: bool = False
     has_session_token: bool = False
@@ -40,6 +41,7 @@ class SystemTrainingCosSettingsUpdate(BaseModel):
     bucket_alias: str | None = Field(default=None, max_length=120)
     target_prefix: str | None = Field(default=None, max_length=500)
     addressing_style: str | None = Field(default="virtual", max_length=32)
+    hosts: str | None = Field(default=None, max_length=8000)
     secret_id: str | None = Field(default=None, max_length=1000)
     secret_key: str | None = Field(default=None, max_length=4000)
     session_token: str | None = Field(default=None, max_length=4000)

@@ -47,6 +47,7 @@ export interface SystemTrainingCosSettings {
   bucket_alias?: string | null;
   target_prefix?: string | null;
   addressing_style: string;
+  hosts?: string | null;
   has_secret_id: boolean;
   has_secret_key: boolean;
   has_session_token: boolean;
@@ -64,6 +65,7 @@ export interface SystemTrainingCosSettingsUpdateInput {
   bucket_alias?: string | null;
   target_prefix?: string | null;
   addressing_style?: string | null;
+  hosts?: string | null;
   secret_id?: string | null;
   secret_key?: string | null;
   session_token?: string | null;

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from nta_backend.core import training_cos
 
 
@@ -26,6 +28,49 @@ def test_build_training_cos_uri() -> None:
         )
         == "cos://nta-1300272946/training/datasets/demo.jsonl"
     )
+
+
+def test_parse_training_cos_hosts_uses_hosts_file_format() -> None:
+    assert training_cos.parse_training_cos_hosts(
+        {
+            "hosts": """
+            # only training COS requests use this override
+            21.0.81.61 nta-1300272946.cos.ap-guangzhou.myqcloud.com
+            21.0.81.62 backup.cos.ap-guangzhou.myqcloud.com alias.cos.ap-guangzhou.myqcloud.com
+            """
+        }
+    ) == {
+        "nta-1300272946.cos.ap-guangzhou.myqcloud.com": "21.0.81.61",
+        "backup.cos.ap-guangzhou.myqcloud.com": "21.0.81.62",
+        "alias.cos.ap-guangzhou.myqcloud.com": "21.0.81.62",
+    }
+
+
+def test_training_cos_host_override_is_exact_match_only() -> None:
+    request = SimpleNamespace(
+        url="http://nta-1300272946.cos.ap-guangzhou.myqcloud.com/demo.jsonl",
+        headers={},
+    )
+
+    training_cos.apply_training_cos_host_overrides(
+        request,
+        {"nta-1300272946.cos.ap-guangzhou.myqcloud.com": "21.0.81.61"},
+    )
+
+    assert request.url == "http://21.0.81.61/demo.jsonl"
+    assert request.headers["Host"] == "nta-1300272946.cos.ap-guangzhou.myqcloud.com"
+
+    unmatched_request = SimpleNamespace(
+        url="http://other.cos.ap-guangzhou.myqcloud.com/demo.jsonl",
+        headers={},
+    )
+    training_cos.apply_training_cos_host_overrides(
+        unmatched_request,
+        {"cos.ap-guangzhou.myqcloud.com": "21.0.81.61"},
+    )
+
+    assert unmatched_request.url == "http://other.cos.ap-guangzhou.myqcloud.com/demo.jsonl"
+    assert unmatched_request.headers == {}
 
 
 def test_put_training_cos_object_builds_tencent_cos_client(monkeypatch) -> None:

@@ -67,6 +67,7 @@ def _stored_training_cos_config(setting: SystemSetting | None) -> dict[str, Any]
         "bucket_alias": _read_string(value, "bucket_alias"),
         "target_prefix": _read_string(value, "target_prefix") or DEFAULT_TRAINING_COS_TARGET_PREFIX,
         "addressing_style": _read_string(value, "addressing_style") or "virtual",
+        "hosts": _read_string(value, "hosts"),
         "secret_id": _read_string(value, "secret_id"),
         "secret_key": _read_string(value, "secret_key"),
         "session_token": _read_string(value, "session_token"),
@@ -120,6 +121,7 @@ def _to_training_cos_settings(config: dict[str, Any]) -> SystemTrainingCosSettin
         bucket_alias=config.get("bucket_alias"),
         target_prefix=config.get("target_prefix") or DEFAULT_TRAINING_COS_TARGET_PREFIX,
         addressing_style=str(config.get("addressing_style") or "virtual"),
+        hosts=config.get("hosts"),
         has_secret_id=bool(secret_id),
         has_secret_key=bool(secret_key),
         has_session_token=bool(session_token),
@@ -206,10 +208,11 @@ class SystemConfigService:
                 "bucket_alias",
                 "target_prefix",
                 "addressing_style",
+                "hosts",
             ):
                 value = _normalize_optional_text(getattr(payload, key))
                 if value:
-                    config[key] = value.strip("/")
+                    config[key] = value if key == "hosts" else value.strip("/")
                 elif key in {"endpoint", "bucket"}:
                     config.pop(key, None)
                 elif key == "target_prefix":

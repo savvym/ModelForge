@@ -8,6 +8,7 @@ import { ConsoleListHeader } from "@/components/console/list-surface";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   getSystemHuggingFaceSettings,
   getSystemTrainingCosSettings,
@@ -97,6 +98,7 @@ export function SystemConfigConsole({
         clear_session_token: clearSecrets,
         enabled: trainingCosForm.enabled,
         endpoint: trainingCosForm.endpoint.trim() || null,
+        hosts: trainingCosForm.hosts.trim() || null,
         protocol: trainingCosForm.protocol.trim() || "http",
         region: trainingCosForm.region.trim() || null,
         secret_id: clearSecrets ? null : trainingCosForm.secret_id.trim() || null,
@@ -269,6 +271,26 @@ export function SystemConfigConsole({
                 value={trainingCosForm.target_prefix}
               />
             </div>
+            <div className="space-y-2 lg:col-span-2">
+              <Label className="text-foreground" htmlFor="training-cos-hosts">
+                Hosts
+              </Label>
+              <Textarea
+                className="min-h-24 font-mono text-xs"
+                id="training-cos-hosts"
+                onChange={(event) =>
+                  setTrainingCosForm((current) => ({
+                    ...current,
+                    hosts: event.target.value
+                  }))
+                }
+                placeholder="21.0.81.61 nta-1300272946.cos.ap-guangzhou.myqcloud.com"
+                value={trainingCosForm.hosts}
+              />
+              <div className="text-xs leading-5 text-muted-foreground">
+                仅对训练 COS 请求做精确 host 覆盖；格式同 /etc/hosts，每行一个 IP 和域名。
+              </div>
+            </div>
 
             <div className="space-y-2">
               <Label className="text-foreground" htmlFor="training-cos-secret-id">
@@ -331,6 +353,7 @@ export function SystemConfigConsole({
             <ConfigLine label="Endpoint" value={trainingCosSettings.endpoint_url ?? "--"} />
             <ConfigLine label="Bucket" value={trainingCosSettings.bucket ?? "--"} />
             <ConfigLine label="Prefix" value={trainingCosSettings.target_prefix ?? "--"} />
+            <ConfigLine label="Hosts" value={trainingCosSettings.hosts ?? "--"} />
             <ConfigLine label="SecretId" value={trainingCosSettings.secret_id_masked ?? "--"} />
             <ConfigLine label="SecretKey" value={trainingCosSettings.secret_key_masked ?? "--"} />
           </aside>
@@ -474,6 +497,7 @@ function buildTrainingCosForm(settings: SystemTrainingCosSettings) {
     bucket_alias: settings.bucket_alias ?? "",
     enabled: settings.enabled,
     endpoint: settings.endpoint ?? "",
+    hosts: settings.hosts ?? "",
     protocol: settings.protocol || "http",
     region: settings.region ?? "",
     secret_id: "",

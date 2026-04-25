@@ -21,6 +21,7 @@ export default async function SystemConfigPage() {
       bucket_alias: null,
       target_prefix: "training/datasets",
       addressing_style: "virtual",
+      hosts: null,
       has_secret_id: false,
       has_secret_key: false,
       has_session_token: false,
