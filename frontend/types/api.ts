@@ -37,6 +37,49 @@ export interface SystemHuggingFaceSettingsUpdateInput {
   clear_token?: boolean;
 }
 
+export interface SystemTrainingCosSettings {
+  enabled: boolean;
+  protocol: string;
+  endpoint?: string | null;
+  endpoint_url?: string | null;
+  region?: string | null;
+  bucket?: string | null;
+  bucket_alias?: string | null;
+  target_prefix?: string | null;
+  addressing_style: string;
+  has_secret_id: boolean;
+  has_secret_key: boolean;
+  has_session_token: boolean;
+  secret_id_masked?: string | null;
+  secret_key_masked?: string | null;
+  session_token_masked?: string | null;
+}
+
+export interface SystemTrainingCosSettingsUpdateInput {
+  enabled: boolean;
+  protocol?: string | null;
+  endpoint?: string | null;
+  region?: string | null;
+  bucket?: string | null;
+  bucket_alias?: string | null;
+  target_prefix?: string | null;
+  addressing_style?: string | null;
+  secret_id?: string | null;
+  secret_key?: string | null;
+  session_token?: string | null;
+  clear_secret_id?: boolean;
+  clear_secret_key?: boolean;
+  clear_session_token?: boolean;
+}
+
+export interface SystemTrainingCosProbeResponse {
+  ok: boolean;
+  message: string;
+  bucket?: string | null;
+  prefix?: string | null;
+  object_count?: number | null;
+}
+
 export interface DatasetSummary {
   id: string;
   name: string;
@@ -75,6 +118,10 @@ export interface DatasetVersionSummary {
   created_by?: string | null;
   file_count: number;
   files: DatasetFileSummary[];
+  training_sync_status?: string | null;
+  training_sync_uri?: string | null;
+  training_synced_at?: string | null;
+  training_sync_error?: string | null;
 }
 
 export interface DatasetFileSummary {
@@ -125,6 +172,18 @@ export interface DatasetCreateResponse {
   status: string;
   object_key?: string | null;
   source_uri?: string | null;
+}
+
+export interface DatasetTrainingSyncResponse {
+  dataset_id: string;
+  version_id: string;
+  status: string;
+  bucket?: string | null;
+  destination_uris: string[];
+  object_count: number;
+  total_bytes: number;
+  synced_at: string;
+  error?: string | null;
 }
 
 export interface DatasetDirectUploadInitInput {

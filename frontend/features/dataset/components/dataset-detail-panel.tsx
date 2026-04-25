@@ -7,8 +7,10 @@ import {
   ChevronRight,
   Download,
   Ellipsis,
-  FileJson2
+  FileJson2,
+  UploadCloud
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,7 +48,8 @@ import {
   deleteDataset,
   deleteDatasetVersion,
   getDatasetVersionDownloadUrl,
-  getDatasetVersionPreview
+  getDatasetVersionPreview,
+  syncDatasetVersionToTrainingCos
 } from "@/features/dataset/api";
 import { getDatasetStatusMeta } from "@/features/dataset/status";
 import { cn } from "@/lib/utils";
@@ -130,7 +133,7 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
   const [previewError, setPreviewError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [pendingAction, setPendingAction] = React.useState<
-    "delete-dataset" | "delete-version" | null
+    "delete-dataset" | "delete-version" | "sync-training" | null
   >(null);
   const [openMenu, setOpenMenu] = React.useState<OpenMenuState>(null);
   const [confirmTarget, setConfirmTarget] = React.useState<ConfirmTarget>(null);
@@ -302,6 +305,26 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
       selectedVersion.id,
       selectedFile?.id
     );
+  }
+
+  async function handleSyncVersionToTrainingCos() {
+    if (!selectedVersion) {
+      return;
+    }
+
+    try {
+      setActionError(null);
+      setPendingAction("sync-training");
+      const result = await syncDatasetVersionToTrainingCos(dataset.id, selectedVersion.id);
+      toast.success(`已同步 ${result.object_count} 个文件到训练环境 COS。`);
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "同步训练环境 COS 失败";
+      setActionError(message);
+      toast.error(message);
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   async function handleConfirmDelete() {
@@ -493,6 +516,19 @@ export function DatasetDetailPanel({ dataset }: { dataset: DatasetDetail }) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  disabled={
+                    pendingAction !== null ||
+                    !selectedVersion ||
+                    selectedVersion.status !== "ready"
+                  }
+                  onClick={() => void handleSyncVersionToTrainingCos()}
+                  type="button"
+                  variant="outline"
+                >
+                  <UploadCloud className="mr-2 h-4 w-4" />
+                  {pendingAction === "sync-training" ? "同步中..." : "同步到训练环境"}
+                </Button>
                 <Button
                   disabled={pendingAction !== null}
                   onClick={() => router.push(`/dataset/${dataset.id}/new-version`)}
@@ -941,7 +977,7 @@ function DatasetVersionDetailTab({
             <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="数据量" value={formatNumber(version.record_count)} />
               <MetricCard label="预估 Tokens" value={formatNumber(getEstimatedTokens(version))} />
-              <MetricCard label="创建时间" value={formatDateTime(version.created_at)} />
+              <MetricCard label="训练同步" value={formatTrainingSyncStatus(version)} />
               <MetricCard
                 label="更新时间"
                 value={formatDateTime(version.updated_at ?? version.created_at)}
@@ -957,6 +993,14 @@ function DatasetVersionDetailTab({
               <DetailRow label="描述" value={version.description || dataset.description || "--"} />
               <DetailRow label="来源类型" value={version.source_type || "--"} />
               <DetailRow label="来源路径" value={version.source_uri || "--"} />
+              <DetailRow label="训练 COS" value={version.training_sync_uri || "--"} />
+              <DetailRow
+                label="同步时间"
+                value={formatDateTime(version.training_synced_at)}
+              />
+              {version.training_sync_error ? (
+                <DetailRow label="同步错误" value={version.training_sync_error} />
+              ) : null}
               <DetailRow label="创建人" value={version.created_by || dataset.owner_name || "--"} />
             </CardContent>
           </Card>
@@ -1603,6 +1647,16 @@ function getEstimatedTokens(version: DatasetVersionSummary) {
   }
 
   return null;
+}
+
+function formatTrainingSyncStatus(version: DatasetVersionSummary) {
+  if (version.training_sync_status === "synced") {
+    return "已同步";
+  }
+  if (version.training_sync_status === "failed") {
+    return "同步失败";
+  }
+  return "未同步";
 }
 
 function formatNumber(value: number | null | undefined) {

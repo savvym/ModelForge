@@ -66,6 +66,10 @@ class DatasetVersionSummary(BaseModel):
     created_by: str | None = None
     file_count: int = 0
     files: list[DatasetFileSummary] = []
+    training_sync_status: str | None = None
+    training_sync_uri: str | None = None
+    training_synced_at: datetime | None = None
+    training_sync_error: str | None = None
 
 
 class DatasetVersionPreview(BaseModel):
@@ -112,6 +116,18 @@ class DatasetCreateResponse(BaseModel):
     status: str
     object_key: str | None = None
     source_uri: str | None = None
+
+
+class DatasetTrainingSyncResponse(BaseModel):
+    dataset_id: str
+    version_id: UUID
+    status: str
+    bucket: str | None = None
+    destination_uris: list[str] = []
+    object_count: int = 0
+    total_bytes: int = 0
+    synced_at: datetime
+    error: str | None = None
 
 
 class DatasetDirectUploadInitRequest(BaseModel):

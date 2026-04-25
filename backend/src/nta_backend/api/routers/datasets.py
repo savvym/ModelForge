@@ -24,6 +24,7 @@ from nta_backend.schemas.dataset import (
     DatasetDirectUploadInitRequest,
     DatasetDirectUploadInitResponse,
     DatasetSummary,
+    DatasetTrainingSyncResponse,
     DatasetVersionCreate,
     DatasetVersionDirectUploadInitRequest,
     DatasetVersionPreview,
@@ -88,6 +89,22 @@ async def download_dataset_version(
         media_type=payload.object_payload.content_type or "application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{payload.file_name}"'},
     )
+
+
+@router.post(
+    "/{dataset_id}/versions/{version_id}/sync-training-cos",
+    response_model=DatasetTrainingSyncResponse,
+)
+async def sync_dataset_version_to_training_cos(
+    dataset_id: str,
+    version_id: UUID,
+) -> DatasetTrainingSyncResponse:
+    try:
+        return await service.sync_dataset_version_to_training_cos(str(dataset_id), str(version_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Dataset version not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("", response_model=DatasetCreateResponse, status_code=status.HTTP_201_CREATED)

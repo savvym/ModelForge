@@ -7,7 +7,8 @@ import type {
   DatasetDirectUploadInitInput,
   DatasetDirectUploadInitResponse,
   DatasetDetail,
-  DatasetSummary
+  DatasetSummary,
+  DatasetTrainingSyncResponse
 } from "@/types/api";
 import type {
   DatasetVersionCreateInput,
@@ -170,6 +171,18 @@ export async function deleteDatasetVersion(datasetId: string, versionId: string)
   await apiFetch(`/datasets/${datasetId}/versions/${versionId}`, {
     method: "DELETE"
   });
+}
+
+export async function syncDatasetVersionToTrainingCos(
+  datasetId: string,
+  versionId: string
+): Promise<DatasetTrainingSyncResponse> {
+  return apiFetch<DatasetTrainingSyncResponse>(
+    `/datasets/${datasetId}/versions/${versionId}/sync-training-cos`,
+    {
+      method: "POST"
+    }
+  );
 }
 
 export function getDatasetVersionDownloadUrl(

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from mimetypes import guess_type
 from pathlib import PurePosixPath
+from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -32,6 +33,7 @@ from nta_backend.core.storage_layout import (
     build_dataset_source_key,
     build_dataset_version_prefix,
 )
+from nta_backend.core.training_cos import build_training_cos_uri, put_training_cos_object
 from nta_backend.evaluation import normalize_eval_dataset_bytes
 from nta_backend.models.dataset import Dataset, DatasetFile, DatasetVersion
 from nta_backend.schemas.dataset import (
@@ -44,6 +46,7 @@ from nta_backend.schemas.dataset import (
     DatasetDirectUploadInitResponse,
     DatasetFileSummary,
     DatasetSummary,
+    DatasetTrainingSyncResponse,
     DatasetVersionCreate,
     DatasetVersionDirectUploadInitRequest,
     DatasetVersionPreview,
@@ -52,6 +55,7 @@ from nta_backend.schemas.dataset import (
     PresignUploadResponse,
 )
 from nta_backend.schemas.object_store import ObjectStoreDirectUploadInitResponse
+from nta_backend.services.system_config_service import load_training_cos_config
 
 ASIA_SHANGHAI = ZoneInfo("Asia/Shanghai")
 PREVIEW_LIMIT_LINES = 50
@@ -266,6 +270,7 @@ def _to_version_summary(
     files: list[DatasetFile],
 ) -> DatasetVersionSummary:
     file_item = files[0] if files else None
+    sync_status, sync_uri, synced_at, sync_error = _read_training_sync_summary(version)
     return DatasetVersionSummary(
         id=version.id,
         dataset_id=_dataset_code(dataset),
@@ -283,6 +288,30 @@ def _to_version_summary(
         created_by=None,
         file_count=len(files),
         files=[_to_file_summary(file_item) for file_item in files],
+        training_sync_status=sync_status,
+        training_sync_uri=sync_uri,
+        training_synced_at=synced_at,
+        training_sync_error=sync_error,
+    )
+
+
+def _read_training_sync_summary(
+    version: DatasetVersion,
+) -> tuple[str | None, str | None, datetime | None, str | None]:
+    metadata = version.training_sync_json if isinstance(version.training_sync_json, dict) else {}
+    destination_uris = metadata.get("destination_uris")
+    synced_at = metadata.get("synced_at")
+    parsed_synced_at = None
+    if isinstance(synced_at, str):
+        try:
+            parsed_synced_at = datetime.fromisoformat(synced_at)
+        except ValueError:
+            parsed_synced_at = None
+    return (
+        metadata.get("status") if isinstance(metadata.get("status"), str) else None,
+        destination_uris[0] if isinstance(destination_uris, list) and destination_uris else None,
+        parsed_synced_at,
+        metadata.get("error") if isinstance(metadata.get("error"), str) else None,
     )
 
 
@@ -374,6 +403,62 @@ async def _read_dataset_payload(
     payload = get_object_bytes(bucket, object_key)
     file_name = _basename_from_source_uri(version.source_uri) or "dataset.jsonl"
     return file_name, payload
+
+
+async def _read_all_dataset_payloads(
+    files: list[DatasetFile],
+    version: DatasetVersion,
+) -> list[tuple[str, ObjectPayload]]:
+    if files:
+        payloads: list[tuple[str, ObjectPayload]] = []
+        for file_item in files:
+            payloads.append(
+                (file_item.file_name, get_object_bytes(DATASET_RAW_BUCKET, file_item.object_key))
+            )
+        return payloads
+
+    return [await _read_dataset_payload(files, version)]
+
+
+def _build_training_dataset_key(
+    config: dict[str, Any],
+    *,
+    dataset: Dataset,
+    version: DatasetVersion,
+    file_name: str,
+) -> str:
+    prefix = str(config.get("target_prefix") or "training/datasets").strip().strip("/")
+    safe_file_name = PurePosixPath(file_name).name or "dataset.jsonl"
+    parts = [prefix, _dataset_code(dataset), f"v{version.version}", safe_file_name]
+    return "/".join(part for part in parts if part)
+
+
+def _build_training_sync_response(
+    *,
+    dataset: Dataset,
+    version: DatasetVersion,
+    metadata: dict[str, object],
+) -> DatasetTrainingSyncResponse:
+    synced_at = metadata.get("synced_at")
+    parsed_synced_at = _now()
+    if isinstance(synced_at, str):
+        try:
+            parsed_synced_at = datetime.fromisoformat(synced_at)
+        except ValueError:
+            parsed_synced_at = _now()
+    return DatasetTrainingSyncResponse(
+        dataset_id=_dataset_code(dataset),
+        version_id=version.id,
+        status=str(metadata.get("status") or "unknown"),
+        bucket=metadata.get("bucket") if isinstance(metadata.get("bucket"), str) else None,
+        destination_uris=[
+            str(uri) for uri in metadata.get("destination_uris", []) if isinstance(uri, str)
+        ],
+        object_count=int(metadata.get("object_count") or 0),
+        total_bytes=int(metadata.get("total_bytes") or 0),
+        synced_at=parsed_synced_at,
+        error=metadata.get("error") if isinstance(metadata.get("error"), str) else None,
+    )
 
 
 async def _get_dataset_or_raise(
@@ -865,6 +950,84 @@ class DatasetService:
             except (FileNotFoundError, KeyError) as exc:
                 raise KeyError(version_id) from exc
             return DatasetDownloadPayload(file_name=file_name, object_payload=payload)
+
+    async def sync_dataset_version_to_training_cos(
+        self,
+        dataset_id: str,
+        version_id: str,
+    ) -> DatasetTrainingSyncResponse:
+        async with SessionLocal() as session:
+            project_id = await resolve_active_project_id(session)
+            dataset = await _get_dataset_or_raise(session, dataset_id, project_id)
+            version = await session.get(DatasetVersion, UUID(version_id))
+            if version is None or version.dataset_id != dataset.id:
+                raise KeyError(version_id)
+            if version.status != "ready":
+                raise ValueError("只有 ready 状态的数据集版本可以同步到训练环境")
+
+            config = await load_training_cos_config(session)
+            if not config.get("enabled"):
+                raise ValueError("训练环境 COS 未启用，请先在系统配置中启用")
+
+            files_by_version = await _get_version_files(session, [version.id])
+            version_files = files_by_version.get(version.id, [])
+            try:
+                file_payloads = await _read_all_dataset_payloads(version_files, version)
+            except (FileNotFoundError, KeyError) as exc:
+                raise KeyError(version_id) from exc
+
+            synced_at = _now()
+            destination_uris: list[str] = []
+            total_bytes = 0
+            try:
+                for file_name, payload in file_payloads:
+                    destination_key = _build_training_dataset_key(
+                        config,
+                        dataset=dataset,
+                        version=version,
+                        file_name=file_name,
+                    )
+                    put_training_cos_object(
+                        config,
+                        object_key=destination_key,
+                        body=payload.body,
+                        content_type=payload.content_type or _guess_content_type(file_name),
+                    )
+                    destination_uris.append(build_training_cos_uri(config, destination_key))
+                    total_bytes += payload.size_bytes
+            except Exception as exc:
+                metadata = {
+                    "status": "failed",
+                    "bucket": config.get("bucket"),
+                    "destination_uris": destination_uris,
+                    "object_count": len(destination_uris),
+                    "total_bytes": total_bytes,
+                    "synced_at": synced_at.isoformat(),
+                    "error": str(exc),
+                }
+                version.training_sync_json = metadata
+                version.updated_at = synced_at
+                await session.commit()
+                raise ValueError(f"同步训练环境 COS 失败：{exc}") from exc
+
+            metadata = {
+                "status": "synced",
+                "bucket": config.get("bucket"),
+                "destination_uris": destination_uris,
+                "object_count": len(destination_uris),
+                "total_bytes": total_bytes,
+                "synced_at": synced_at.isoformat(),
+                "error": None,
+            }
+            version.training_sync_json = metadata
+            version.updated_at = synced_at
+            await session.commit()
+            await session.refresh(version)
+            return _build_training_sync_response(
+                dataset=dataset,
+                version=version,
+                metadata=metadata,
+            )
 
     async def create_dataset(self, payload: DatasetCreate) -> DatasetCreateResponse:
         if payload.source_type != "s3-import":
