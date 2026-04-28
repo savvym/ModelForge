@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
@@ -8,6 +9,8 @@ from textwrap import dedent
 from nta_infer_agent.config import AgentSettings
 from nta_infer_agent.process import run_command
 from nta_infer_agent.schemas import DeploymentSpec
+
+logger = logging.getLogger(__name__)
 
 VLLM_RUNTIME_AUTH_MIDDLEWARE = dedent(
     """
@@ -27,6 +30,12 @@ VLLM_RUNTIME_AUTH_MIDDLEWARE = dedent(
         return await call_next(request)
     """
 ).strip()
+
+VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset(
+    {
+        "Gemma4ForConditionalGeneration",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -99,7 +108,7 @@ class DockerRuntime:
             command.extend(["--max-model-len", str(spec.engine.max_model_len)])
         if spec.engine.enable_prefix_caching:
             command.append("--enable-prefix-caching")
-        if spec.engine.enable_lora:
+        if _should_enable_lora(spec, model_path):
             command.extend(["--enable-lora", "--max-loras", "16", "--max-lora-rank", "128"])
         command.extend(["--api-key", spec.engine.api_key.get_secret_value()])
         for key, value in spec.engine.extra_args.items():
@@ -174,3 +183,60 @@ class DockerRuntime:
             ],
             check=False,
         )
+
+
+def _should_enable_lora(spec: DeploymentSpec, model_path: Path) -> bool:
+    if not spec.engine.enable_lora:
+        return False
+
+    unsupported_architectures = _lora_unsupported_architectures(model_path)
+    if unsupported_architectures:
+        logger.warning(
+            "LoRA disabled for unsupported vLLM model architecture(s): %s",
+            ", ".join(unsupported_architectures),
+        )
+        return False
+
+    return True
+
+
+def _lora_unsupported_architectures(model_path: Path) -> list[str]:
+    config_path = model_path / "config.json"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    architectures = _model_config_architectures(config)
+    return [
+        architecture
+        for architecture in architectures
+        if architecture in VLLM_LORA_UNSUPPORTED_ARCHITECTURES
+    ]
+
+
+def _model_config_architectures(config: object) -> list[str]:
+    if not isinstance(config, dict):
+        return []
+
+    architectures: list[str] = []
+    sections: list[object] = [
+        config,
+        config.get("text_config"),
+        config.get("llm_config"),
+        config.get("language_config"),
+    ]
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        raw_architectures = section.get("architectures")
+        if isinstance(raw_architectures, str):
+            architectures.append(raw_architectures)
+        elif isinstance(raw_architectures, list):
+            architectures.extend(
+                architecture
+                for architecture in raw_architectures
+                if isinstance(architecture, str)
+            )
+
+    return list(dict.fromkeys(architectures))

@@ -137,6 +137,48 @@ def test_build_spec_leaves_plain_models_without_reasoning_parser_args() -> None:
     assert spec.engine.extra_args == {}
 
 
+def test_build_spec_disables_lora_for_unsupported_architecture() -> None:
+    model = SimpleNamespace(
+        id=uuid4(),
+        name="Gemma 4",
+        model_code="gemma-4",
+        capabilities_json={
+            "huggingface_import": {
+                "repo_id": "google/gemma-4-31B",
+                "revision": "main",
+                "deployment_hints": {
+                    "model_type": "gemma4",
+                    "architectures": ["Gemma4ForConditionalGeneration"],
+                },
+            }
+        },
+    )
+    machine = InferenceMachineRuntimeConfig(
+        id=uuid4(),
+        name="h20-node-01",
+        agent_base_url="http://10.0.0.12:9000",
+        agent_token="agent-token",
+        runtime_api_key="runtime-token",
+        runtime_public_host="10.0.0.12",
+        vllm_image="vllm/vllm-openai:latest",
+        gpu_ids=list(range(8)),
+        tensor_parallel_size=8,
+        dtype="bfloat16",
+        gpu_memory_utilization=0.85,
+        max_model_len=None,
+        listen_port=8000,
+    )
+
+    spec = ModelDeploymentService()._build_spec(
+        model,  # type: ignore[arg-type]
+        DeployModelRequest(),
+        inference_machine=machine,
+        system_huggingface_config={},
+    )
+
+    assert spec.engine.enable_lora is False
+
+
 def test_serialize_deployment_task_keeps_superseded_task_terminal() -> None:
     endpoint_id = uuid4()
     endpoint = SimpleNamespace(

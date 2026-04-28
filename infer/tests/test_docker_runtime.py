@@ -55,6 +55,7 @@ async def test_start_vllm_uses_all_gpus(
     assert run_command[restart_index + 1] == "on-failure:3"
     api_key_index = run_command.index("--api-key")
     assert run_command[api_key_index + 1] == "runtime-token"
+    assert "--enable-lora" in run_command
     assert "--disable-fastapi-docs" not in run_command
     middleware_index = run_command.index("--middleware")
     assert run_command[middleware_index + 1] == "vllm_runtime_auth.require_runtime_token"
@@ -72,6 +73,50 @@ async def test_start_vllm_uses_all_gpus(
     image_index = run_command.index("vllm/vllm-openai:latest")
     assert run_command[image_index + 1] == "/model"
     assert "--model" not in run_command
+
+
+@pytest.mark.asyncio
+async def test_start_vllm_skips_lora_for_unsupported_model_architecture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
+
+    async def fake_run_command(command: list[str], **_: object) -> str:
+        commands.append(command)
+        return "container-id"
+
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    (model_path / "config.json").write_text(
+        '{"architectures": ["Gemma4ForConditionalGeneration"]}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
+    runtime = DockerRuntime(_settings(tmp_path))
+    spec = DeploymentSpec(
+        deployment_id="deployment-id",
+        generation=1,
+        model=ModelBinding(
+            model_id="model-id",
+            name="Gemma 4",
+            served_name="gemma4",
+            source=ModelSource(type="local", uri="local:///model"),
+        ),
+        engine=EngineSpec(
+            api_key="runtime-token",
+            image="vllm/vllm-openai:latest",
+            gpu_ids=list(range(8)),
+            tensor_parallel_size=8,
+        ),
+    )
+
+    await runtime.start_vllm(spec, model_path)
+
+    run_command = commands[1]
+    assert "--enable-lora" not in run_command
+    assert "--max-loras" not in run_command
+    assert "--max-lora-rank" not in run_command
 
 
 @pytest.mark.asyncio

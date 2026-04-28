@@ -76,6 +76,11 @@ VLLM_REASONING_PARSER_RULES: tuple[tuple[str, str], ...] = (
     ("glm-4.5", "glm45"),
     ("glm45", "glm45"),
 )
+VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset(
+    {
+        "Gemma4ForConditionalGeneration",
+    }
+)
 
 
 def _now() -> datetime:
@@ -152,6 +157,17 @@ def _infer_vllm_reasoning_extra_args(
                 "reasoning_parser": parser,
             }
     return {}
+
+
+def _should_enable_lora_for_deployment_hints(
+    deployment_hints: RegistryModelDeploymentHints | None,
+) -> bool:
+    if deployment_hints is None:
+        return True
+    return not any(
+        architecture in VLLM_LORA_UNSUPPORTED_ARCHITECTURES
+        for architecture in deployment_hints.architectures
+    )
 
 
 def _redact_spec(spec: AgentDeploymentSpec) -> dict[str, Any]:
@@ -1334,6 +1350,7 @@ class ModelDeploymentService:
                 dtype=payload.dtype or inference_machine.dtype,
                 gpu_memory_utilization=inference_machine.gpu_memory_utilization,
                 max_model_len=payload.max_model_len or inference_machine.max_model_len,
+                enable_lora=_should_enable_lora_for_deployment_hints(deployment_hints),
                 api_key=inference_machine.runtime_api_key,
                 extra_args=vllm_extra_args,
             ),
