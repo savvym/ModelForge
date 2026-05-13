@@ -19,13 +19,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow
 } from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
+} from "@/components/ui/sheet";
 import {
   deleteBenchmarkVersion,
   getBenchmarkSampleFileUrl,
@@ -40,7 +46,6 @@ import type {
 } from "@/types/api";
 
 type DetailTab = "details" | "preview";
-type PreviewMode = "table" | "raw";
 
 type JsonlPreviewRow = {
   lineNumber: number;
@@ -85,7 +90,6 @@ export function BenchmarkDetailPanel({
   const isBuiltin = benchmark.source_type === "builtin";
   const versions = benchmark.versions;
   const [activeTab, setActiveTab] = React.useState<DetailTab>("details");
-  const [previewMode, setPreviewMode] = React.useState<PreviewMode>("table");
   const [selectedVersionId, setSelectedVersionId] = React.useState(versions[0]?.id ?? "");
   const [previewCache, setPreviewCache] = React.useState<
     Record<string, ObjectStoreObjectPreviewResponse>
@@ -333,10 +337,8 @@ export function BenchmarkDetailPanel({
                 <BenchmarkVersionPreviewTab
                   loading={loadingPreviewVersionId === selectedVersion.id}
                   onDownload={handleDownloadSelectedVersion}
-                  onPreviewModeChange={setPreviewMode}
                   preview={selectedPreview}
                   previewError={previewError}
-                  previewMode={previewMode}
                   version={selectedVersion}
                 />
               )
@@ -450,7 +452,7 @@ function BenchmarkVersionDetailTab({
             ) : (
               <>
                 <p>数据预览会直接读取当前 Version 绑定的数据文件，便于快速检查样本结构和字段内容。</p>
-                <p>如果你上传的是 JSONL，右侧支持表格预览和 Raw 预览，便于快速抽样验证。</p>
+                <p>点击任一行，可在右侧查看该条 JSONL 样本的完整结构。</p>
               </>
             )}
           </CardContent>
@@ -463,18 +465,14 @@ function BenchmarkVersionDetailTab({
 function BenchmarkVersionPreviewTab({
   loading,
   onDownload,
-  onPreviewModeChange,
   preview,
   previewError,
-  previewMode,
   version
 }: {
   loading: boolean;
   onDownload: () => void;
-  onPreviewModeChange: (mode: PreviewMode) => void;
   preview?: ObjectStoreObjectPreviewResponse;
   previewError: string | null;
-  previewMode: PreviewMode;
   version: BenchmarkVersionSummary;
 }) {
   const previewContent = preview?.content ?? "";
@@ -521,16 +519,6 @@ function BenchmarkVersionPreviewTab({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <PreviewModeButton
-              active={previewMode === "table"}
-              label="表格预览"
-              onClick={() => onPreviewModeChange("table")}
-            />
-            <PreviewModeButton
-              active={previewMode === "raw"}
-              label="Raw"
-              onClick={() => onPreviewModeChange("raw")}
-            />
             <Button
               className="gap-2"
               disabled={!preview?.object_key}
@@ -556,7 +544,7 @@ function BenchmarkVersionPreviewTab({
           <PreviewState
             message={`当前对象是 ${preview.preview_kind} 类型，暂不支持结构化预览，请直接下载查看。`}
           />
-        ) : previewMode === "table" ? (
+        ) : (
           <JsonlTableView
             columns={jsonlPreview.columns}
             loading={loading}
@@ -568,12 +556,6 @@ function BenchmarkVersionPreviewTab({
             truncated={preview.truncated}
             versionSampleCount={version.sample_count}
             onPageChange={setPreviewPage}
-          />
-        ) : (
-          <JsonlRawView
-            content={previewContent}
-            parseErrors={jsonlPreview.parseErrors}
-            rows={jsonlPreview.rows}
           />
         )}
       </div>
@@ -604,6 +586,7 @@ function JsonlTableView({
   truncated: boolean;
   versionSampleCount: number;
 }) {
+  const [selectedRow, setSelectedRow] = React.useState<JsonlPreviewRow | null>(null);
   const start = totalRows ? (page - 1) * pageSize + 1 : 0;
   const end = Math.min(page * pageSize, totalRows);
   const totalLabel =
@@ -611,11 +594,20 @@ function JsonlTableView({
       ? `已预览 ${formatNumber(totalRows)} 条 · 共 ${formatNumber(versionSampleCount)} 条`
       : `共 ${formatNumber(totalRows)} 条`;
 
+  function openRow(row: JsonlPreviewRow) {
+    setSelectedRow(row);
+  }
+
+  function changePage(nextPage: number) {
+    setSelectedRow(null);
+    onPageChange(nextPage);
+  }
+
   return totalRows > 0 ? (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ConsoleListTableSurface className="min-h-0 flex-1">
-        <div className="console-scrollbar-subtle h-full overflow-auto">
-          <Table className="min-w-[980px] table-fixed">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ConsoleListTableSurface className="min-h-0 flex-1 overflow-hidden">
+        <div className="console-scrollbar-subtle max-h-[calc(100vh-340px)] min-h-[360px] overflow-auto">
+          <table className="w-full min-w-[980px] table-fixed caption-bottom text-sm">
             <TableHeader className="bg-transparent">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="sticky left-0 top-0 z-20 w-[96px] min-w-[96px] bg-card/80">
@@ -633,8 +625,29 @@ function JsonlTableView({
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow className="bg-transparent" key={row.lineNumber}>
-                  <TableCell className="sticky left-0 z-10 w-[96px] min-w-[96px] bg-card/80 align-top font-medium text-muted-foreground">
+                <TableRow
+                  aria-label={`查看第 ${row.lineNumber} 行详情`}
+                  className={cn(
+                    "cursor-pointer bg-transparent outline-none hover:bg-muted/40 focus-visible:bg-muted/50",
+                    selectedRow?.lineNumber === row.lineNumber ? "bg-muted/50" : null
+                  )}
+                  key={row.lineNumber}
+                  onClick={() => openRow(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openRow(row);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <TableCell
+                    className={cn(
+                      "sticky left-0 z-10 w-[96px] min-w-[96px] bg-card/90 align-top font-medium text-muted-foreground",
+                      selectedRow?.lineNumber === row.lineNumber ? "bg-muted" : null
+                    )}
+                  >
                     {row.lineNumber}
                   </TableCell>
                   {columns.map((column) => (
@@ -650,7 +663,7 @@ function JsonlTableView({
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+          </table>
         </div>
       </ConsoleListTableSurface>
 
@@ -661,7 +674,7 @@ function JsonlTableView({
         <div className="flex items-center gap-1.5">
           <Button
             disabled={loading || page <= 1}
-            onClick={() => onPageChange(Math.max(1, page - 1))}
+            onClick={() => changePage(Math.max(1, page - 1))}
             size="sm"
             type="button"
             variant="ghost"
@@ -673,7 +686,7 @@ function JsonlTableView({
           </div>
           <Button
             disabled={loading || page >= pageCount}
-            onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+            onClick={() => changePage(Math.min(pageCount, page + 1))}
             size="sm"
             type="button"
             variant="ghost"
@@ -682,6 +695,16 @@ function JsonlTableView({
           </Button>
         </div>
       </div>
+
+      <JsonlRowDetailSheet
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedRow(null);
+          }
+        }}
+        open={selectedRow !== null}
+        row={selectedRow}
+      />
     </div>
   ) : (
     <EmptyPreviewPanel
@@ -691,58 +714,41 @@ function JsonlTableView({
   );
 }
 
-function JsonlRawView({
-  content,
-  parseErrors,
-  rows
+function JsonlRowDetailSheet({
+  onOpenChange,
+  open,
+  row
 }: {
-  content: string;
-  parseErrors: JsonlPreviewParseError[];
-  rows: JsonlPreviewRow[];
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  row: JsonlPreviewRow | null;
 }) {
+  const fieldCount = row ? Object.keys(row.record).length : 0;
+
   return (
-    <div className="grid min-h-0 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-h-0 overflow-y-auto p-4">
-        <pre className="min-h-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 p-4 font-mono text-[12px] leading-7 text-foreground">
-          {content || "当前版本暂无可预览的文件内容。"}
-        </pre>
-      </div>
-
-      <aside className="min-h-0 overflow-y-auto border-l border-border bg-card/80 px-4 py-4">
-        <div className="space-y-4">
-          <InspectorCard label="样本条数" value={String(rows.length)} />
-          <InspectorCard label="解析异常" value={`${parseErrors.length} 行`} />
-
-          <Card className="border-border bg-card/80 shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-foreground">使用建议</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm leading-6 text-muted-foreground">
-              <p>Raw 视图更适合检查转义、空行和非法 JSON。</p>
-              <p>如果结构稳定，优先使用“表格预览”做样本抽查。</p>
-            </CardContent>
-          </Card>
-
-          {parseErrors.length > 0 ? (
-            <Card className="border-border bg-card/80 shadow-none">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-foreground">异常行</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-xs text-muted-foreground">
-                {parseErrors.slice(0, 5).map((error) => (
-                  <div
-                    className="rounded-lg border border-border bg-muted/40 px-3 py-2"
-                    key={`${error.lineNumber}-${error.message}`}
-                  >
-                    第 {error.lineNumber} 行: {error.message}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+    <Sheet onOpenChange={onOpenChange} open={open}>
+      <SheetContent className="w-full gap-0 overflow-hidden border-l border-border bg-card p-0 text-foreground shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[640px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-muted-foreground [&>button]:hover:bg-card/80 [&>button]:hover:text-foreground">
+        <SheetHeader className="border-b border-border bg-card/80 px-5 py-4 pr-16 text-left">
+          <SheetTitle className="text-[17px] font-semibold text-foreground">
+            第 {row?.lineNumber ?? "--"} 行
+          </SheetTitle>
+          <SheetDescription className="text-[12px] leading-5 text-muted-foreground">
+            {fieldCount} 个字段
+          </SheetDescription>
+        </SheetHeader>
+        <div className="console-scrollbar-drawer min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {row ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <JsonSummaryBlock label="行号" value={String(row.lineNumber)} />
+                <JsonSummaryBlock label="字段数" value={String(fieldCount)} />
+              </div>
+              <StructuredJsonValue value={row.record} />
+            </div>
           ) : null}
         </div>
-      </aside>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -771,28 +777,75 @@ function PrimaryTabButton({
   );
 }
 
-function PreviewModeButton({
-  active,
-  label,
-  onClick
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
+function JsonSummaryBlock({ label, value }: { label: string; value: string }) {
   return (
-    <button
-      className={cn(
-        "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
-        active
-          ? "border-border bg-accent text-accent-foreground"
-          : "border-border bg-muted/40 text-muted-foreground hover:bg-card/80 hover:text-foreground"
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
+    <div className="rounded-lg border border-border bg-muted/40 px-3 py-3">
+      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-base font-medium text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function StructuredJsonValue({
+  fieldName,
+  value
+}: {
+  fieldName?: string;
+  value: unknown;
+}) {
+  const valueType = getJsonValueType(value);
+  const nested =
+    Array.isArray(value) || (typeof value === "object" && value !== null);
+
+  if (nested) {
+    const entries = Array.isArray(value)
+      ? value.map((item, index) => [`[${index}]`, item] as const)
+      : Object.entries(value as Record<string, unknown>);
+
+    return (
+      <section className="rounded-lg border border-border bg-muted/25">
+        {fieldName ? (
+          <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+            <div className="min-w-0 truncate font-mono text-xs font-medium text-foreground">
+              {fieldName}
+            </div>
+            <Badge variant="secondary">
+              {valueType}
+              {entries.length > 0 ? ` · ${entries.length}` : ""}
+            </Badge>
+          </div>
+        ) : null}
+        <div className="space-y-2 p-3">
+          {entries.length > 0 ? (
+            entries.map(([key, item]) => (
+              <StructuredJsonValue
+                fieldName={key}
+                key={key}
+                value={item}
+              />
+            ))
+          ) : (
+            <div className="rounded-md border border-border bg-card/70 px-3 py-2 text-sm text-muted-foreground">
+              {Array.isArray(value) ? "空数组" : "空对象"}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 truncate font-mono text-xs font-medium text-foreground">
+          {fieldName ?? "value"}
+        </div>
+        <Badge variant="secondary">{valueType}</Badge>
+      </div>
+      <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+        {formatJsonPrimitiveDetail(value)}
+      </div>
+    </div>
   );
 }
 
@@ -810,15 +863,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     <div className="grid gap-1">
       <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
       <div className="break-all text-sm text-foreground">{value}</div>
-    </div>
-  );
-}
-
-function InspectorCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/40 px-3 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className="mt-2 text-base font-medium text-foreground">{value}</div>
     </div>
   );
 }
@@ -944,6 +988,32 @@ function formatJsonlValuePreview(value: unknown): string {
     }
   }
   return String(value);
+}
+
+function formatJsonPrimitiveDetail(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "string") {
+    return value || "空字符串";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return String(value);
+}
+
+function getJsonValueType(value: unknown) {
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  if (value === null) {
+    return "null";
+  }
+  return typeof value;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
