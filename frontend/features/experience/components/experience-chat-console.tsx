@@ -7,12 +7,9 @@ import { useMemo, useRef, useState } from "react";
 import {
   Bot,
   Braces,
-  Check,
   Compass,
   Copy,
   ChevronsUpDown,
-  LibraryBig,
-  Server,
   Sparkles,
   SquarePen,
 } from "lucide-react";
@@ -44,22 +41,15 @@ import {
   PromptInputTools,
   usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
-import {
-  ModelSelector,
-  ModelSelectorContent,
-  ModelSelectorEmpty,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorName,
-  ModelSelectorTrigger
-} from "@/components/ai-elements/model-selector";
 import { buttonVariants } from "@/components/ui/button";
 import type {
   ExperienceReasoningDepth,
   ExperienceUIMessage,
 } from "@/features/experience/types";
+import {
+  ModelTargetSelectorDialog,
+  type ModelTargetOption
+} from "@/features/model-selection/components/model-target-selector-dialog";
 import { cn } from "@/lib/utils";
 import type { ModelDeploymentSummary, RegistryModelSummary } from "@/types/api";
 import { z } from "zod";
@@ -173,15 +163,7 @@ type ComposerProps = {
   stop: () => void;
 };
 
-type ExperienceModelOption = {
-  id: string;
-  name: string;
-  providerName: string;
-  source: "registry" | "deployment";
-  targetId: string;
-};
-
-type ExperienceModelSource = ExperienceModelOption["source"];
+type ExperienceModelOption = ModelTargetOption;
 
 function isReadyDeployment(deployment: ModelDeploymentSummary) {
   return (deployment.phase ?? deployment.status) === "ready" && Boolean(deployment.endpoint_url);
@@ -510,45 +492,9 @@ function ExperienceComposer({
 }: ComposerProps) {
   const { value } = usePromptInputController();
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
-  const [activeModelSource, setActiveModelSource] =
-    useState<ExperienceModelSource>("registry");
   const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
-  const registryOptions = useMemo(
-    () => modelOptions.filter((model) => model.source === "registry"),
-    [modelOptions]
-  );
-  const deploymentOptions = useMemo(
-    () => modelOptions.filter((model) => model.source === "deployment"),
-    [modelOptions]
-  );
-  const activeOptions =
-    activeModelSource === "registry" ? registryOptions : deploymentOptions;
-  const modelSourceTabs = [
-    {
-      count: registryOptions.length,
-      icon: LibraryBig,
-      label: "模型广场",
-      value: "registry" as const,
-    },
-    {
-      count: deploymentOptions.length,
-      icon: Server,
-      label: "我的部署",
-      value: "deployment" as const,
-    },
-  ];
-  const activeSourceLabel =
-    modelSourceTabs.find((item) => item.value === activeModelSource)?.label ?? "模型";
-
-  function handleModelSelectorOpenChange(nextOpen: boolean) {
-    setIsModelSelectorOpen(nextOpen);
-    if (nextOpen && selectedModel) {
-      setActiveModelSource(selectedModel.source);
-    }
-  }
 
   function handleSelectModel(nextModelId: string) {
-    setIsModelSelectorOpen(false);
     if (nextModelId === selectedModelId) {
       return;
     }
@@ -575,97 +521,42 @@ function ExperienceComposer({
 
       <PromptInputFooter className="items-center gap-2 px-3 pb-3 pt-2 sm:px-4">
         <PromptInputTools className="min-w-0 flex-1 flex-wrap gap-2">
-          <ModelSelector
-            onOpenChange={handleModelSelectorOpenChange}
+          <ModelTargetSelectorDialog
+            description="先选来源，再按 Provider 递进筛选模型广场中的语言模型。"
+            emptyMessage="当前没有可用的语言模型。请先在模型广场接入模型，或在我的部署中启动模型。"
+            onOpenChange={setIsModelSelectorOpen}
+            onSelect={handleSelectModel}
             open={isModelSelectorOpen}
-          >
-            <ModelSelectorTrigger
-              className={cn(
-                buttonVariants({ size: "sm", variant: "secondary" }),
-                "h-9 max-w-full justify-between gap-2 rounded-full border border-border/70 bg-muted/35 px-3 text-foreground shadow-none hover:bg-muted/55 sm:max-w-[420px]"
-              )}
-            >
-              <span
+            options={modelOptions}
+            selectedId={selectedModelId}
+            title="选择一个语言模型"
+            trigger={
+              <button
                 className={cn(
-                  "h-2 w-2 shrink-0 rounded-full",
-                  selectedModel?.source === "deployment"
-                    ? "bg-emerald-500"
-                    : "bg-primary"
+                  buttonVariants({ size: "sm", variant: "secondary" }),
+                  "h-9 max-w-full justify-between gap-2 rounded-full border border-border/70 bg-muted/35 px-3 text-foreground shadow-none hover:bg-muted/55 sm:max-w-[420px]"
                 )}
-              />
-              <span className="min-w-0 truncate text-left">
-                {selectedModel ? selectedModel.name : "选择一个语言模型"}
-              </span>
-              <span className="hidden shrink-0 text-xs font-normal text-muted-foreground sm:inline">
-                {selectedModel ? selectedModel.providerName : activeSourceLabel}
-              </span>
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            </ModelSelectorTrigger>
-
-            <ModelSelectorContent
-              className="max-w-[760px]"
-              title="选择一个语言模型"
-            >
-              <ModelSelectorInput placeholder="搜索模型或 Provider" />
-              <div className="grid min-h-[340px] grid-cols-1 border-t border-border sm:grid-cols-[176px_minmax(0,1fr)]">
-                <div className="space-y-1 border-b border-border bg-muted/20 p-2 sm:border-b-0 sm:border-r">
-                  {modelSourceTabs.map((item) => {
-                    const isActive = item.value === activeModelSource;
-                    return (
-                      <button
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm transition-colors",
-                          isActive
-                            ? "bg-background text-foreground shadow-sm"
-                            : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
-                        )}
-                        key={item.value}
-                        onClick={() => setActiveModelSource(item.value)}
-                        type="button"
-                      >
-                        <item.icon className="h-4 w-4 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {item.count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <ModelSelectorList className="max-h-[420px]">
-                  <ModelSelectorEmpty>
-                    {activeModelSource === "registry"
-                      ? "模型广场暂无匹配模型。"
-                      : "我的部署暂无匹配模型。"}
-                  </ModelSelectorEmpty>
-                  <ModelSelectorGroup heading={activeSourceLabel}>
-                    {activeOptions.map((model) => {
-                      const isSelected = model.id === selectedModelId;
-                      return (
-                        <ModelSelectorItem
-                          className="mx-2 rounded-lg px-3 py-3"
-                          key={model.id}
-                          onSelect={() => handleSelectModel(model.id)}
-                          value={`${model.name} ${model.providerName}`}
-                        >
-                          <div className="flex min-w-0 flex-1 flex-col gap-1">
-                            <ModelSelectorName className="text-sm font-medium text-foreground">
-                              {model.name}
-                            </ModelSelectorName>
-                            <div className="text-xs text-muted-foreground">
-                              {model.providerName}
-                            </div>
-                          </div>
-                          {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                        </ModelSelectorItem>
-                      );
-                    })}
-                  </ModelSelectorGroup>
-                </ModelSelectorList>
-              </div>
-            </ModelSelectorContent>
-          </ModelSelector>
+                disabled={!modelOptions.length}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    selectedModel?.source === "deployment"
+                      ? "bg-emerald-500"
+                      : "bg-primary"
+                  )}
+                />
+                <span className="min-w-0 truncate text-left">
+                  {selectedModel ? selectedModel.name : "选择一个语言模型"}
+                </span>
+                <span className="hidden shrink-0 text-xs font-normal text-muted-foreground sm:inline">
+                  {selectedModel ? selectedModel.providerName : "模型广场 / 我的部署"}
+                </span>
+                <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </button>
+            }
+          />
 
           {messagesLength ? (
             <PromptInputButton

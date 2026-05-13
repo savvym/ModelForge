@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronsUpDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -24,10 +25,10 @@ import {
   buildEvalModelTargetOptions,
   buildEvalModelTargetPayload,
   describeEvalModelTarget,
-  formatEvalModelTargetOption,
   pickDefaultEvalModelTarget,
   type EvalModelTargetOption
 } from "@/features/eval/model-target-options";
+import { ModelTargetSelectorDialog } from "@/features/model-selection/components/model-target-selector-dialog";
 import type {
   BenchmarkDefinitionSummary,
   BenchmarkVersionSummary,
@@ -48,6 +49,7 @@ export function BenchmarkEvaluationRunCreateForm({
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
 
   const builtinBenchmarks = useMemo(
     () => benchmarks.filter((benchmark) => benchmark.source_type === "builtin" && hasEnabledVersion(benchmark)),
@@ -234,18 +236,34 @@ export function BenchmarkEvaluationRunCreateForm({
           }
           label="评测模型"
         >
-          <Select disabled={formDisabled} onValueChange={setModelTargetId} value={modelTargetId}>
-            <SelectTrigger>
-              <SelectValue placeholder="选择模型" />
-            </SelectTrigger>
-            <SelectContent>
-              {modelOptions.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {formatEvalModelTargetOption(model)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ModelTargetSelectorDialog
+            description="为本次评测选择模型。模型广场模型可先按 Provider 递进筛选，我的部署会展示已就绪的部署。"
+            emptyMessage="当前项目没有可用模型。请先在模型广场接入模型，或在我的部署中启动模型。"
+            onOpenChange={setModelSelectorOpen}
+            onSelect={setModelTargetId}
+            open={modelSelectorOpen}
+            options={modelOptions}
+            selectedId={modelTargetId}
+            title="选择评测模型"
+            trigger={
+              <Button
+                className="h-auto min-h-10 w-full justify-between gap-3 rounded-md border-input bg-card/80 px-3 py-2 text-left font-normal shadow-none"
+                disabled={formDisabled}
+                type="button"
+                variant="outline"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-foreground">
+                    {selectedModel?.name ?? "选择模型"}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {selectedModel?.providerName ?? "模型广场 / 我的部署"}
+                  </span>
+                </span>
+                <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </Button>
+            }
+          />
         </FieldBlock>
 
         <FieldBlock
