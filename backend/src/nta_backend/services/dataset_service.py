@@ -975,6 +975,20 @@ class DatasetService:
                 file_payloads = await _read_all_dataset_payloads(version_files, version)
             except (FileNotFoundError, KeyError) as exc:
                 raise KeyError(version_id) from exc
+            except Exception as exc:
+                synced_at = _now()
+                version.training_sync_json = {
+                    "status": "failed",
+                    "bucket": config.get("bucket"),
+                    "destination_uris": [],
+                    "object_count": 0,
+                    "total_bytes": 0,
+                    "synced_at": synced_at.isoformat(),
+                    "error": f"读取源数据集对象失败：{exc}",
+                }
+                version.updated_at = synced_at
+                await session.commit()
+                raise ValueError(f"同步训练环境 COS 失败：读取源数据集对象失败：{exc}") from exc
 
             synced_at = _now()
             destination_uris: list[str] = []

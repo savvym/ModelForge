@@ -197,6 +197,9 @@ async def test_create_suite_run_compiles_deployment_binding(
                 status="active",
                 config_json={
                     "machine_name": "pytest-h20",
+                    "agent_base_url": "http://10.0.0.12:9000",
+                    "agent_token": "agent-token",
+                    "runtime_api_key": "runtime-token",
                     "agent_status": {
                         "deployment_id": "deployment-id",
                         "phase": "ready",

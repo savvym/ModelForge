@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     s3_root_prefix: str | None = None
     s3_direct_upload_mode: Literal["auto", "presigned", "cos-sts"] = "auto"
     s3_sts_duration_seconds: int = 1800
+    s3_connect_timeout_seconds: int = 5
+    s3_read_timeout_seconds: int = 60
+    s3_max_attempts: int = 2
 
     @property
     def s3_resolved_root_prefix(self) -> str:

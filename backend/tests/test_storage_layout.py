@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
+import pytest
+
 
 def _load_target_module():
     backend_src = Path(__file__).resolve().parents[1] / "src"
@@ -26,6 +28,14 @@ PROJECT_ID = UUID("11111111-1111-1111-1111-111111111111")
 DATASET_ID = UUID("22222222-2222-2222-2222-222222222222")
 VERSION_ID = UUID("33333333-3333-3333-3333-333333333333")
 CREATED_AT = datetime(2026, 3, 26, 12, 34, 56)
+
+
+@pytest.fixture(autouse=True)
+def _use_dev_storage_prefix(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("S3_ROOT_PREFIX", "nta-dev")
+    TARGET_MODULE.get_settings.cache_clear()
+    yield
+    TARGET_MODULE.get_settings.cache_clear()
 
 
 def test_build_project_files_key_uses_project_prefix() -> None:

@@ -19,9 +19,9 @@ def _get_cached_s3_client(endpoint_url: str):
             config=Config(
                 signature_version="s3v4",
                 s3={"addressing_style": settings.s3_addressing_style},
-                connect_timeout=1,
-                read_timeout=2,
-                retries={"max_attempts": 0},
+                connect_timeout=settings.s3_connect_timeout_seconds,
+                read_timeout=settings.s3_read_timeout_seconds,
+                retries={"max_attempts": settings.s3_max_attempts},
             ),
         )
         _s3_clients[endpoint_url] = client
