@@ -2,7 +2,7 @@ FROM node:22-alpine AS builder
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 WORKDIR /app
 
