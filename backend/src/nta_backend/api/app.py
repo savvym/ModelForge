@@ -8,14 +8,14 @@ from nta_backend.api.middleware import install_middleware
 from nta_backend.api.routers import (
     auth,
     benchmarks,
-    bronze,
     datasets,
     eval_templates,
     evaluation_catalog_v2,
     evaluation_leaderboards_v2,
     evaluation_runs_v2,
     health,
-    lake,
+    lake_repos,
+    training_cos_files,
     model_deployments,
     model_providers,
     models,
@@ -28,6 +28,7 @@ from nta_backend.api.routers import (
 )
 from nta_backend.core.config import get_settings
 from nta_backend.core.db import dispose_engine
+from nta_backend.core.gitea_client import shutdown_gitea_client
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ async def lifespan(_: FastAPI):
     )
     yield
     logger.info("API shutdown started")
+    await shutdown_gitea_client()
     await dispose_engine()
     logger.info("API shutdown completed")
 
@@ -65,8 +67,8 @@ def create_app() -> FastAPI:
     api_router.include_router(model_deployments.router, tags=["model-deployments"])
     api_router.include_router(system_config.router, tags=["system-config"])
     api_router.include_router(datasets.router, tags=["datasets"])
-    api_router.include_router(lake.router, tags=["lake"])
-    api_router.include_router(bronze.router, tags=["bronze"])
+    api_router.include_router(lake_repos.router, tags=["data-lake"])
+    api_router.include_router(training_cos_files.router, tags=["training-cos"])
     api_router.include_router(eval_templates.router, tags=["eval-templates"])
     api_router.include_router(uploads.router, tags=["uploads"])
     api_router.include_router(streams.router, tags=["streams"])

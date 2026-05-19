@@ -98,6 +98,15 @@ class Settings(BaseSettings):
     def s3_bucket_tmp(self) -> str:
         return self.s3_bucket_main
 
+    gitea_internal_url: str = "http://gitea:3000"
+    gitea_external_url: str = "http://127.0.0.1:3001"
+    gitea_admin_user: str = "nta-admin"
+    gitea_admin_token: SecretStr = SecretStr("")
+    gitea_default_branch: str = "main"
+    gitea_org_prefix: str = "proj-"
+    gitea_request_timeout_seconds: float = 30.0
+    gitea_lake_inline_max_bytes: int = 1 * 1024 * 1024
+
     infer_agent_base_url: str | None = None
     infer_agent_token: SecretStr | None = None
     infer_runtime_api_key: SecretStr | None = None

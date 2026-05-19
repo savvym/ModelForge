@@ -118,6 +118,48 @@ services:
     entrypoint: ["/bin/sh", "/scripts/init-buckets.sh"]
     restart: "no"
 
+  gitea:
+    image: gitea/gitea:${GITEA_VERSION}
+    container_name: nta-gitea
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__ROOT_URL: http://127.0.0.1:${GITEA_HTTP_PORT}/
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__SSH_PORT: "${GITEA_SSH_PORT}"
+      GITEA__server__SSH_LISTEN_PORT: "22"
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: ${POSTGRES_USER}
+      GITEA__database__PASSWD: ${POSTGRES_PASSWORD}
+      GITEA__database__SSL_MODE: disable
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "true"
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__security__SECRET_KEY: ${GITEA_SECRET_KEY}
+      GITEA__security__INTERNAL_TOKEN: ${GITEA_INTERNAL_TOKEN}
+      GITEA__lfs__PATH: /data/git/lfs
+      GITEA__lfs__JWT_SECRET: ${GITEA_LFS_JWT_SECRET}
+      GITEA__server__LFS_START_SERVER: "true"
+      GITEA__server__LFS_JWT_SECRET: ${GITEA_LFS_JWT_SECRET}
+    ports:
+      - "${GITEA_HTTP_PORT}:3000"
+      - "${GITEA_SSH_PORT}:22"
+    volumes:
+      - gitea_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   rustfs_data:
+  gitea_data:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from uuid import UUID
 
@@ -7,15 +8,18 @@ from sqlalchemy import delete, func, select
 
 from nta_backend.core.auth_context import resolve_current_user
 from nta_backend.core.db import SessionLocal
+from nta_backend.core.gitea_client import GiteaError, get_gitea_client
 from nta_backend.core.project_context import (
     DEFAULT_PROJECT_CODE,
     DEFAULT_PROJECT_ID,
     ensure_default_project,
 )
+
+logger = logging.getLogger(__name__)
 from nta_backend.models.auth import Project, ProjectMember
 from nta_backend.models.dataset import Dataset
 from nta_backend.models.evaluation_v2 import EvaluationRun
-from nta_backend.models.lake import LakeAsset
+from nta_backend.models.lake_repo import LakeRepo
 from nta_backend.models.modeling import Endpoint, Model, ModelProvider
 from nta_backend.schemas.project import ProjectCreate, ProjectDetail, ProjectSummary
 
@@ -41,7 +45,7 @@ def _normalize_optional_text(value: str | None) -> str | None:
 class _ProjectCounts(dict[str, dict[UUID, int]]):
     dataset: dict[UUID, int]
     evaluation_run: dict[UUID, int]
-    lake_asset: dict[UUID, int]
+    lake_repo: dict[UUID, int]
     provider: dict[UUID, int]
     model: dict[UUID, int]
     endpoint: dict[UUID, int]
@@ -65,11 +69,11 @@ async def _load_project_counts(session) -> _ProjectCounts:
             session,
             select(EvaluationRun.project_id, func.count(EvaluationRun.id)).group_by(EvaluationRun.project_id),
         ),
-        lake_asset=await _count_by_project(
+        lake_repo=await _count_by_project(
             session,
-            select(LakeAsset.project_id, func.count(LakeAsset.id))
-            .where(LakeAsset.status != "deleted")
-            .group_by(LakeAsset.project_id),
+            select(LakeRepo.project_id, func.count(LakeRepo.id))
+            .where(LakeRepo.status != "deleted")
+            .group_by(LakeRepo.project_id),
         ),
         provider=await _count_by_project(
             session,
@@ -105,7 +109,7 @@ def _resource_count(project: Project, counts: _ProjectCounts) -> int:
     return (
         counts["dataset"].get(project.id, 0)
         + counts["evaluation_run"].get(project.id, 0)
-        + counts["lake_asset"].get(project.id, 0)
+        + counts["lake_repo"].get(project.id, 0)
         + counts["provider"].get(project.id, 0)
         + counts["model"].get(project.id, 0)
         + counts["endpoint"].get(project.id, 0)
@@ -216,7 +220,21 @@ class ProjectService:
             await session.commit()
             await session.refresh(project)
             counts = await _load_project_counts(session)
-            return _to_project_summary(project, counts)
+            summary = _to_project_summary(project, counts)
+
+        try:
+            from nta_backend.services.lake_repo_service import project_org_name
+
+            client = get_gitea_client()
+            org = project_org_name(project)
+            if await client.get_org(org) is None:
+                await client.create_org(org, description=project.name)
+        except GiteaError as exc:
+            logger.warning(
+                "Failed to create Gitea org for project %s: %s — reconcile later", project.id, exc
+            )
+
+        return summary
 
     async def delete_project(self, project_id: UUID) -> None:
         async with SessionLocal() as session:
@@ -248,5 +266,16 @@ class ProjectService:
             await session.execute(
                 delete(ProjectMember).where(ProjectMember.project_id == project.id)
             )
+            project_code_snapshot = project.code
             await session.delete(project)
             await session.commit()
+
+        try:
+            from nta_backend.services.lake_repo_service import org_name_from_code
+
+            client = get_gitea_client()
+            await client.delete_org(org_name_from_code(project_code_snapshot))
+        except GiteaError as exc:
+            logger.warning(
+                "Failed to delete Gitea org for project %s: %s", project_id, exc
+            )

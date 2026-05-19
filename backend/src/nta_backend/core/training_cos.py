@@ -15,6 +15,34 @@ class TrainingCosObjectResult:
     etag: str | None
 
 
+@dataclass(frozen=True)
+class TrainingCosObjectEntry:
+    key: str
+    name: str
+    size: int
+    last_modified: str | None
+    etag: str | None
+
+
+@dataclass(frozen=True)
+class TrainingCosListResult:
+    prefix: str
+    folders: list[str]
+    files: list[TrainingCosObjectEntry]
+    next_token: str | None
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class TrainingCosObjectBody:
+    object_key: str
+    body: bytes
+    content_type: str
+    size: int
+    etag: str | None
+    last_modified: str | None
+
+
 def build_training_cos_endpoint_url(config: Mapping[str, object]) -> str:
     endpoint = _read_text(config, "endpoint")
     if not endpoint:
@@ -47,6 +75,94 @@ def put_training_cos_object(
         ContentType=content_type or "application/octet-stream",
     )
     return TrainingCosObjectResult(object_key=object_key.lstrip("/"), etag=response.get("ETag"))
+
+
+def list_training_cos_objects(
+    config: Mapping[str, object],
+    *,
+    prefix: str = "",
+    delimiter: str = "/",
+    max_keys: int = 200,
+    continuation_token: str | None = None,
+) -> TrainingCosListResult:
+    """List a single level of the training COS bucket using a delimiter."""
+    client = build_training_cos_client(config)
+    bucket = _read_required_text(config, "bucket", "训练环境 COS bucket 未配置")
+    normalized = prefix.lstrip("/")
+    if normalized and not normalized.endswith("/"):
+        normalized = f"{normalized}/" if delimiter == "/" else normalized
+
+    params: dict[str, object] = {
+        "Bucket": bucket,
+        "Prefix": normalized,
+        "MaxKeys": max_keys,
+    }
+    if delimiter:
+        params["Delimiter"] = delimiter
+    if continuation_token:
+        params["ContinuationToken"] = continuation_token
+
+    response = client.list_objects_v2(**params)
+
+    folders: list[str] = []
+    for item in response.get("CommonPrefixes") or []:
+        sub_prefix = (item or {}).get("Prefix") if isinstance(item, dict) else None
+        if sub_prefix:
+            folders.append(sub_prefix)
+
+    files: list[TrainingCosObjectEntry] = []
+    for item in response.get("Contents") or []:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("Key")
+        if not isinstance(key, str):
+            continue
+        if key == normalized:
+            # Skip the placeholder folder marker (rare on COS but possible).
+            continue
+        last_modified = item.get("LastModified")
+        files.append(
+            TrainingCosObjectEntry(
+                key=key,
+                name=key[len(normalized):] if key.startswith(normalized) else key,
+                size=int(item.get("Size") or 0),
+                last_modified=last_modified.isoformat() if hasattr(last_modified, "isoformat") else None,
+                etag=item.get("ETag"),
+            )
+        )
+
+    return TrainingCosListResult(
+        prefix=normalized,
+        folders=folders,
+        files=files,
+        next_token=response.get("NextContinuationToken"),
+        truncated=bool(response.get("IsTruncated")),
+    )
+
+
+def get_training_cos_object(
+    config: Mapping[str, object],
+    *,
+    object_key: str,
+) -> TrainingCosObjectBody:
+    """Download an object from the training COS bucket via the platform backend."""
+    client = build_training_cos_client(config)
+    bucket = _read_required_text(config, "bucket", "训练环境 COS bucket 未配置")
+    key = object_key.lstrip("/")
+    response = client.get_object(Bucket=bucket, Key=key)
+    body_stream = response.get("Body")
+    if body_stream is None:
+        raise ValueError("训练环境 COS 返回空对象")
+    body_bytes = body_stream.read()
+    last_modified = response.get("LastModified")
+    return TrainingCosObjectBody(
+        object_key=key,
+        body=body_bytes,
+        content_type=str(response.get("ContentType") or "application/octet-stream"),
+        size=int(response.get("ContentLength") or len(body_bytes)),
+        etag=response.get("ETag"),
+        last_modified=last_modified.isoformat() if hasattr(last_modified, "isoformat") else None,
+    )
 
 
 def probe_training_cos(config: Mapping[str, object]) -> dict[str, object]:

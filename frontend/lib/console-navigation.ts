@@ -45,9 +45,10 @@ export const consoleNavSections: ConsoleNavSection[] = [
     title: "数据管理",
     items: [
       { title: "数据集", href: "/dataset", group: "workspace" },
-      { title: "数据湖", href: "/lake-assets", group: "workspace" },
+      { title: "数据湖", href: "/data-lake", group: "workspace" },
       { title: "Files", href: "/files", group: "workspace" },
-      { title: "对象存储", href: "/data", group: "workspace" }
+      { title: "对象存储", href: "/data", group: "workspace" },
+      { title: "训练环境存储", href: "/training-cos", group: "workspace" }
     ]
   },
   {
@@ -96,9 +97,14 @@ export const consolePageMeta: Record<string, ConsolePageMeta> = {
     group: "workspace"
   },
   dataset: { title: "数据集", description: "数据集、版本和共享管理。", group: "workspace" },
-  "lake-assets": {
+  "data-lake": {
     title: "数据湖",
-    description: "Bronze 管理中心，统一管理 URL、PDF、Markdown、图片和 raw evidence 证据包。",
+    description: "以 Git 仓库为单位管理原始资产：每个仓库可包含 md、图片、HTML 等文件，并具备版本历史。",
+    group: "workspace"
+  },
+  "training-cos": {
+    title: "训练环境对象存储",
+    description: "通过服务器中转浏览训练环境 COS，支持查看常见格式与下载。",
     group: "workspace"
   },
   files: {

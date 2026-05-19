@@ -94,14 +94,6 @@ def build_dataset_version_code(created_at: datetime, version_id: UUID) -> str:
     return build_resource_code("dsv", created_at, version_id)
 
 
-def build_lake_batch_code(created_at: datetime, batch_id: UUID) -> str:
-    return build_resource_code("lb", created_at, batch_id)
-
-
-def build_lake_asset_code(created_at: datetime, asset_id: UUID) -> str:
-    return build_resource_code("la", created_at, asset_id)
-
-
 def build_project_prefix(project_id: UUID) -> str:
     return f"{build_projects_root_prefix()}{project_id}/"
 
@@ -202,42 +194,6 @@ def build_eval_spec_version_dataset_key(
         f"{build_project_domain_prefix(project_id, 'evaluation-catalog')}"
         f"specs/{safe_spec_name}/versions/{safe_version}/datasets/{safe_name}"
     )
-
-
-def build_lake_prefix(project_id: UUID, stage: str) -> str:
-    normalized_stage = stage.strip().strip("/")
-    if not normalized_stage:
-        raise ValueError("数据湖层级不能为空")
-    return f"{build_project_domain_prefix(project_id, 'lake')}{normalized_stage}/"
-
-
-def build_lake_raw_key(project_id: UUID, batch_id: str, asset_id: str, relative_path: str) -> str:
-    normalized_relative_path = normalize_relative_object_path(
-        relative_path,
-        fallback_name="asset.bin",
-    )
-    return f"{build_lake_prefix(project_id, 'raw')}{batch_id}/original/{normalized_relative_path}"
-
-
-def build_lake_processed_key(
-    project_id: UUID,
-    asset_id: str,
-    artifact_type: str,
-    file_name: str,
-) -> str:
-    safe_name = PurePosixPath(file_name).name or "artifact.bin"
-    normalized_artifact_type = artifact_type.strip().strip("/")
-    if not normalized_artifact_type:
-        raise ValueError("处理产物类型不能为空")
-    return (
-        f"{build_lake_prefix(project_id, 'processed')}"
-        f"{asset_id}/{normalized_artifact_type}/{safe_name}"
-    )
-
-
-def build_lake_curated_key(project_id: UUID, collection_id: str, file_name: str) -> str:
-    safe_name = PurePosixPath(file_name).name or "artifact.bin"
-    return f"{build_lake_prefix(project_id, 'curated')}{collection_id}/{safe_name}"
 
 
 def build_scoped_object_key(prefix: str, file_name: str, relative_path: str | None = None) -> str:

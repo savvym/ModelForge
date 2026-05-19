@@ -232,216 +232,156 @@ export interface DatasetVersionCreateInput {
   source_uri?: string | null;
 }
 
-export interface LakeBatchSummary {
+export interface LakeRepoSummary {
   id: string;
+  project_id: string;
   name: string;
+  display_name: string;
   description?: string | null;
-  stage: string;
-  source_type: string;
-  resource_type?: string | null;
+  gitea_org: string;
+  gitea_repo: string;
+  default_branch: string;
+  visibility: "private" | "internal";
   status: string;
-  planned_file_count: number;
-  completed_file_count: number;
-  failed_file_count: number;
-  total_size_bytes: number;
-  tags: string[];
-  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
 
-export interface LakeAssetSummary {
-  id: string;
-  batch_id: string;
-  batch_name: string;
-  parent_asset_id?: string | null;
+export interface LakeRepoCommitSummary {
+  sha: string;
+  message: string;
+  author_name: string;
+  author_email: string;
+  committed_at: string;
+  parents: string[];
+}
+
+export interface LakeRepoDetail extends LakeRepoSummary {
+  web_url?: string | null;
+  clone_url?: string | null;
+  last_commit?: LakeRepoCommitSummary | null;
+  size_kib?: number | null;
+  empty: boolean;
+}
+
+export interface LakeRepoListResponse {
+  items: LakeRepoSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface LakeRepoCreateInput {
   name: string;
+  display_name?: string | null;
   description?: string | null;
-  stage: string;
-  source_type: string;
-  resource_type?: string | null;
-  format?: string | null;
+  visibility?: "private" | "internal";
+}
+
+export interface LakeRepoUpdateInput {
+  display_name?: string | null;
+  description?: string | null;
+  default_branch?: string | null;
+}
+
+export interface LakeTreeEntry {
+  type: "dir" | "file" | "symlink" | "submodule";
+  path: string;
+  name: string;
+  sha: string;
+  size?: number | null;
+  is_lfs: boolean;
+}
+
+export interface LakeTreeResponse {
+  ref: string;
+  path: string;
+  entries: LakeTreeEntry[];
+}
+
+export interface LakeFileResponse {
+  path: string;
+  ref: string;
+  name: string;
+  sha: string;
+  size: number;
   mime_type?: string | null;
-  relative_path?: string | null;
-  object_key?: string | null;
-  source_uri?: string | null;
-  size_bytes?: number | null;
-  record_count?: number | null;
-  status: string;
-  tags: string[];
-  metadata: Record<string, unknown>;
-  error_message?: string | null;
-  created_at: string;
-  updated_at: string;
+  is_binary: boolean;
+  is_lfs: boolean;
+  encoding?: "utf8" | "base64" | null;
+  content?: string | null;
+  download_url?: string | null;
 }
 
-export interface LakeBatchCreateInput {
+export interface LakeBranchSummary {
   name: string;
-  description?: string | null;
-  source_type?: string;
-  resource_type?: string | null;
-  planned_file_count: number;
-  root_paths?: string[];
-  tags?: string[];
-  metadata?: Record<string, unknown>;
+  commit_sha: string;
+  is_default: boolean;
 }
 
-export interface LakeAssetDirectUploadInitInput {
-  batch_id: string;
-  description?: string | null;
-  source_type?: string;
-  resource_type?: string | null;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-  file_name: string;
-  file_size: number;
-  content_type?: string | null;
-  relative_path?: string | null;
+export interface LakeUploadFile {
+  path: string;
+  content_b64: string;
 }
 
-export interface LakeAssetDirectUploadInitResponse {
-  batch_id: string;
-  asset_id: string;
-  status: string;
-  object_key: string;
-  source_uri: string;
-  file_name: string;
-  upload: ObjectStoreDirectUploadInitResponse;
+export interface LakeBatchUploadRequest {
+  branch: string;
+  message: string;
+  files: LakeUploadFile[];
 }
 
-export type BronzeAssetType =
-  | "web_page"
-  | "website_batch"
-  | "pdf"
-  | "markdown"
-  | "markdown_package"
-  | "image"
-  | "object_prefix";
-
-export type BronzeImportMethod =
-  | "url"
-  | "url_list"
-  | "sitemap"
-  | "upload"
-  | "uploaded_package"
-  | "object_key"
-  | "object_prefix";
-
-export interface BronzeImportCreateInput {
-  asset_type: BronzeAssetType;
-  import_method?: BronzeImportMethod | null;
-  source_uri?: string | null;
-  name?: string | null;
-  provider?: string | null;
-  product?: string | null;
-  tags?: string[];
-  capture_mode?: string;
-  extract_images?: boolean;
-  trigger_silver?: boolean;
-  entrypoint?: string | null;
-  manifest_uri?: string | null;
-  metadata?: Record<string, unknown>;
+export interface LakeBatchUploadResponse {
+  commit_sha: string;
+  committed_at?: string | null;
 }
 
-export interface BronzeAssetPatchInput {
-  name?: string | null;
-  provider?: string | null;
-  product?: string | null;
-  tags?: string[] | null;
-  metadata?: Record<string, unknown> | null;
+export interface LakeCommitListResponse {
+  commits: LakeRepoCommitSummary[];
+  page: number;
+  page_size: number;
+  total: number;
 }
 
-export interface BronzeArtifactSummary {
-  id: string;
-  snapshot_id?: string | null;
+export interface TrainingCosStatus {
+  enabled: boolean;
+  configured: boolean;
+  bucket?: string | null;
+  bucket_alias?: string | null;
+  region?: string | null;
+  endpoint?: string | null;
+  target_prefix?: string | null;
+  addressing_style?: string | null;
+}
+
+export interface TrainingCosEntry {
+  type: "dir" | "file";
   name: string;
-  artifact_type: string;
-  object_bucket?: string | null;
-  object_key?: string | null;
-  source_uri?: string | null;
+  key: string;
+  size?: number | null;
+  last_modified?: string | null;
+  etag?: string | null;
+}
+
+export interface TrainingCosListResponse {
+  prefix: string;
+  parent_prefix?: string | null;
+  entries: TrainingCosEntry[];
+  next_token?: string | null;
+  truncated: boolean;
+}
+
+export interface TrainingCosPreviewResponse {
+  key: string;
+  name: string;
+  size: number;
   mime_type?: string | null;
-  size_bytes?: number | null;
-  preview_kind: string;
-  created_at?: string | null;
-}
-
-export interface BronzeSnapshotSummary {
-  id: string;
-  asset_id: string;
-  status: string;
-  snapshot_time: string;
-  raw_hash?: string | null;
-  rendered_hash?: string | null;
-  text_hash?: string | null;
-  content_hash?: string | null;
-  artifact_count: number;
-  diff_status: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface BronzeLineageSummary {
-  silver_ready: boolean;
-  gold_outputs: string[];
-  downstream_jobs: string[];
-}
-
-export interface BronzeJobSummary {
-  id: string;
-  name: string;
-  source_type: string;
-  resource_type?: string | null;
-  status: string;
-  planned_asset_count: number;
-  completed_asset_count: number;
-  failed_asset_count: number;
-  tags: string[];
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface BronzeAssetSummary {
-  id: string;
-  name: string;
-  description?: string | null;
-  source_type: string;
-  source_uri?: string | null;
-  provider?: string | null;
-  product?: string | null;
-  tags: string[];
-  latest_snapshot_id?: string | null;
-  latest_snapshot_at?: string | null;
-  artifact_count: number;
-  image_count: number;
-  hash_status: string;
-  status: string;
-  ingestion_job_id: string;
-  ingestion_job_name: string;
-  object_bucket?: string | null;
-  object_key?: string | null;
-  size_bytes?: number | null;
-  metadata: Record<string, unknown>;
-  error_message?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface BronzeAssetDetail extends BronzeAssetSummary {
-  snapshots: BronzeSnapshotSummary[];
-  artifacts: BronzeArtifactSummary[];
-  logs: string[];
-  lineage: BronzeLineageSummary;
-}
-
-export interface BronzeImportCreateResponse {
-  asset: BronzeAssetDetail;
-  job: BronzeJobSummary;
-}
-
-export interface BronzeArtifactSignedUrl {
-  artifact_id: string;
-  url: string;
-  expires_in: number;
+  is_binary: boolean;
+  encoding?: "utf8" | "base64" | null;
+  content?: string | null;
+  download_url: string;
+  last_modified?: string | null;
+  etag?: string | null;
+  truncated: boolean;
 }
 
 export interface BenchmarkVersionSummary {

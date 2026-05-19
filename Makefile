@@ -8,12 +8,12 @@ DOCKER ?= docker
 COMPOSE_FILE ?= infra/compose/docker-compose.dev.yml
 PROD_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
 ENV_FILE := .env
-DEV_INFRA_SERVICES ?= postgres temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway
+DEV_INFRA_SERVICES ?= postgres temporal temporal-ui temporal-namespace-init rustfs rustfs-init gateway gitea
 
 .PHONY: \
 	help \
 	dev \
-	infra.up infra.down infra.logs \
+	infra.up infra.down infra.logs gitea.bootstrap \
 	backend.migrate backend.dev backend.api backend.worker backend.test \
 	frontend.dev \
 	format \
@@ -41,6 +41,9 @@ infra.down: ## Stop and remove local infrastructure volumes
 infra.logs: ## Tail local infrastructure logs
 	@command -v $(DOCKER) >/dev/null || { echo "Error: '$(DOCKER)' is not installed or not in PATH."; exit 127; }
 	$(DOCKER) compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) logs -f
+
+gitea.bootstrap: ## Create the Gitea admin user and write GITEA_ADMIN_TOKEN to .env
+	./infra/scripts/bootstrap-gitea.sh
 
 # ----- Backend --------------------------------------------------------------
 

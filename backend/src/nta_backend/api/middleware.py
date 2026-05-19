@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -54,7 +56,8 @@ def install_middleware(app: FastAPI) -> None:
             reset_current_user_id(user_token)
             reset_current_project_id(token)
 
-        response.headers["X-Request-Path"] = request.url.path
+        # Header values are latin-1; URL-encode so non-ASCII paths survive.
+        response.headers["X-Request-Path"] = quote(request.url.path, safe="/:@-._~!$&'()*+,;=")
         response.headers[CURRENT_PROJECT_HEADER] = str(current_project_id)
         if current_user_id is not None:
             response.headers[CURRENT_USER_HEADER] = str(current_user_id)

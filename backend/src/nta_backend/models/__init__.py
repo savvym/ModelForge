@@ -21,7 +21,7 @@ from nta_backend.models.evaluation_v2 import (
     TemplateSpecVersion,
 )
 from nta_backend.models.jobs import BatchJob, JobLog
-from nta_backend.models.lake import LakeAsset, LakeBatch
+from nta_backend.models.lake_repo import LakeRepo
 from nta_backend.models.modeling import Endpoint, InferenceMachine, Model, ModelProvider
 from nta_backend.models.probe import Probe, ProbeHeartbeat, ProbeTask
 from nta_backend.models.security import SecurityEvent, VpcBinding
@@ -54,8 +54,7 @@ __all__ = [
     "EvaluationRunSample",
     "JobLog",
     "JudgePolicy",
-    "LakeAsset",
-    "LakeBatch",
+    "LakeRepo",
     "Model",
     "ModelProvider",
     "Project",

@@ -25,8 +25,6 @@ TARGET_MODULE = _load_target_module()
 PROJECT_ID = UUID("11111111-1111-1111-1111-111111111111")
 DATASET_ID = UUID("22222222-2222-2222-2222-222222222222")
 VERSION_ID = UUID("33333333-3333-3333-3333-333333333333")
-LAKE_BATCH_ID = UUID("55555555-5555-5555-5555-555555555555")
-LAKE_ASSET_ID = UUID("66666666-6666-6666-6666-666666666666")
 CREATED_AT = datetime(2026, 3, 26, 12, 34, 56)
 
 
@@ -72,23 +70,6 @@ def test_build_dataset_artifact_key_uses_artifacts_directory() -> None:
         == "nta-dev/projects/11111111-1111-1111-1111-111111111111/datasets/"
         "ds-20260326123456-y8mjm/versions/"
         "dsv-20260326123456-xcxtf/artifacts/schema-report.json"
-    )
-
-
-def test_build_lake_raw_key_preserves_original_relative_path() -> None:
-    assert (
-        TARGET_MODULE.build_lake_raw_key(PROJECT_ID, "batch-001", "asset-001", "docs/paper.pdf")
-        == "nta-dev/projects/11111111-1111-1111-1111-111111111111/lake/raw/"
-        "batch-001/original/docs/paper.pdf"
-    )
-
-
-def test_build_lake_resource_codes_use_expected_prefixes() -> None:
-    assert (
-        TARGET_MODULE.build_lake_batch_code(CREATED_AT, LAKE_BATCH_ID) == "lb-20260326123456-vlkd1"
-    )
-    assert (
-        TARGET_MODULE.build_lake_asset_code(CREATED_AT, LAKE_ASSET_ID) == "la-20260326123456-upvmu"
     )
 
 
