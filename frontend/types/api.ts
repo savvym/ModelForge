@@ -384,6 +384,90 @@ export interface TrainingCosPreviewResponse {
   truncated: boolean;
 }
 
+export type TrainingCosHuggingFaceRepoType = "model" | "dataset" | "space";
+
+export interface TrainingCosHuggingFaceRepoSummary {
+  repo_id: string;
+  repo_type: TrainingCosHuggingFaceRepoType;
+  private?: boolean | null;
+  author?: string | null;
+  tags: string[];
+  last_modified?: string | null;
+  url?: string | null;
+}
+
+export interface TrainingCosHuggingFaceRepoSearchResponse {
+  repo_type: TrainingCosHuggingFaceRepoType;
+  query: string;
+  repos: TrainingCosHuggingFaceRepoSummary[];
+}
+
+export interface TrainingCosHuggingFaceFolderFile {
+  key: string;
+  relative_path: string;
+  name: string;
+  size: number;
+  last_modified?: string | null;
+  etag?: string | null;
+}
+
+export interface TrainingCosHuggingFaceFolderFilesResponse {
+  prefix: string;
+  files: TrainingCosHuggingFaceFolderFile[];
+  total_size: number;
+  truncated: boolean;
+}
+
+export interface TrainingCosHuggingFaceSyncCreateInput {
+  prefix: string;
+  repo_id: string;
+  repo_type: TrainingCosHuggingFaceRepoType;
+  create_if_missing: boolean;
+  private: boolean;
+  create_readme: boolean;
+  license?: string | null;
+  base_model?: string | null;
+  tags: string[];
+  exclude_keys: string[];
+}
+
+export interface TrainingCosHuggingFaceSyncLog {
+  level: string;
+  message: string;
+  logged_at: string;
+  payload?: Record<string, unknown> | null;
+}
+
+export interface TrainingCosHuggingFaceSyncJob {
+  id: string;
+  prefix: string;
+  repo_id: string;
+  repo_type: TrainingCosHuggingFaceRepoType;
+  status: "pending" | "running" | "succeeded" | "failed";
+  progress_total?: number | null;
+  progress_done?: number | null;
+  progress_percent: number;
+  total_files: number;
+  total_bytes: number;
+  downloaded_files: number;
+  downloaded_bytes: number;
+  skipped_files: number;
+  created_repo: boolean;
+  repo_url?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  logs: TrainingCosHuggingFaceSyncLog[];
+}
+
+export interface TrainingCosHuggingFaceSyncJobListResponse {
+  prefix?: string | null;
+  last_sync_at?: string | null;
+  jobs: TrainingCosHuggingFaceSyncJob[];
+}
+
 export interface BenchmarkVersionSummary {
   id: string;
   display_name: string;

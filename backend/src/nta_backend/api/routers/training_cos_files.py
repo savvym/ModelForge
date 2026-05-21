@@ -1,9 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from nta_backend.schemas.training_cos import (
+    TrainingCosHuggingFaceFolderFilesResponse,
+    TrainingCosHuggingFaceRepoSearchResponse,
+    TrainingCosHuggingFaceRepoType,
+    TrainingCosHuggingFaceSyncCreateRequest,
+    TrainingCosHuggingFaceSyncJob,
+    TrainingCosHuggingFaceSyncJobListResponse,
     TrainingCosListResponse,
     TrainingCosPreviewResponse,
     TrainingCosStatus,
@@ -13,9 +22,13 @@ from nta_backend.services.training_cos_browser_service import (
     TrainingCosUnavailable,
     TrainingCosUpstreamError,
 )
+from nta_backend.services.training_cos_huggingface_sync_service import (
+    TrainingCosHuggingFaceSyncService,
+)
 
 router = APIRouter(prefix="/training-cos")
 service = TrainingCosBrowserService()
+hf_sync_service = TrainingCosHuggingFaceSyncService()
 
 
 def _raise_unavailable(exc: TrainingCosUnavailable) -> HTTPException:
@@ -32,6 +45,10 @@ def _raise_upstream(exc: TrainingCosUpstreamError) -> HTTPException:
 
 def _raw_download_path(key: str) -> str:
     return f"/api/v1/training-cos/object/raw?key={key}"
+
+
+def _raise_bad_request(exc: ValueError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.get("/status", response_model=TrainingCosStatus)
@@ -88,3 +105,93 @@ async def download_object(key: str = Query(..., min_length=1)) -> StreamingRespo
     )
     response.headers["Content-Length"] = str(body.size)
     return response
+
+
+@router.get("/huggingface/repos", response_model=TrainingCosHuggingFaceRepoSearchResponse)
+async def search_huggingface_repos(
+    query: str = Query(default="", max_length=256),
+    repo_type: Annotated[TrainingCosHuggingFaceRepoType, Query()] = "model",
+    limit: int = Query(default=12, ge=1, le=50),
+) -> TrainingCosHuggingFaceRepoSearchResponse:
+    try:
+        return await hf_sync_service.search_repos(
+            repo_type=repo_type,
+            query=query,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise _raise_bad_request(exc) from exc
+
+
+@router.get(
+    "/huggingface/folder-files",
+    response_model=TrainingCosHuggingFaceFolderFilesResponse,
+)
+async def list_huggingface_folder_files(
+    prefix: str = Query(..., min_length=1, max_length=2048),
+    limit: int = Query(default=10000, ge=1, le=10000),
+) -> TrainingCosHuggingFaceFolderFilesResponse:
+    try:
+        return await hf_sync_service.list_folder_files(prefix=prefix, limit=limit)
+    except TrainingCosUnavailable as exc:
+        raise _raise_unavailable(exc) from exc
+    except TrainingCosUpstreamError as exc:
+        raise _raise_upstream(exc) from exc
+    except ValueError as exc:
+        raise _raise_bad_request(exc) from exc
+
+
+@router.post("/huggingface/sync-jobs", response_model=TrainingCosHuggingFaceSyncJob)
+async def create_huggingface_sync_job(
+    payload: TrainingCosHuggingFaceSyncCreateRequest,
+    background_tasks: BackgroundTasks,
+) -> TrainingCosHuggingFaceSyncJob:
+    try:
+        job = await hf_sync_service.create_sync_job(payload)
+    except ValueError as exc:
+        raise _raise_bad_request(exc) from exc
+    background_tasks.add_task(hf_sync_service.run_job, job.id)
+    return job
+
+
+@router.get(
+    "/huggingface/sync-jobs",
+    response_model=TrainingCosHuggingFaceSyncJobListResponse,
+)
+async def list_huggingface_sync_jobs(
+    prefix: str | None = Query(default=None, max_length=2048),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> TrainingCosHuggingFaceSyncJobListResponse:
+    try:
+        return await hf_sync_service.list_jobs(prefix=prefix, limit=limit)
+    except ValueError as exc:
+        raise _raise_bad_request(exc) from exc
+
+
+@router.get(
+    "/huggingface/sync-jobs/{job_id}",
+    response_model=TrainingCosHuggingFaceSyncJob,
+)
+async def get_huggingface_sync_job(job_id: UUID) -> TrainingCosHuggingFaceSyncJob:
+    try:
+        return await hf_sync_service.get_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/huggingface/sync-jobs/{job_id}/retry",
+    response_model=TrainingCosHuggingFaceSyncJob,
+)
+async def retry_huggingface_sync_job(
+    job_id: UUID,
+    background_tasks: BackgroundTasks,
+) -> TrainingCosHuggingFaceSyncJob:
+    try:
+        job = await hf_sync_service.retry_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise _raise_bad_request(exc) from exc
+    background_tasks.add_task(hf_sync_service.run_job, job.id)
+    return job

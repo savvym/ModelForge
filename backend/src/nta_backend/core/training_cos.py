@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -126,7 +127,9 @@ def list_training_cos_objects(
                 key=key,
                 name=key[len(normalized):] if key.startswith(normalized) else key,
                 size=int(item.get("Size") or 0),
-                last_modified=last_modified.isoformat() if hasattr(last_modified, "isoformat") else None,
+                last_modified=(
+                    last_modified.isoformat() if hasattr(last_modified, "isoformat") else None
+                ),
                 etag=item.get("ETag"),
             )
         )
@@ -163,6 +166,21 @@ def get_training_cos_object(
         etag=response.get("ETag"),
         last_modified=last_modified.isoformat() if hasattr(last_modified, "isoformat") else None,
     )
+
+
+def download_training_cos_object_to_file(
+    config: Mapping[str, object],
+    *,
+    object_key: str,
+    destination_path: str | Path,
+) -> None:
+    """Stream an object from the training COS bucket into a local file."""
+    client = build_training_cos_client(config)
+    bucket = _read_required_text(config, "bucket", "训练环境 COS bucket 未配置")
+    key = object_key.lstrip("/")
+    path = Path(destination_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    client.download_file(bucket, key, str(path))
 
 
 def probe_training_cos(config: Mapping[str, object]) -> dict[str, object]:

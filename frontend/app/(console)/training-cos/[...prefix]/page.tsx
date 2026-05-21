@@ -1,4 +1,4 @@
-import { renderBrowser } from "../page";
+import { renderTrainingCosBrowser } from "@/features/training-cos/components/browser-page";
 
 export default async function TrainingCosPrefixPage({
   params
@@ -8,5 +8,5 @@ export default async function TrainingCosPrefixPage({
   const { prefix } = await params;
   const decoded = prefix.map((segment) => decodeURIComponent(segment)).join("/");
   const normalized = decoded ? `${decoded.replace(/^\/+|\/+$/g, "")}/` : "";
-  return renderBrowser(normalized);
+  return renderTrainingCosBrowser(normalized);
 }

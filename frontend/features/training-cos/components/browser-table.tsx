@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { buildTrainingCosDownloadUrl } from "@/features/training-cos/api";
+import { TrainingCosHuggingFaceSyncDialog } from "@/features/training-cos/components/huggingface-sync-dialog";
 import type { TrainingCosEntry } from "@/types/api";
 
 const TEXT_EXT = new Set([
@@ -93,7 +94,7 @@ export function TrainingCosBrowserTable({
               <TableHead className="w-[48%]">名称</TableHead>
               <TableHead className="w-[140px]">大小</TableHead>
               <TableHead className="w-[200px]">最近修改</TableHead>
-              <TableHead className="w-[120px] text-right">操作</TableHead>
+              <TableHead className="w-[160px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -149,7 +150,9 @@ export function TrainingCosBrowserTable({
                         <Download className="mr-1.5 size-3.5" />
                         下载
                       </a>
-                    ) : null}
+                    ) : (
+                      <TrainingCosHuggingFaceSyncDialog entry={entry} />
+                    )}
                   </TableCell>
                 </TableRow>
               );
