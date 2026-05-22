@@ -5,7 +5,7 @@ import importlib.metadata
 try:
     __version__ = importlib.metadata.version("nta-probe-agent")
 except importlib.metadata.PackageNotFoundError:
-    __version__ = "0.1.1"
+    __version__ = "0.1.2"
 
 from nta_probe_agent.agent import ProbeAgent
 from nta_probe_agent.config import ProbeAgentConfig
