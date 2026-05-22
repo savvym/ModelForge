@@ -29,6 +29,8 @@ class DatasetSummary(BaseModel):
     owner_name: str | None = None
     tags: list[str] = []
     record_count: int | None = None
+    token_count: int | None = None
+    tokenizer_name: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -61,6 +63,8 @@ class DatasetVersionSummary(BaseModel):
     source_uri: str | None = None
     object_key: str | None = None
     record_count: int | None = None
+    token_count: int | None = None
+    tokenizer_name: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
     created_by: str | None = None

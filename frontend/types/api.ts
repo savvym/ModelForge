@@ -99,6 +99,8 @@ export interface DatasetSummary {
   owner_name?: string | null;
   tags: string[];
   record_count?: number | null;
+  token_count?: number | null;
+  tokenizer_name?: string | null;
   created_at: string;
   updated_at?: string | null;
 }
@@ -115,6 +117,8 @@ export interface DatasetVersionSummary {
   source_uri?: string | null;
   object_key?: string | null;
   record_count?: number | null;
+  token_count?: number | null;
+  tokenizer_name?: string | null;
   created_at: string;
   updated_at?: string | null;
   created_by?: string | null;

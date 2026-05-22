@@ -55,6 +55,10 @@ from nta_backend.schemas.dataset import (
     PresignUploadResponse,
 )
 from nta_backend.schemas.object_store import ObjectStoreDirectUploadInitResponse
+from nta_backend.services.dataset_token_estimator import (
+    estimate_eval_sample_tokens,
+    estimate_text_tokens,
+)
 from nta_backend.services.system_config_service import load_training_cos_config
 
 ASIA_SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -67,6 +71,13 @@ DATASET_CODE_PATTERN = re.compile(r"^ds-\d{14}-[0-9a-z]{5}$")
 class DatasetDownloadPayload:
     file_name: str
     object_payload: ObjectPayload
+
+
+@dataclass(frozen=True)
+class DatasetBodyMetrics:
+    record_count: int
+    token_count: int
+    tokenizer_name: str
 
 
 def _now() -> datetime:
@@ -102,9 +113,36 @@ def _record_count_for_dataset_body(
     purpose: str | None = None,
     use_case: str | None = None,
 ) -> int:
+    return _dataset_body_metrics(
+        file_name=file_name,
+        body=body,
+        purpose=purpose,
+        use_case=use_case,
+    ).record_count
+
+
+def _dataset_body_metrics(
+    *,
+    file_name: str,
+    body: bytes,
+    purpose: str | None = None,
+    use_case: str | None = None,
+) -> DatasetBodyMetrics:
     if _is_eval_dataset(purpose=purpose, use_case=use_case):
-        return normalize_eval_dataset_bytes(file_name, body).record_count
-    return _count_records(body)
+        normalized = normalize_eval_dataset_bytes(file_name, body)
+        token_estimate = estimate_eval_sample_tokens(normalized.samples)
+        return DatasetBodyMetrics(
+            record_count=normalized.record_count,
+            token_count=token_estimate.token_count,
+            tokenizer_name=token_estimate.tokenizer_name,
+        )
+
+    token_estimate = estimate_text_tokens(body.decode("utf-8", errors="replace"))
+    return DatasetBodyMetrics(
+        record_count=_count_records(body),
+        token_count=token_estimate.token_count,
+        tokenizer_name=token_estimate.tokenizer_name,
+    )
 
 
 def _build_dataset_preview(
@@ -283,6 +321,8 @@ def _to_version_summary(
         source_uri=version.source_uri,
         object_key=file_item.object_key if file_item else version.object_key,
         record_count=version.record_count,
+        token_count=version.token_count,
+        tokenizer_name=version.tokenizer_name,
         created_at=version.created_at,
         updated_at=version.updated_at,
         created_by=None,
@@ -350,6 +390,8 @@ def _to_dataset_summary(
         owner_name=dataset.owner_name,
         tags=dataset.tags or [],
         record_count=latest_version.record_count if latest_version else None,
+        token_count=latest_version.token_count if latest_version else None,
+        tokenizer_name=latest_version.tokenizer_name if latest_version else None,
         created_at=dataset.created_at,
         updated_at=dataset.updated_at,
     )
@@ -680,6 +722,12 @@ async def activity_process_dataset_import(
         object_key = file_item.object_key if file_item is not None else version.object_key
         if not object_key:
             raise ValueError("数据集对象存储路径缺失")
+        metrics = _dataset_body_metrics(
+            file_name=file_name,
+            body=object_payload.body,
+            purpose=dataset.purpose,
+            use_case=dataset.use_case,
+        )
 
         return {
             "status": "processing",
@@ -688,12 +736,9 @@ async def activity_process_dataset_import(
             "object_key": object_key,
             "file_name": file_name,
             "file_size": object_payload.size_bytes,
-            "record_count": _record_count_for_dataset_body(
-                file_name=file_name,
-                body=object_payload.body,
-                purpose=dataset.purpose,
-                use_case=dataset.use_case,
-            ),
+            "record_count": metrics.record_count,
+            "token_count": metrics.token_count,
+            "tokenizer_name": metrics.tokenizer_name,
         }
 
 
@@ -731,15 +776,18 @@ async def activity_finalize_dataset_import(
         )
 
         processed_at = _now()
-        version.object_key = object_key
-        version.source_uri = version.source_uri or _build_source_uri(DATASET_RAW_BUCKET, object_key)
-        version.file_size = object_payload.size_bytes
-        version.record_count = _record_count_for_dataset_body(
+        metrics = _dataset_body_metrics(
             file_name=file_name,
             body=object_payload.body,
             purpose=dataset.purpose,
             use_case=dataset.use_case,
         )
+        version.object_key = object_key
+        version.source_uri = version.source_uri or _build_source_uri(DATASET_RAW_BUCKET, object_key)
+        version.file_size = object_payload.size_bytes
+        version.record_count = metrics.record_count
+        version.token_count = metrics.token_count
+        version.tokenizer_name = metrics.tokenizer_name
         version.status = "ready"
         version.updated_at = processed_at
 
@@ -761,6 +809,8 @@ async def activity_finalize_dataset_import(
             "dataset_version_id": str(version.id),
             "object_key": object_key,
             "record_count": version.record_count,
+            "token_count": version.token_count,
+            "tokenizer_name": version.tokenizer_name,
         }
 
 
@@ -1079,6 +1129,12 @@ class DatasetService:
                 _delete_managed_object(object_key)
                 raise
 
+            metrics = _dataset_body_metrics(
+                file_name=file_name,
+                body=stored_payload.body,
+                purpose=payload.purpose,
+                use_case=payload.use_case,
+            )
             dataset = Dataset(
                 id=dataset_id,
                 project_id=project_id,
@@ -1108,12 +1164,9 @@ class DatasetService:
                 source_uri=payload.source_uri,
                 object_key=object_key,
                 file_size=stored_payload.size_bytes,
-                record_count=_record_count_for_dataset_body(
-                    file_name=file_name,
-                    body=stored_payload.body,
-                    purpose=payload.purpose,
-                    use_case=payload.use_case,
-                ),
+                record_count=metrics.record_count,
+                token_count=metrics.token_count,
+                tokenizer_name=metrics.tokenizer_name,
                 status="ready",
                 created_at=created_at,
                 updated_at=created_at,
@@ -1378,6 +1431,12 @@ class DatasetService:
                 _delete_managed_object(object_key)
                 raise
 
+            metrics = _dataset_body_metrics(
+                file_name=file_name,
+                body=stored_payload.body,
+                purpose=use_case,
+                use_case=use_case,
+            )
             dataset = Dataset(
                 id=dataset_id,
                 project_id=project_id,
@@ -1407,12 +1466,9 @@ class DatasetService:
                 source_uri=None,
                 object_key=object_key,
                 file_size=stored_payload.size_bytes,
-                record_count=_record_count_for_dataset_body(
-                    file_name=file_name,
-                    body=stored_payload.body,
-                    purpose=use_case,
-                    use_case=use_case,
-                ),
+                record_count=metrics.record_count,
+                token_count=metrics.token_count,
+                tokenizer_name=metrics.tokenizer_name,
                 status="ready",
                 created_at=created_at,
                 updated_at=created_at,
@@ -1492,6 +1548,12 @@ class DatasetService:
                 _delete_managed_object(object_key)
                 raise
 
+            metrics = _dataset_body_metrics(
+                file_name=file_name,
+                body=stored_payload.body,
+                purpose=dataset.purpose,
+                use_case=dataset.use_case,
+            )
             version = DatasetVersion(
                 id=version_id,
                 dataset_id=dataset.id,
@@ -1502,12 +1564,9 @@ class DatasetService:
                 source_uri=payload.source_uri,
                 object_key=object_key,
                 file_size=stored_payload.size_bytes,
-                record_count=_record_count_for_dataset_body(
-                    file_name=file_name,
-                    body=stored_payload.body,
-                    purpose=dataset.purpose,
-                    use_case=dataset.use_case,
-                ),
+                record_count=metrics.record_count,
+                token_count=metrics.token_count,
+                tokenizer_name=metrics.tokenizer_name,
                 status="ready",
                 created_at=created_at,
                 updated_at=created_at,
@@ -1670,6 +1729,12 @@ class DatasetService:
                 _delete_managed_object(object_key)
                 raise
 
+            metrics = _dataset_body_metrics(
+                file_name=file_name,
+                body=stored_payload.body,
+                purpose=dataset.purpose,
+                use_case=dataset.use_case,
+            )
             version = DatasetVersion(
                 id=version_id,
                 dataset_id=dataset.id,
@@ -1680,12 +1745,9 @@ class DatasetService:
                 source_uri=None,
                 object_key=object_key,
                 file_size=stored_payload.size_bytes,
-                record_count=_record_count_for_dataset_body(
-                    file_name=file_name,
-                    body=stored_payload.body,
-                    purpose=dataset.purpose,
-                    use_case=dataset.use_case,
-                ),
+                record_count=metrics.record_count,
+                token_count=metrics.token_count,
+                tokenizer_name=metrics.tokenizer_name,
                 status="ready",
                 created_at=created_at,
                 updated_at=created_at,

@@ -59,6 +59,8 @@ class DatasetVersion(Base, UUIDPrimaryKeyMixin, CreatedByMixin, StatusMixin, Tim
     object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     record_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    token_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    tokenizer_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     import_job_id: Mapped[PythonUUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     training_sync_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 

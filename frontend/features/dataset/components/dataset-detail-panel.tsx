@@ -993,6 +993,7 @@ function DatasetVersionDetailTab({
               <DetailRow label="描述" value={version.description || dataset.description || "--"} />
               <DetailRow label="来源类型" value={version.source_type || "--"} />
               <DetailRow label="来源路径" value={version.source_uri || "--"} />
+              <DetailRow label="Tokenizer" value={version.tokenizer_name || "--"} />
               <DetailRow label="训练 COS" value={version.training_sync_uri || "--"} />
               <DetailRow
                 label="同步时间"
@@ -1638,6 +1639,10 @@ function getPreviewCacheKey(versionId: string, fileId: string) {
 }
 
 function getEstimatedTokens(version: DatasetVersionSummary) {
+  if (typeof version.token_count === "number") {
+    return version.token_count;
+  }
+
   if (version.record_count === 1) {
     return 83;
   }
