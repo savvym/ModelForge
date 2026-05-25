@@ -1198,7 +1198,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
         }}
         open={Boolean(pendingDeploy)}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[min(760px,calc(100vh-2rem))] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>选择推理机器</DialogTitle>
             <DialogDescription>
@@ -1225,14 +1225,14 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
               <div className="flex flex-col gap-2">
                 <Label>LoRA SFT Adapter</Label>
                 <Select onValueChange={setDeployAdapterModelId} value={deployAdapterModelId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="min-w-0">
                     <SelectValue placeholder="不使用 Adapter" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-w-[min(520px,calc(100vw-2rem))]">
                     <SelectItem value={noAdapterValue}>不使用 Adapter</SelectItem>
                     {deployAdapterOptions.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
-                        {model.name}
+                        <span className="block max-w-[460px] truncate">{model.name}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1285,13 +1285,15 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                   }}
                   value={deployMachineId}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="min-w-0">
                     <SelectValue placeholder="请选择" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-w-[min(520px,calc(100vw-2rem))]">
                     {deployMachines.map((machine) => (
                       <SelectItem key={machine.id} value={machine.id}>
-                        {machine.name} · {readMachineGpuString(machine)}
+                        <span className="block max-w-[460px] truncate">
+                          {machine.name} · {readMachineGpuString(machine)}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
