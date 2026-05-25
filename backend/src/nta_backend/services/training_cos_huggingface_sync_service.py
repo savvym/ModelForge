@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 JOB_TYPE = "training-cos-hf-sync"
 JOB_NAME_PREFIX = "Training COS HF Sync"
+MAX_JOB_NAME_LENGTH = 120
 DEFAULT_SEARCH_LIMIT = 12
 MAX_FILE_FILTER_RESULTS = 10000
 
@@ -125,7 +126,7 @@ class TrainingCosHuggingFaceSyncService:
             metadata = _initial_job_metadata(normalized_payload)
             job = BatchJob(
                 project_id=project_id,
-                name=f"{JOB_NAME_PREFIX}: {normalized_payload.prefix.rstrip('/')}",
+                name=_job_name(normalized_payload.prefix),
                 description=json.dumps(metadata, ensure_ascii=False),
                 input_object_key=normalized_payload.prefix,
                 output_object_key=_huggingface_uri(
@@ -791,6 +792,20 @@ def _repo_url(
 
 def _huggingface_uri(repo_type: TrainingCosHuggingFaceRepoType, repo_id: str) -> str:
     return f"hf://{repo_type}/{repo_id}"
+
+
+def _job_name(prefix: str) -> str:
+    display_prefix = prefix.rstrip("/") or prefix
+    name_prefix = f"{JOB_NAME_PREFIX}: "
+    remaining = MAX_JOB_NAME_LENGTH - len(name_prefix)
+    if len(display_prefix) <= remaining:
+        return f"{name_prefix}{display_prefix}"
+    if remaining <= 1:
+        return name_prefix[:MAX_JOB_NAME_LENGTH]
+    suffix = "..."
+    if remaining <= len(suffix):
+        return f"{name_prefix}{display_prefix[:remaining]}"
+    return f"{name_prefix}{display_prefix[: remaining - len(suffix)]}{suffix}"
 
 
 def _hf_repo_type_arg(repo_type: TrainingCosHuggingFaceRepoType) -> str | None:

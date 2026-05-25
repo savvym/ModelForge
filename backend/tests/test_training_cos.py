@@ -3,6 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from nta_backend.core import training_cos
+from nta_backend.services.training_cos_huggingface_sync_service import (
+    JOB_NAME_PREFIX,
+    MAX_JOB_NAME_LENGTH,
+    _job_name,
+)
 
 
 def test_build_training_cos_endpoint_url() -> None:
@@ -113,3 +118,16 @@ def test_put_training_cos_object_builds_tencent_cos_client(monkeypatch) -> None:
         "Body": b"{}\n",
         "ContentType": "application/x-ndjson",
     }
+
+
+def test_huggingface_sync_job_name_is_capped_for_long_prefix() -> None:
+    prefix = (
+        "checkpoints/gemma4-31b-it-troubleshooting-sft-lora-8gpu/"
+        "v0-20260525-232909/v0-20260525-232909/checkpoint-150/"
+    )
+
+    name = _job_name(prefix)
+
+    assert name.startswith(f"{JOB_NAME_PREFIX}: ")
+    assert len(name) <= MAX_JOB_NAME_LENGTH
+    assert prefix.rstrip("/") not in name
