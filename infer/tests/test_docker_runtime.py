@@ -17,7 +17,7 @@ def _settings(tmp_path: Path) -> AgentSettings:
 
 
 @pytest.mark.asyncio
-async def test_start_vllm_uses_all_gpus(
+async def test_start_vllm_uses_selected_gpus(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -50,7 +50,7 @@ async def test_start_vllm_uses_all_gpus(
 
     run_command = commands[1]
     gpus_index = run_command.index("--gpus")
-    assert run_command[gpus_index + 1] == "all"
+    assert run_command[gpus_index + 1] == "device=0,1,2,3"
     restart_index = run_command.index("--restart")
     assert run_command[restart_index + 1] == "on-failure:3"
     api_key_index = run_command.index("--api-key")
@@ -73,6 +73,43 @@ async def test_start_vllm_uses_all_gpus(
     image_index = run_command.index("vllm/vllm-openai:latest")
     assert run_command[image_index + 1] == "/model"
     assert "--model" not in run_command
+
+
+@pytest.mark.asyncio
+async def test_start_vllm_uses_all_gpus_when_gpu_ids_are_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
+
+    async def fake_run_command(command: list[str], **_: object) -> str:
+        commands.append(command)
+        return "container-id"
+
+    monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
+    runtime = DockerRuntime(_settings(tmp_path))
+    spec = DeploymentSpec(
+        deployment_id="deployment-id",
+        generation=1,
+        model=ModelBinding(
+            model_id="model-id",
+            name="Qwen",
+            served_name="qwen",
+            source=ModelSource(type="local", uri="local:///model"),
+        ),
+        engine=EngineSpec(
+            api_key="runtime-token",
+            image="vllm/vllm-openai:latest",
+            gpu_ids=[],
+            tensor_parallel_size=4,
+        ),
+    )
+
+    await runtime.start_vllm(spec, Path("/tmp/model"))
+
+    run_command = commands[1]
+    gpus_index = run_command.index("--gpus")
+    assert run_command[gpus_index + 1] == "all"
 
 
 @pytest.mark.asyncio

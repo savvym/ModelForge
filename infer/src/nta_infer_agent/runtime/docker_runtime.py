@@ -38,6 +38,12 @@ VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset(
 )
 
 
+def _docker_gpu_arg(gpu_ids: list[int]) -> str:
+    if not gpu_ids:
+        return "all"
+    return f"device={','.join(str(gpu_id) for gpu_id in gpu_ids)}"
+
+
 @dataclass(frozen=True)
 class ContainerState:
     status: str
@@ -73,7 +79,7 @@ class DockerRuntime:
                 else "no"
             ),
             "--gpus",
-            "all",
+            _docker_gpu_arg(spec.engine.gpu_ids),
             "--ipc=host",
             "-p",
             f"{spec.engine.listen_port}:{self.settings.vllm_container_port}",

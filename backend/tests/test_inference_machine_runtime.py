@@ -95,6 +95,82 @@ def test_build_spec_downstreams_runtime_api_key_and_redacts_it() -> None:
     assert _redact_spec(spec)["engine"]["api_key"] == "********"
 
 
+def test_build_spec_prefers_explicit_deployment_gpu_ids() -> None:
+    model = SimpleNamespace(
+        id=uuid4(),
+        name="Qwen",
+        model_code="qwen",
+        capabilities_json={
+            "huggingface_import": {
+                "repo_id": "Qwen/Qwen2.5",
+                "revision": "main",
+            }
+        },
+    )
+    machine = InferenceMachineRuntimeConfig(
+        id=uuid4(),
+        name="h20-node-01",
+        agent_base_url="http://10.0.0.12:9000",
+        agent_token="agent-token",
+        runtime_api_key="runtime-token",
+        runtime_public_host="10.0.0.12",
+        vllm_image="vllm/vllm-openai:latest",
+        gpu_ids=[0, 1, 2, 3],
+        tensor_parallel_size=2,
+        dtype="bfloat16",
+        gpu_memory_utilization=0.85,
+        max_model_len=None,
+        listen_port=8000,
+    )
+
+    spec = ModelDeploymentService()._build_spec(
+        model,  # type: ignore[arg-type]
+        DeployModelRequest(gpu_ids=[2, 3], tensor_parallel_size=2),
+        inference_machine=machine,
+        system_huggingface_config={},
+    )
+
+    assert spec.engine.gpu_ids == [2, 3]
+    assert spec.engine.tensor_parallel_size == 2
+
+
+def test_build_spec_requires_explicit_gpu_count_to_match_tp() -> None:
+    model = SimpleNamespace(
+        id=uuid4(),
+        name="Qwen",
+        model_code="qwen",
+        capabilities_json={
+            "huggingface_import": {
+                "repo_id": "Qwen/Qwen2.5",
+                "revision": "main",
+            }
+        },
+    )
+    machine = InferenceMachineRuntimeConfig(
+        id=uuid4(),
+        name="h20-node-01",
+        agent_base_url="http://10.0.0.12:9000",
+        agent_token="agent-token",
+        runtime_api_key="runtime-token",
+        runtime_public_host="10.0.0.12",
+        vllm_image="vllm/vllm-openai:latest",
+        gpu_ids=[0, 1, 2, 3],
+        tensor_parallel_size=2,
+        dtype="bfloat16",
+        gpu_memory_utilization=0.85,
+        max_model_len=None,
+        listen_port=8000,
+    )
+
+    with pytest.raises(ValueError, match="GPU 数量"):
+        ModelDeploymentService()._build_spec(
+            model,  # type: ignore[arg-type]
+            DeployModelRequest(gpu_ids=[2], tensor_parallel_size=2),
+            inference_machine=machine,
+            system_huggingface_config={},
+        )
+
+
 def test_build_spec_leaves_plain_models_without_reasoning_parser_args() -> None:
     model = SimpleNamespace(
         id=uuid4(),

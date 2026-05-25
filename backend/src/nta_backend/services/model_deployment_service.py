@@ -200,6 +200,17 @@ def _deployment_served_model_name(
     return model_name.strip() if isinstance(model_name, str) and model_name.strip() else None
 
 
+def _validate_deployment_gpu_ids(gpu_ids: list[int], tensor_parallel_size: int) -> list[int]:
+    normalized = [int(gpu_id) for gpu_id in gpu_ids]
+    if any(gpu_id < 0 for gpu_id in normalized):
+        raise ValueError("GPU ID 需要为非负整数。")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("GPU ID 不能重复。")
+    if normalized and len(normalized) != tensor_parallel_size:
+        raise ValueError("选择的 GPU 数量需要与 Tensor Parallel Size 一致。")
+    return normalized
+
+
 def _is_unloaded_config(config: dict[str, Any]) -> bool:
     return bool(config.get("unloaded_at"))
 
@@ -1308,9 +1319,13 @@ class ModelDeploymentService:
         served_name = _normalize_served_name(
             payload.served_model_name or model.model_code or model.name
         )
-        gpu_ids = payload.gpu_ids or inference_machine.gpu_ids
         tensor_parallel_size = (
             payload.tensor_parallel_size or inference_machine.tensor_parallel_size
+        )
+        gpu_ids = (
+            _validate_deployment_gpu_ids(payload.gpu_ids, tensor_parallel_size)
+            if payload.gpu_ids is not None
+            else inference_machine.gpu_ids
         )
         deployment_hints = _read_deployment_hints(model)
         tp_options = (

@@ -4,11 +4,13 @@ import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "r
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Activity,
   FileSearch,
   FolderOpen,
   Globe2,
   HardDrive,
   Loader2,
+  RefreshCw,
   Rocket,
   Search,
   Trash2,
@@ -69,6 +71,7 @@ import {
 } from "@/components/ui/table";
 import { S3BrowserDialog } from "@/features/object-store/components/s3-browser-dialog";
 import {
+  checkInferenceMachineHealth,
   createDeploymentFromModel,
   getInferenceMachines
 } from "@/features/model-deployments/api";
@@ -223,6 +226,65 @@ function readMachineGpuCount(machine: InferenceMachineSummary | null) {
   return machine.gpu_ids.length > 0 ? machine.gpu_ids.length : null;
 }
 
+function readGpuNumber(gpu: Record<string, unknown>, key: string) {
+  const value = gpu[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getSelectableGpus(machine: InferenceMachineSummary | null) {
+  if (!machine) {
+    return [];
+  }
+  const allowedIds = machine.gpu_ids.length ? new Set(machine.gpu_ids) : null;
+  return machine.last_gpus
+    .filter((gpu) => {
+      const index = readGpuNumber(gpu, "index");
+      return index != null && (allowedIds == null || allowedIds.has(index));
+    })
+    .sort((left, right) => {
+      const leftIndex = readGpuNumber(left, "index") ?? 0;
+      const rightIndex = readGpuNumber(right, "index") ?? 0;
+      return leftIndex - rightIndex;
+    });
+}
+
+function getDefaultGpuIds(machine: InferenceMachineSummary | null, tensorParallelSize: number) {
+  if (!machine || tensorParallelSize <= 0) {
+    return [];
+  }
+  const selectableGpus = getSelectableGpus(machine);
+  if (!selectableGpus.length) {
+    return machine.gpu_ids.slice(0, tensorParallelSize);
+  }
+  return [...selectableGpus]
+    .sort((left, right) => {
+      const leftMemoryUsed = readGpuNumber(left, "memory_used_mb") ?? Number.MAX_SAFE_INTEGER;
+      const rightMemoryUsed = readGpuNumber(right, "memory_used_mb") ?? Number.MAX_SAFE_INTEGER;
+      if (leftMemoryUsed !== rightMemoryUsed) {
+        return leftMemoryUsed - rightMemoryUsed;
+      }
+      const leftUtil = readGpuNumber(left, "utilization_gpu_percent") ?? Number.MAX_SAFE_INTEGER;
+      const rightUtil = readGpuNumber(right, "utilization_gpu_percent") ?? Number.MAX_SAFE_INTEGER;
+      return leftUtil - rightUtil;
+    })
+    .slice(0, tensorParallelSize)
+    .map((gpu) => readGpuNumber(gpu, "index"))
+    .filter((index): index is number => index != null)
+    .sort((left, right) => left - right);
+}
+
+function formatGpuCardUsage(gpu: Record<string, unknown>) {
+  const memoryUsedMb = readGpuNumber(gpu, "memory_used_mb");
+  const memoryTotalMb = readGpuNumber(gpu, "memory_total_mb");
+  const utilization = readGpuNumber(gpu, "utilization_gpu_percent");
+  const memoryText =
+    memoryUsedMb == null || memoryTotalMb == null
+      ? "显存 --"
+      : `${Math.round(memoryUsedMb / 1024)} / ${Math.round(memoryTotalMb / 1024)} GB`;
+  const utilizationText = utilization == null ? "占用 --" : `${utilization}%`;
+  return `${memoryText} · ${utilizationText}`;
+}
+
 function getModelTensorParallelOptions(
   model: RegistryModelSummary | null,
   machine: InferenceMachineSummary | null
@@ -278,8 +340,10 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const [deployMachineId, setDeployMachineId] = useState("");
   const [deployModelId, setDeployModelId] = useState("");
   const [deployTensorParallelSize, setDeployTensorParallelSize] = useState("");
+  const [deployGpuIds, setDeployGpuIds] = useState<number[]>([]);
   const [isDeployMachineLoading, setIsDeployMachineLoading] = useState(false);
   const [isDeployHintsLoading, setIsDeployHintsLoading] = useState(false);
+  const [isDeployGpuRefreshing, setIsDeployGpuRefreshing] = useState(false);
   const [deployMachineError, setDeployMachineError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelPage, setModelPage] = useState(1);
@@ -327,6 +391,10 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           : [],
     [deployTensorParallelFallback, deployTensorParallelOptions]
   );
+  const deploySelectableGpus = useMemo(
+    () => getSelectableGpus(selectedDeployMachine),
+    [selectedDeployMachine]
+  );
 
   const filteredModels = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
@@ -373,6 +441,35 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   }, [
     deployTensorParallelFallback,
     deployTensorParallelOptions,
+    pendingDeploy,
+    selectedDeployMachine
+  ]);
+
+  useEffect(() => {
+    if (!pendingDeploy || !selectedDeployMachine) {
+      setDeployGpuIds([]);
+      return;
+    }
+    const tensorParallelSize = Number.parseInt(deployTensorParallelSize, 10);
+    if (!Number.isInteger(tensorParallelSize) || tensorParallelSize <= 0) {
+      setDeployGpuIds([]);
+      return;
+    }
+    const selectableIds = new Set(
+      deploySelectableGpus
+        .map((gpu) => readGpuNumber(gpu, "index"))
+        .filter((index): index is number => index != null)
+    );
+    setDeployGpuIds((current) => {
+      const stillAvailable = current.filter((gpuId) => selectableIds.has(gpuId));
+      if (stillAvailable.length === tensorParallelSize) {
+        return stillAvailable;
+      }
+      return getDefaultGpuIds(selectedDeployMachine, tensorParallelSize);
+    });
+  }, [
+    deploySelectableGpus,
+    deployTensorParallelSize,
     pendingDeploy,
     selectedDeployMachine
   ]);
@@ -596,6 +693,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     setDeployMachineId("");
     setDeployModelId(model.model_code ?? model.name);
     setDeployTensorParallelSize("");
+    setDeployGpuIds([]);
     setDeployMachineError(null);
     setIsDeployMachineLoading(true);
     setIsDeployHintsLoading(false);
@@ -604,6 +702,9 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
         const activeMachines = machines.filter((machine) => machine.status === "active");
         setDeployMachines(activeMachines);
         setDeployMachineId(activeMachines[0]?.id ?? "");
+        if (activeMachines[0]?.id) {
+          refreshDeployMachineHealth(activeMachines[0].id);
+        }
       })
       .catch((error: unknown) => {
         setDeployMachineError(error instanceof Error ? error.message : "读取推理机器失败。");
@@ -626,6 +727,37 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           setIsDeployHintsLoading(false);
         });
     }
+  }
+
+  function refreshDeployMachineHealth(machineId = deployMachineId) {
+    if (!machineId) {
+      return;
+    }
+    setIsDeployGpuRefreshing(true);
+    void checkInferenceMachineHealth(machineId)
+      .then((health) => {
+        setDeployMachines((current) =>
+          current.map((machine) =>
+            machine.id === machineId
+              ? {
+                  ...machine,
+                  last_gpu_count: health.gpus.length,
+                  last_gpus: health.gpus,
+                  last_health_checked_at: health.checked_at,
+                  last_health_error: health.error,
+                  last_health_status: health.status,
+                  last_node_name: health.node_name
+                }
+              : machine
+          )
+        );
+      })
+      .catch((error: unknown) => {
+        setDeployMachineError(error instanceof Error ? error.message : "刷新 GPU 占用失败。");
+      })
+      .finally(() => {
+        setIsDeployGpuRefreshing(false);
+      });
   }
 
   function deployModel() {
@@ -652,10 +784,15 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
       setDeployMachineError("当前 Tensor Parallel Size 不在 config.json 支持的可选值中。");
       return;
     }
+    if (deploySelectableGpus.length > 0 && deployGpuIds.length !== tensorParallelSize) {
+      setDeployMachineError("请选择与 Tensor Parallel Size 数量一致的 GPU。");
+      return;
+    }
 
     const model = pendingDeploy;
     runAction(async () => {
       const deployment = await createDeploymentFromModel(model.id, {
+        gpu_ids: deployGpuIds.length > 0 ? deployGpuIds : undefined,
         machine_id: deployMachineId,
         name: `${model.name} 部署`,
         served_model_name: deployModelId.trim(),
@@ -993,7 +1130,9 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
             setPendingDeploy(null);
             setDeployModelId("");
             setDeployTensorParallelSize("");
+            setDeployGpuIds([]);
             setIsDeployHintsLoading(false);
+            setIsDeployGpuRefreshing(false);
             setDeployMachineError(null);
           }
         }}
@@ -1058,7 +1197,15 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
               </div>
               <div className="flex flex-col gap-2">
                 <Label>推理机器</Label>
-                <Select onValueChange={setDeployMachineId} value={deployMachineId}>
+                <Select
+                  onValueChange={(value) => {
+                    setDeployMachineId(value);
+                    setDeployGpuIds([]);
+                    setDeployMachineError(null);
+                    refreshDeployMachineHealth(value);
+                  }}
+                  value={deployMachineId}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="请选择" />
                   </SelectTrigger>
@@ -1082,6 +1229,97 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                       状态：{selectedDeployMachine.last_health_status ?? "未检查"} · TP{" "}
                       {selectedDeployMachine.tensor_parallel_size} · {selectedDeployMachine.dtype}
                     </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>GPU</Label>
+                  <Button
+                    disabled={!deployMachineId || isDeployGpuRefreshing}
+                    onClick={() => refreshDeployMachineHealth()}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <RefreshCw className={cn(isDeployGpuRefreshing ? "animate-spin" : "")} />
+                    刷新占用
+                  </Button>
+                </div>
+                {deploySelectableGpus.length ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {deploySelectableGpus.map((gpu) => {
+                      const gpuId = readGpuNumber(gpu, "index");
+                      if (gpuId == null) {
+                        return null;
+                      }
+                      const isSelected = deployGpuIds.includes(gpuId);
+                      const gpuName =
+                        typeof gpu.name === "string" && gpu.name.trim() ? gpu.name : "GPU";
+                      return (
+                        <button
+                          className={cn(
+                            "flex min-h-[72px] items-start gap-3 rounded-md border px-3 py-2 text-left transition-colors",
+                            isSelected
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border bg-background/40 text-foreground hover:bg-card/80"
+                          )}
+                          key={gpuId}
+                          onClick={() => {
+                            const tensorParallelSize = Number.parseInt(
+                              deployTensorParallelSize,
+                              10
+                            );
+                            setDeployGpuIds((current) => {
+                              if (current.includes(gpuId)) {
+                                return current.filter((item) => item !== gpuId);
+                              }
+                              const next = [...current, gpuId].sort((left, right) => left - right);
+                              if (
+                                Number.isInteger(tensorParallelSize) &&
+                                tensorParallelSize > 0 &&
+                                next.length > tensorParallelSize
+                              ) {
+                                return [...next.slice(1)];
+                              }
+                              return next;
+                            });
+                            setDeployMachineError(null);
+                          }}
+                          type="button"
+                        >
+                          <span
+                            className={cn(
+                              "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-medium",
+                              isSelected
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border text-muted-foreground"
+                            )}
+                          >
+                            {isSelected ? "✓" : ""}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">
+                              GPU {gpuId} · {gpuName}
+                            </span>
+                            <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                              <Activity className="size-3.5" />
+                              {formatGpuCardUsage(gpu)}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
+                    暂无单卡占用数据。刷新机器状态后可按 GPU 选择；未选择时使用机器默认 GPU 配置。
+                  </div>
+                )}
+                {deploySelectableGpus.length ? (
+                  <div className="text-xs leading-5 text-muted-foreground">
+                    已选择 GPU {deployGpuIds.length ? deployGpuIds.join(" / ") : "--"}，需与 TP{" "}
+                    {deployTensorParallelSize || "--"} 数量一致。
                   </div>
                 ) : null}
               </div>
@@ -1117,7 +1355,9 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                 isDeployMachineLoading ||
                 isDeployHintsLoading ||
                 !deployMachines.length ||
-                !deployTensorParallelSize
+                !deployTensorParallelSize ||
+                (deploySelectableGpus.length > 0 &&
+                  deployGpuIds.length !== Number.parseInt(deployTensorParallelSize, 10))
               }
               onClick={deployModel}
               type="button"
