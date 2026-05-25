@@ -53,6 +53,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Sheet,
   SheetContent,
@@ -95,6 +96,7 @@ type PendingDelete = { id: string; name: string } | null;
 type PendingDeploy = RegistryModelSummary | null;
 type ImportSourceType = "object-storage" | "huggingface";
 type ImportArtifactType = "full_model" | "lora_adapter";
+type ModelListTab = "full_models" | "lora_adapters";
 
 const MODEL_PAGE_SIZE = 12;
 const MY_MODEL_SOURCES = new Set(["object-storage-import", "huggingface-import", "finetune"]);
@@ -114,6 +116,10 @@ function createInitialImportForm() {
 
 function isMyModel(model: RegistryModelSummary) {
   return !model.is_provider_managed && MY_MODEL_SOURCES.has(model.source ?? "");
+}
+
+function isLoraAdapter(model: RegistryModelSummary) {
+  return model.artifact_type === "lora_adapter";
 }
 
 function statusTone(status: string) {
@@ -351,6 +357,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const [deployMachineError, setDeployMachineError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [modelPage, setModelPage] = useState(1);
+  const [modelListTab, setModelListTab] = useState<ModelListTab>("full_models");
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [importForm, setImportForm] = useState(createInitialImportForm);
@@ -368,26 +375,11 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const deferredQuery = useDeferredValue(query);
 
   const myModels = useMemo(() => initialModels.filter(isMyModel), [initialModels]);
+  const fullModels = useMemo(() => myModels.filter((model) => !isLoraAdapter(model)), [myModels]);
+  const loraAdapters = useMemo(() => myModels.filter(isLoraAdapter), [myModels]);
   const deployAdapterOptions = useMemo(
-    () =>
-      myModels.filter((model) => {
-        if (!pendingDeploy || model.id === pendingDeploy.id) {
-          return false;
-        }
-        if (model.artifact_type !== "lora_adapter") {
-          return false;
-        }
-        if (!pendingDeploy.model_code && !pendingDeploy.name) {
-          return true;
-        }
-        const baseModel = model.base_model?.toLowerCase() ?? "";
-        return (
-          !baseModel ||
-          baseModel === pendingDeploy.model_code?.toLowerCase() ||
-          baseModel === pendingDeploy.name.toLowerCase()
-        );
-      }),
-    [myModels, pendingDeploy]
+    () => loraAdapters.filter((model) => model.id !== pendingDeploy?.id),
+    [loraAdapters, pendingDeploy]
   );
   const selectedDeployMachine = useMemo(
     () => deployMachines.find((machine) => machine.id === deployMachineId) ?? null,
@@ -423,16 +415,17 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
 
   const filteredModels = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLowerCase();
+    const tabModels = modelListTab === "lora_adapters" ? loraAdapters : fullModels;
     if (!normalizedQuery) {
-      return myModels;
+      return tabModels;
     }
 
-    return myModels.filter((model) =>
+    return tabModels.filter((model) =>
       [model.name, model.base_model, model.source, model.import_repo_id]
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLowerCase().includes(normalizedQuery))
     );
-  }, [deferredQuery, myModels]);
+  }, [deferredQuery, fullModels, loraAdapters, modelListTab]);
 
   const totalModelPages = Math.max(1, Math.ceil(filteredModels.length / MODEL_PAGE_SIZE));
   const currentModelPage = Math.min(modelPage, totalModelPages);
@@ -443,7 +436,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
 
   useEffect(() => {
     setModelPage(1);
-  }, [deferredQuery]);
+  }, [deferredQuery, modelListTab]);
 
   useEffect(() => {
     if (!pendingDeploy || !selectedDeployMachine) {
@@ -871,6 +864,17 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           </Button>
         </ConsoleListToolbar>
 
+        <Tabs
+          className="w-full"
+          onValueChange={(value) => setModelListTab(value as ModelListTab)}
+          value={modelListTab}
+        >
+          <TabsList>
+            <TabsTrigger value="full_models">完整模型 ({fullModels.length})</TabsTrigger>
+            <TabsTrigger value="lora_adapters">LoRA Adapter ({loraAdapters.length})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <ConsoleListTableSurface>
           <Table className="w-full table-fixed">
             <TableHeader className="bg-transparent">
@@ -916,7 +920,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Button
-                          disabled={isPending}
+                          disabled={isPending || isLoraAdapter(model)}
                           onClick={() => openDeployDialog(model)}
                           size="sm"
                           variant="outline"
@@ -946,9 +950,13 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                         <FileSearch className="h-5 w-5" />
                       </div>
                       <div className="space-y-1">
-                        <div className="text-sm font-medium text-foreground">暂无模型</div>
+                        <div className="text-sm font-medium text-foreground">
+                          {modelListTab === "lora_adapters" ? "暂无 LoRA Adapter" : "暂无模型"}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          请调整搜索词，或导入一个自有模型
+                          {modelListTab === "lora_adapters"
+                            ? "请导入 Hugging Face LoRA adapter，或调整搜索词"
+                            : "请调整搜索词，或导入一个自有模型"}
                         </div>
                       </div>
                     </div>
