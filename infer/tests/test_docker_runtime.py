@@ -50,7 +50,7 @@ async def test_start_vllm_uses_selected_gpus(
 
     run_command = commands[1]
     gpus_index = run_command.index("--gpus")
-    assert run_command[gpus_index + 1] == "device=0,1,2,3"
+    assert run_command[gpus_index + 1] == '"device=0,1,2,3"'
     restart_index = run_command.index("--restart")
     assert run_command[restart_index + 1] == "on-failure:3"
     api_key_index = run_command.index("--api-key")

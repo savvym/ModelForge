@@ -41,7 +41,7 @@ VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset(
 def _docker_gpu_arg(gpu_ids: list[int]) -> str:
     if not gpu_ids:
         return "all"
-    return f"device={','.join(str(gpu_id) for gpu_id in gpu_ids)}"
+    return f'"device={",".join(str(gpu_id) for gpu_id in gpu_ids)}"'
 
 
 @dataclass(frozen=True)
