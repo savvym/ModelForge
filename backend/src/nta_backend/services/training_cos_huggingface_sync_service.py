@@ -752,9 +752,10 @@ def _build_readme(payload: TrainingCosHuggingFaceSyncCreateRequest) -> str:
     yaml_lines = ["---"]
     if payload.license:
         yaml_lines.append(f"license: {payload.license}")
-    if payload.base_model:
+    base_model = _normalize_readme_base_model(payload.base_model)
+    if base_model:
         yaml_lines.append("base_model:")
-        yaml_lines.append(f"- {payload.base_model}")
+        yaml_lines.append(f"- {base_model}")
     if payload.tags:
         yaml_lines.append("tags:")
         yaml_lines.extend(f"- {tag}" for tag in payload.tags)
@@ -774,6 +775,15 @@ def _build_readme(payload: TrainingCosHuggingFaceSyncCreateRequest) -> str:
             "",
         ]
     )
+
+
+def _normalize_readme_base_model(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return _parse_huggingface_repo_id(value)
+    except ValueError:
+        return None
 
 
 def _repo_url(

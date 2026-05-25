@@ -3,9 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from nta_backend.core import training_cos
+from nta_backend.schemas.training_cos import TrainingCosHuggingFaceSyncCreateRequest
 from nta_backend.services.training_cos_huggingface_sync_service import (
     JOB_NAME_PREFIX,
     MAX_JOB_NAME_LENGTH,
+    _build_readme,
     _job_name,
 )
 
@@ -131,3 +133,31 @@ def test_huggingface_sync_job_name_is_capped_for_long_prefix() -> None:
     assert name.startswith(f"{JOB_NAME_PREFIX}: ")
     assert len(name) <= MAX_JOB_NAME_LENGTH
     assert prefix.rstrip("/") not in name
+
+
+def test_huggingface_sync_readme_skips_local_base_model_path() -> None:
+    readme = _build_readme(
+        TrainingCosHuggingFaceSyncCreateRequest(
+            prefix="checkpoints/demo/",
+            repo_id="SavvyM/demo-model",
+            base_model="/data/data_cfs_turbo/nta-train/models/gemma-4-31b-it",
+            tags=["text-generation"],
+        )
+    )
+
+    assert "base_model:" not in readme
+    assert "/data/data_cfs_turbo" not in readme
+    assert "tags:" in readme
+
+
+def test_huggingface_sync_readme_keeps_valid_base_model_url() -> None:
+    readme = _build_readme(
+        TrainingCosHuggingFaceSyncCreateRequest(
+            prefix="checkpoints/demo/",
+            repo_id="SavvyM/demo-model",
+            base_model="https://huggingface.co/google/gemma-3-27b-it",
+        )
+    )
+
+    assert "base_model:" in readme
+    assert "- google/gemma-3-27b-it" in readme
