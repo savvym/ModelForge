@@ -82,6 +82,7 @@ class RegistryModelSummary(BaseModel):
     import_object_key: str | None = None
     import_repo_id: str | None = None
     import_revision: str | None = None
+    artifact_type: str | None = None
     deployment_hints: RegistryModelDeploymentHints | None = None
     status: str
     provider_id: UUID | None = None
@@ -107,6 +108,7 @@ class RegistryModelObjectStorageImport(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     base_model: str = Field(min_length=1, max_length=120)
     source_uri: str = Field(min_length=8, max_length=2000)
+    artifact_type: Literal["full_model", "lora_adapter"] = "full_model"
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -115,6 +117,7 @@ class RegistryModelHuggingFaceImport(BaseModel):
     base_model: str = Field(min_length=1, max_length=120)
     repo_id: str = Field(min_length=1, max_length=500)
     revision: str | None = Field(default=None, max_length=160)
+    artifact_type: Literal["full_model", "lora_adapter"] = "full_model"
     hf_token: str | None = Field(default=None, max_length=4000)
     description: str | None = Field(default=None, max_length=500)
 

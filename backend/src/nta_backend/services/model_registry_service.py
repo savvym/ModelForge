@@ -395,6 +395,7 @@ async def _verify_huggingface_access(
     revision: str,
     token: str | None,
     endpoint_url: str | None = None,
+    require_adapter_config: bool = False,
 ) -> list[str]:
     endpoint_url = _huggingface_endpoint_url(endpoint_url)
     encoded_repo_id = quote(repo_id, safe="/")
@@ -423,6 +424,12 @@ async def _verify_huggingface_access(
         )
         if not safetensor_files:
             raise ValueError("该 Hugging Face 仓库未找到 safetensors 权重文件。")
+        if require_adapter_config and not any(
+            isinstance(item, dict)
+            and str(item.get("rfilename") or "").lower() == "adapter_config.json"
+            for item in siblings
+        ):
+            raise ValueError("LoRA adapter 仓库需要包含 adapter_config.json。")
 
         sample_file = quote(safetensor_files[0], safe="/")
         resolve_url = f"{endpoint_url}/{encoded_repo_id}/resolve/{encoded_revision}/{sample_file}"
@@ -611,6 +618,19 @@ def _deployment_hints_from_import_metadata(model: Model) -> RegistryModelDeploym
     return None
 
 
+def _artifact_type_from_import_metadata(model: Model) -> str | None:
+    if not isinstance(model.capabilities_json, dict):
+        return None
+    for metadata_key in ("huggingface_import", "object_storage_import"):
+        metadata = model.capabilities_json.get(metadata_key)
+        if not isinstance(metadata, dict):
+            continue
+        artifact_type = metadata.get("artifact_type")
+        if isinstance(artifact_type, str) and artifact_type.strip():
+            return artifact_type.strip()
+    return None
+
+
 def _is_huggingface_gated(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -711,6 +731,7 @@ def _serialize_model(model: Model, provider_name: str | None) -> RegistryModelSu
         import_object_key=import_metadata.get("object_key"),
         import_repo_id=huggingface_metadata.get("repo_id"),
         import_revision=huggingface_metadata.get("revision"),
+        artifact_type=_artifact_type_from_import_metadata(model),
         deployment_hints=_deployment_hints_from_import_metadata(model),
         status=model.status,
         provider_id=model.provider_id,
@@ -1612,7 +1633,8 @@ class ModelRegistryService:
         )
         model_code = _build_imported_model_code(payload.name)
         imported_at = _now()
-        model_config = _read_object_storage_model_config(parsed_uri)
+        is_lora_adapter = payload.artifact_type == "lora_adapter"
+        model_config = None if is_lora_adapter else _read_object_storage_model_config(parsed_uri)
         deployment_hints = (
             _model_config_deployment_hints(model_config).model_dump(exclude_none=True)
             if model_config is not None
@@ -1637,6 +1659,7 @@ class ModelRegistryService:
                 capabilities_json={
                     "object_storage_import": {
                         **parsed_uri,
+                        "artifact_type": payload.artifact_type,
                         "artifact_format": "safetensors",
                         **(
                             {"deployment_hints": deployment_hints}
@@ -1679,16 +1702,19 @@ class ModelRegistryService:
                 revision=revision,
                 token=hf_token,
                 endpoint_url=endpoint_url,
+                require_adapter_config=payload.artifact_type == "lora_adapter",
             )
-            model_config = await _fetch_huggingface_model_config(
-                repo_id=repo_id,
-                revision=revision,
-                token=hf_token,
-                endpoint_url=endpoint_url,
-            )
-            deployment_hints = _model_config_deployment_hints(model_config).model_dump(
-                exclude_none=True
-            )
+            deployment_hints = None
+            if payload.artifact_type != "lora_adapter":
+                model_config = await _fetch_huggingface_model_config(
+                    repo_id=repo_id,
+                    revision=revision,
+                    token=hf_token,
+                    endpoint_url=endpoint_url,
+                )
+                deployment_hints = _model_config_deployment_hints(model_config).model_dump(
+                    exclude_none=True
+                )
 
             model = Model(
                 project_id=project_id,
@@ -1708,9 +1734,14 @@ class ModelRegistryService:
                         "repo_id": repo_id,
                         "revision": revision,
                         "repo_type": "model",
+                        "artifact_type": payload.artifact_type,
                         "artifact_format": "safetensors",
                         "safetensors_count": str(len(safetensor_files)),
-                        "deployment_hints": deployment_hints,
+                        **(
+                            {"deployment_hints": deployment_hints}
+                            if deployment_hints is not None
+                            else {}
+                        ),
                         **({"token": explicit_hf_token} if explicit_hf_token else {}),
                         **(
                             {"token_source": "system"}

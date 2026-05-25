@@ -47,6 +47,14 @@ class ModelBinding(BaseModel):
     local_path: str | None = None
 
 
+class LoraAdapterBinding(BaseModel):
+    adapter_id: str
+    name: str
+    served_name: str
+    source: ModelSource
+    local_path: str | None = None
+
+
 class EngineSpec(BaseModel):
     name: str = "vllm"
     image: str
@@ -75,6 +83,7 @@ class AgentDeploymentSpec(BaseModel):
     generation: int
     desired_phase: str = "running"
     model: ModelBinding
+    lora_adapters: list[LoraAdapterBinding] = Field(default_factory=list)
     engine: EngineSpec
     smoke_test: SmokeTestSpec | None = Field(default_factory=SmokeTestSpec)
 
@@ -148,6 +157,8 @@ class DeployModelRequest(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     machine_id: UUID | None = None
     served_model_name: str | None = Field(default=None, max_length=160)
+    adapter_model_id: UUID | None = None
+    adapter_served_model_name: str | None = Field(default=None, max_length=160)
     gpu_ids: list[int] | None = None
     tensor_parallel_size: int | None = Field(default=None, ge=1, le=16)
     max_model_len: int | None = Field(default=None, ge=1)

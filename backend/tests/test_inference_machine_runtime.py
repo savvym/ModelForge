@@ -134,6 +134,60 @@ def test_build_spec_prefers_explicit_deployment_gpu_ids() -> None:
     assert spec.engine.tensor_parallel_size == 2
 
 
+def test_build_spec_adds_lora_adapter_binding() -> None:
+    model = SimpleNamespace(
+        id=uuid4(),
+        name="Qwen",
+        model_code="qwen",
+        capabilities_json={
+            "huggingface_import": {
+                "repo_id": "Qwen/Qwen2.5",
+                "revision": "main",
+            }
+        },
+    )
+    adapter_model = SimpleNamespace(
+        id=uuid4(),
+        name="Customer SFT",
+        model_code="customer-sft",
+        capabilities_json={
+            "object_storage_import": {
+                "artifact_type": "lora_adapter",
+                "source_uri": "s3://models/customer-sft/",
+            }
+        },
+    )
+    machine = InferenceMachineRuntimeConfig(
+        id=uuid4(),
+        name="h20-node-01",
+        agent_base_url="http://10.0.0.12:9000",
+        agent_token="agent-token",
+        runtime_api_key="runtime-token",
+        runtime_public_host="10.0.0.12",
+        vllm_image="vllm/vllm-openai:latest",
+        gpu_ids=[0, 1],
+        tensor_parallel_size=2,
+        dtype="bfloat16",
+        gpu_memory_utilization=0.85,
+        max_model_len=None,
+        listen_port=8000,
+    )
+
+    spec = ModelDeploymentService()._build_spec(
+        model,  # type: ignore[arg-type]
+        DeployModelRequest(adapter_model_id=adapter_model.id),
+        inference_machine=machine,
+        system_huggingface_config={},
+        adapter_model=adapter_model,  # type: ignore[arg-type]
+    )
+
+    assert spec.model.served_name == "qwen"
+    assert len(spec.lora_adapters) == 1
+    assert spec.lora_adapters[0].adapter_id == str(adapter_model.id)
+    assert spec.lora_adapters[0].served_name == "customer-sft"
+    assert spec.lora_adapters[0].source.uri == "s3://models/customer-sft/"
+
+
 def test_build_spec_requires_explicit_gpu_count_to_match_tp() -> None:
     model = SimpleNamespace(
         id=uuid4(),

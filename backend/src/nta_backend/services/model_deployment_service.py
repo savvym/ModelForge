@@ -23,6 +23,7 @@ from nta_backend.schemas.model_deployment import (
     DeployModelRequest,
     EngineSpec,
     HuggingFaceSource,
+    LoraAdapterBinding,
     ModelBinding,
     ModelDeploymentEvent,
     ModelDeploymentPassiveHealth,
@@ -131,6 +132,19 @@ def _read_deployment_hints(model: Model) -> RegistryModelDeploymentHints | None:
     return None
 
 
+def _read_artifact_type(model: Model) -> str | None:
+    if not isinstance(model.capabilities_json, dict):
+        return None
+    for metadata_key in ("huggingface_import", "object_storage_import"):
+        metadata = model.capabilities_json.get(metadata_key)
+        if not isinstance(metadata, dict):
+            continue
+        artifact_type = metadata.get("artifact_type")
+        if isinstance(artifact_type, str) and artifact_type.strip():
+            return artifact_type.strip()
+    return None
+
+
 def _infer_vllm_reasoning_extra_args(
     model: Model,
     deployment_hints: RegistryModelDeploymentHints | None,
@@ -193,6 +207,13 @@ def _deployment_served_model_name(
     model_name: str | None = None,
 ) -> str | None:
     spec = config.get("spec") if isinstance(config.get("spec"), dict) else {}
+    lora_adapters = spec.get("lora_adapters")
+    if isinstance(lora_adapters, list) and lora_adapters:
+        first_adapter = lora_adapters[0]
+        if isinstance(first_adapter, dict):
+            adapter_served_name = first_adapter.get("served_name")
+            if isinstance(adapter_served_name, str) and adapter_served_name.strip():
+                return adapter_served_name.strip()
     spec_model = spec.get("model") if isinstance(spec.get("model"), dict) else {}
     served_name = spec_model.get("served_name")
     if isinstance(served_name, str) and served_name.strip():
@@ -612,6 +633,15 @@ class ModelDeploymentService:
             model = await session.get(Model, model_id)
             if model is None or model.project_id != project_id:
                 raise KeyError(str(model_id))
+            adapter_model = None
+            if payload.adapter_model_id is not None:
+                adapter_model = await session.get(Model, payload.adapter_model_id)
+                if (
+                    adapter_model is None
+                    or adapter_model.project_id != project_id
+                    or adapter_model.status == "deleted"
+                ):
+                    raise KeyError(str(payload.adapter_model_id))
 
             hf_config = await load_system_huggingface_config(session)
             machine = await load_inference_machine_runtime(
@@ -624,6 +654,7 @@ class ModelDeploymentService:
                 payload,
                 inference_machine=machine,
                 system_huggingface_config=hf_config,
+                adapter_model=adapter_model,
             )
             redacted_spec = _redact_spec(spec)
             endpoint = Endpoint(
@@ -798,6 +829,20 @@ class ModelDeploymentService:
             stored_engine = (
                 stored_spec.get("engine") if isinstance(stored_spec.get("engine"), dict) else {}
             )
+            stored_adapters = (
+                stored_spec.get("lora_adapters")
+                if isinstance(stored_spec.get("lora_adapters"), list)
+                else []
+            )
+            adapter_model = None
+            adapter_model_id = None
+            if stored_adapters:
+                first_adapter = stored_adapters[0]
+                if isinstance(first_adapter, dict) and first_adapter.get("adapter_id"):
+                    adapter_model_id = str(first_adapter["adapter_id"])
+                    adapter_model = await session.get(Model, UUID(adapter_model_id))
+                    if adapter_model is None or adapter_model.project_id != project_id:
+                        raise ValueError("部署任务关联的 LoRA adapter 不存在，无法启动。")
             spec = self._build_spec(
                 model,
                 DeployModelRequest(
@@ -807,6 +852,14 @@ class ModelDeploymentService:
                         str(stored_model.get("served_name"))
                         if stored_model.get("served_name")
                         else model.model_code or model.name
+                    ),
+                    adapter_model_id=UUID(adapter_model_id) if adapter_model_id else None,
+                    adapter_served_model_name=(
+                        str(stored_adapters[0].get("served_name"))
+                        if stored_adapters
+                        and isinstance(stored_adapters[0], dict)
+                        and stored_adapters[0].get("served_name")
+                        else None
                     ),
                     gpu_ids=(
                         [
@@ -835,6 +888,7 @@ class ModelDeploymentService:
                 ),
                 inference_machine=machine,
                 system_huggingface_config=hf_config,
+                adapter_model=adapter_model,
             )
             current_agent_status = await self._get_agent_status(machine)
             stored_generation = int(config.get("generation") or stored_spec.get("generation") or 0)
@@ -1312,6 +1366,7 @@ class ModelDeploymentService:
         *,
         inference_machine: InferenceMachineRuntimeConfig,
         system_huggingface_config: dict[str, str | None] | None = None,
+        adapter_model: Model | None = None,
     ) -> AgentDeploymentSpec:
         object_storage_metadata = _read_object_storage_import(model)
         huggingface_metadata = _read_huggingface_import(model)
@@ -1348,6 +1403,32 @@ class ModelDeploymentService:
             huggingface_metadata=huggingface_metadata,
             system_huggingface_config=system_huggingface_config or {},
         )
+        lora_adapters: list[LoraAdapterBinding] = []
+        if adapter_model is not None:
+            if _read_artifact_type(adapter_model) != "lora_adapter":
+                raise ValueError("请选择已登记为 LoRA adapter 的模型作为 SFT Adapter。")
+            if not _should_enable_lora_for_deployment_hints(deployment_hints):
+                raise ValueError("当前 base model 的架构不支持 vLLM LoRA adapter 部署。")
+            adapter_object_storage_metadata = _read_object_storage_import(adapter_model)
+            adapter_huggingface_metadata = _read_huggingface_import(adapter_model)
+            adapter_source = self._build_model_source(
+                object_storage_metadata=adapter_object_storage_metadata,
+                huggingface_metadata=adapter_huggingface_metadata,
+                system_huggingface_config=system_huggingface_config or {},
+            )
+            adapter_served_name = _normalize_served_name(
+                payload.adapter_served_model_name
+                or adapter_model.model_code
+                or f"{served_name}-{adapter_model.name}"
+            )
+            lora_adapters.append(
+                LoraAdapterBinding(
+                    adapter_id=str(adapter_model.id),
+                    name=adapter_model.name,
+                    served_name=adapter_served_name,
+                    source=adapter_source,
+                )
+            )
         return AgentDeploymentSpec(
             deployment_id="pending",
             generation=1,
@@ -1357,6 +1438,7 @@ class ModelDeploymentService:
                 served_name=served_name,
                 source=model_source,
             ),
+            lora_adapters=lora_adapters,
             engine=EngineSpec(
                 image=inference_machine.vllm_image,
                 gpu_ids=gpu_ids,

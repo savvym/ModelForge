@@ -1270,6 +1270,7 @@ export interface RegistryModelSummary {
   import_object_key?: string | null;
   import_repo_id?: string | null;
   import_revision?: string | null;
+  artifact_type?: string | null;
   deployment_hints?: RegistryModelDeploymentHints | null;
   status: string;
   provider_id?: string | null;
@@ -1305,6 +1306,7 @@ export interface RegistryModelObjectStorageImportInput {
   name: string;
   base_model: string;
   source_uri: string;
+  artifact_type?: "full_model" | "lora_adapter";
   description?: string | null;
 }
 
@@ -1313,6 +1315,7 @@ export interface RegistryModelHuggingFaceImportInput {
   base_model: string;
   repo_id: string;
   revision?: string | null;
+  artifact_type?: "full_model" | "lora_adapter";
   description?: string | null;
 }
 
@@ -1448,6 +1451,8 @@ export interface DeployModelInput {
   name?: string | null;
   machine_id?: string | null;
   served_model_name?: string | null;
+  adapter_model_id?: string | null;
+  adapter_served_model_name?: string | null;
   gpu_ids?: number[] | null;
   tensor_parallel_size?: number | null;
   max_model_len?: number | null;

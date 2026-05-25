@@ -44,6 +44,11 @@ def _docker_gpu_arg(gpu_ids: list[int]) -> str:
     return f'"device={",".join(str(gpu_id) for gpu_id in gpu_ids)}"'
 
 
+def _safe_mount_name(value: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in value.strip())
+    return safe.strip("-") or "adapter"
+
+
 @dataclass(frozen=True)
 class ContainerState:
     status: str
@@ -62,10 +67,16 @@ class DockerRuntime:
             check=False,
         )
 
-    async def start_vllm(self, spec: DeploymentSpec, model_path: Path) -> str:
+    async def start_vllm(
+        self,
+        spec: DeploymentSpec,
+        model_path: Path,
+        adapter_paths: dict[str, Path] | None = None,
+    ) -> str:
         await self.stop_current()
         middleware_path = self._write_runtime_auth_middleware()
         runtime_api_key = spec.engine.api_key.get_secret_value()
+        adapter_paths = adapter_paths or {}
         command = [
             self.settings.docker_bin,
             "run",
@@ -110,12 +121,29 @@ class DockerRuntime:
             "--middleware",
             "vllm_runtime_auth.require_runtime_token",
         ]
+        lora_modules: list[str] = []
+        for adapter in spec.lora_adapters:
+            adapter_path = adapter_paths.get(adapter.adapter_id)
+            if adapter_path is None:
+                continue
+            mount_name = _safe_mount_name(adapter.adapter_id)
+            command[command.index(spec.engine.image) : command.index(spec.engine.image)] = [
+                "-v",
+                f"{adapter_path}:/adapters/{mount_name}:ro",
+            ]
+            lora_modules.append(f"{adapter.served_name}=/adapters/{mount_name}")
         if spec.engine.max_model_len is not None:
             command.extend(["--max-model-len", str(spec.engine.max_model_len)])
         if spec.engine.enable_prefix_caching:
             command.append("--enable-prefix-caching")
-        if _should_enable_lora(spec, model_path):
+        lora_enabled = _should_enable_lora(spec, model_path)
+        if lora_modules and not lora_enabled:
+            raise ValueError("LoRA adapters were requested, but LoRA is disabled for this model.")
+        if lora_enabled:
             command.extend(["--enable-lora", "--max-loras", "16", "--max-lora-rank", "128"])
+            if lora_modules:
+                command.append("--lora-modules")
+                command.extend(lora_modules)
         command.extend(["--api-key", spec.engine.api_key.get_secret_value()])
         for key, value in spec.engine.extra_args.items():
             option = f"--{key.replace('_', '-')}"

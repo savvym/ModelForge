@@ -22,6 +22,11 @@ class VllmDriver:
     def local_base_url(self, spec: DeploymentSpec) -> str:
         return f"http://127.0.0.1:{spec.engine.listen_port}"
 
+    def served_name(self, spec: DeploymentSpec) -> str:
+        if spec.lora_adapters:
+            return spec.lora_adapters[0].served_name
+        return spec.model.served_name
+
     async def wait_ready(
         self,
         spec: DeploymentSpec,
@@ -55,7 +60,7 @@ class VllmDriver:
             return
         headers = {"Content-Type": "application/json", **self._headers(spec)}
         payload = {
-            "model": spec.model.served_name,
+            "model": self.served_name(spec),
             "messages": [{"role": "user", "content": spec.smoke_test.prompt}],
             "max_tokens": 8,
             "temperature": 0,

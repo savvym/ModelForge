@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import Future
 from contextlib import suppress
 from datetime import UTC, datetime
+from pathlib import Path
 from time import monotonic
 
 from nta_infer_agent.config import AgentSettings
@@ -168,6 +169,36 @@ class DeploymentReconciler:
                     payload={"local_path": str(local_path)},
                 )
 
+            adapter_paths: dict[str, Path] = {}
+            for adapter in spec.lora_adapters:
+                adapter_path, adapter_cache_hit = await self.downloader.ensure_cached(
+                    adapter,
+                    progress=progress_reporter.report,
+                    cancel_event=download_cancel_event,
+                )
+                adapter_paths[adapter.adapter_id] = adapter_path
+                await progress_reporter.drain()
+                event_type = (
+                    "artifact.adapter_cache_hit"
+                    if adapter_cache_hit
+                    else "artifact.adapter_download_completed"
+                )
+                await self._event(
+                    spec,
+                    event_type,
+                    (
+                        f"LoRA adapter 命中本地缓存：{adapter_path}"
+                        if adapter_cache_hit
+                        else f"LoRA adapter 已下载到本地缓存：{adapter_path}"
+                    ),
+                    progress=55,
+                    payload={
+                        "adapter_id": adapter.adapter_id,
+                        "adapter_served_name": adapter.served_name,
+                        "local_path": str(adapter_path),
+                    },
+                )
+
             await self._set_status(
                 spec,
                 phase="stopping_previous",
@@ -188,7 +219,7 @@ class DeploymentReconciler:
                 clear_runtime=True,
             )
             await self._event(spec, "runtime.starting", "启动 vLLM 容器", progress=70)
-            container_id = await self.docker.start_vllm(spec, local_path)
+            container_id = await self.docker.start_vllm(spec, local_path, adapter_paths)
 
             await self._set_status(
                 spec,
@@ -230,7 +261,7 @@ class DeploymentReconciler:
                 local_path=str(local_path),
                 container_id=container_id,
                 endpoint=self.vllm.endpoint(spec),
-                active_model_name=spec.model.served_name,
+                active_model_name=self.vllm.served_name(spec),
                 last_event="deployment ready",
                 last_health_ok_at=datetime.now(UTC),
             )

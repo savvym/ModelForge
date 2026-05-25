@@ -94,12 +94,15 @@ import type {
 type PendingDelete = { id: string; name: string } | null;
 type PendingDeploy = RegistryModelSummary | null;
 type ImportSourceType = "object-storage" | "huggingface";
+type ImportArtifactType = "full_model" | "lora_adapter";
 
 const MODEL_PAGE_SIZE = 12;
 const MY_MODEL_SOURCES = new Set(["object-storage-import", "huggingface-import", "finetune"]);
+const noAdapterValue = "__no_lora_adapter__";
 
 function createInitialImportForm() {
   return {
+    artifact_type: "full_model" as ImportArtifactType,
     base_model: "",
     name: "",
     repo_id: "",
@@ -339,6 +342,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const [deployMachines, setDeployMachines] = useState<InferenceMachineSummary[]>([]);
   const [deployMachineId, setDeployMachineId] = useState("");
   const [deployModelId, setDeployModelId] = useState("");
+  const [deployAdapterModelId, setDeployAdapterModelId] = useState(noAdapterValue);
   const [deployTensorParallelSize, setDeployTensorParallelSize] = useState("");
   const [deployGpuIds, setDeployGpuIds] = useState<number[]>([]);
   const [isDeployMachineLoading, setIsDeployMachineLoading] = useState(false);
@@ -364,6 +368,27 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
   const deferredQuery = useDeferredValue(query);
 
   const myModels = useMemo(() => initialModels.filter(isMyModel), [initialModels]);
+  const deployAdapterOptions = useMemo(
+    () =>
+      myModels.filter((model) => {
+        if (!pendingDeploy || model.id === pendingDeploy.id) {
+          return false;
+        }
+        if (model.artifact_type !== "lora_adapter") {
+          return false;
+        }
+        if (!pendingDeploy.model_code && !pendingDeploy.name) {
+          return true;
+        }
+        const baseModel = model.base_model?.toLowerCase() ?? "";
+        return (
+          !baseModel ||
+          baseModel === pendingDeploy.model_code?.toLowerCase() ||
+          baseModel === pendingDeploy.name.toLowerCase()
+        );
+      }),
+    [myModels, pendingDeploy]
+  );
   const selectedDeployMachine = useMemo(
     () => deployMachines.find((machine) => machine.id === deployMachineId) ?? null,
     [deployMachineId, deployMachines]
@@ -670,6 +695,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     runAction(async () => {
       if (importForm.source_type === "huggingface") {
         await importRegistryModelFromHuggingFace({
+          artifact_type: importForm.artifact_type,
           base_model: importForm.base_model.trim(),
           name: importForm.name.trim(),
           repo_id: importForm.repo_id.trim(),
@@ -677,6 +703,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
         });
       } else {
         await importRegistryModelFromObjectStorage({
+          artifact_type: importForm.artifact_type,
           base_model: importForm.base_model.trim(),
           name: importForm.name.trim(),
           source_uri: importForm.source_uri.trim()
@@ -792,6 +819,8 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
     const model = pendingDeploy;
     runAction(async () => {
       const deployment = await createDeploymentFromModel(model.id, {
+        adapter_model_id:
+          deployAdapterModelId === noAdapterValue ? undefined : deployAdapterModelId,
         gpu_ids: deployGpuIds.length > 0 ? deployGpuIds : undefined,
         machine_id: deployMachineId,
         name: `${model.name} 部署`,
@@ -997,6 +1026,24 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                 </div>
 
                 <div className="flex flex-col gap-2">
+                  <Label>登记类型</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <SourceTypeButton
+                      active={importForm.artifact_type === "full_model"}
+                      icon={<FileSearch className="size-4" />}
+                      label="完整模型"
+                      onClick={() => updateImportField("artifact_type", "full_model")}
+                    />
+                    <SourceTypeButton
+                      active={importForm.artifact_type === "lora_adapter"}
+                      icon={<UploadCloud className="size-4" />}
+                      label="LoRA Adapter"
+                      onClick={() => updateImportField("artifact_type", "lora_adapter")}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
                   <Label>导入来源</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <SourceTypeButton
@@ -1064,13 +1111,17 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                 <div className="rounded-lg border border-border bg-background/40 px-4 py-3">
                   <div className="text-sm font-medium text-foreground">格式要求</div>
                   <div className="mt-1 text-sm leading-6 text-muted-foreground">
-                    {importForm.source_type === "huggingface"
-                      ? "录入时会使用系统配置中的 Hugging Face 凭据校验 repo、revision 和 safetensors 权重权限。"
-                      : "必须选择 Checkpoint 所在路径。当前仅支持 safetensors 格式文件。"}
+                    {importForm.artifact_type === "lora_adapter"
+                      ? "LoRA adapter 会登记为可部署 adapter，部署时由 infer-agent 下载到推理机器并挂载给 vLLM。"
+                      : importForm.source_type === "huggingface"
+                        ? "录入时会使用系统配置中的 Hugging Face 凭据校验 repo、revision 和 safetensors 权重权限。"
+                        : "必须选择 Checkpoint 所在路径。当前仅支持 safetensors 格式文件。"}
                   </div>
                   <pre className="mt-3 whitespace-pre-wrap rounded-md bg-card/80 px-3 py-2 font-mono text-xs leading-6 text-muted-foreground">
-{`|-- *.safetensors
-|-- adapter_config.json (LoRA)
+                    {importForm.artifact_type === "lora_adapter"
+                      ? `|-- adapter_config.json
+|-- adapter_model.safetensors`
+                      : `|-- *.safetensors
 |-- config.json
 |-- ...`}
                   </pre>
@@ -1129,6 +1180,7 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
           if (!open) {
             setPendingDeploy(null);
             setDeployModelId("");
+            setDeployAdapterModelId(noAdapterValue);
             setDeployTensorParallelSize("");
             setDeployGpuIds([]);
             setIsDeployHintsLoading(false);
@@ -1162,6 +1214,25 @@ export function MyModelsConsole({ initialModels }: { initialModels: RegistryMode
                 placeholder="例如 Qwen2.5-1.5B"
                 value={deployModelId}
               />
+              <div className="flex flex-col gap-2">
+                <Label>LoRA SFT Adapter</Label>
+                <Select onValueChange={setDeployAdapterModelId} value={deployAdapterModelId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="不使用 Adapter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={noAdapterValue}>不使用 Adapter</SelectItem>
+                    {deployAdapterOptions.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="text-xs leading-5 text-muted-foreground">
+                  选择已导入的 LoRA adapter 后，vLLM 会以 base model 挂载该 adapter 启动。
+                </div>
+              </div>
               <div className="flex flex-col gap-2">
                 <Label>Tensor Parallel Size</Label>
                 <Select

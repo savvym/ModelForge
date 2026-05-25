@@ -46,6 +46,14 @@ class ModelBinding(BaseModel):
     local_path: str | None = None
 
 
+class LoraAdapterBinding(BaseModel):
+    adapter_id: str
+    name: str
+    served_name: str
+    source: ModelSource
+    local_path: str | None = None
+
+
 class EngineSpec(BaseModel):
     name: Literal["vllm"] = "vllm"
     image: str
@@ -82,6 +90,7 @@ class DeploymentSpec(BaseModel):
     generation: int = Field(ge=1)
     desired_phase: Literal["running", "stopped"] = "running"
     model: ModelBinding
+    lora_adapters: list[LoraAdapterBinding] = Field(default_factory=list)
     engine: EngineSpec
     smoke_test: SmokeTestSpec | None = Field(default_factory=SmokeTestSpec)
 

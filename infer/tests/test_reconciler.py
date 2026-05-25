@@ -36,7 +36,12 @@ class _RestartLimitDocker:
     async def stop_current(self) -> None:
         self.stop_calls += 1
 
-    async def start_vllm(self, spec: DeploymentSpec, model_path: Path) -> str:
+    async def start_vllm(
+        self,
+        spec: DeploymentSpec,
+        model_path: Path,
+        adapter_paths: dict[str, Path] | None = None,
+    ) -> str:
         self.start_calls += 1
         return "container-id"
 

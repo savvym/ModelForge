@@ -20,7 +20,12 @@ from botocore.client import Config
 from huggingface_hub import HfApi
 
 from nta_infer_agent.config import AgentSettings
-from nta_infer_agent.schemas import HuggingFaceSource, ModelBinding, ObjectStorageSource
+from nta_infer_agent.schemas import (
+    HuggingFaceSource,
+    LoraAdapterBinding,
+    ModelBinding,
+    ObjectStorageSource,
+)
 
 DOWNLOAD_WORKER_POLL_SECONDS = 0.2
 DOWNLOAD_WORKER_TERMINATE_TIMEOUT_SECONDS = 10.0
@@ -51,9 +56,10 @@ class ModelCache:
     def __init__(self, root: Path) -> None:
         self.root = root
 
-    def path_for_model(self, model: ModelBinding) -> Path:
+    def path_for_model(self, model: ModelBinding | LoraAdapterBinding) -> Path:
         digest = hashlib.sha256(model.source.uri.encode()).hexdigest()[:16]
-        safe_model_id = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in model.model_id)
+        artifact_id = model.model_id if isinstance(model, ModelBinding) else model.adapter_id
+        safe_model_id = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in artifact_id)
         return self.root / "models" / f"{safe_model_id}-{digest}"
 
     def ready_marker(self, path: Path) -> Path:
@@ -81,7 +87,7 @@ class ModelDownloader:
 
     async def ensure_cached(
         self,
-        model: ModelBinding,
+        model: ModelBinding | LoraAdapterBinding,
         progress: DownloadProgressCallback | None = None,
         cancel_event: threading.Event | None = None,
     ) -> tuple[Path, bool]:
@@ -115,7 +121,7 @@ class ModelDownloader:
 
     async def _ensure_downloaded(
         self,
-        model: ModelBinding,
+        model: ModelBinding | LoraAdapterBinding,
         downloader,
         *,
         cancel_event: threading.Event | None = None,
@@ -164,7 +170,7 @@ class ModelDownloader:
             raise
         return destination, False
 
-    def _local_path(self, model: ModelBinding) -> Path:
+    def _local_path(self, model: ModelBinding | LoraAdapterBinding) -> Path:
         uri = model.source.uri
         if uri.startswith("local://"):
             path = Path(uri.removeprefix("local://"))

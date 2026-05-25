@@ -5,7 +5,13 @@ import pytest
 from nta_infer_agent.config import AgentSettings
 from nta_infer_agent.runtime import docker_runtime
 from nta_infer_agent.runtime.docker_runtime import DockerRuntime
-from nta_infer_agent.schemas import DeploymentSpec, EngineSpec, ModelBinding, ModelSource
+from nta_infer_agent.schemas import (
+    DeploymentSpec,
+    EngineSpec,
+    LoraAdapterBinding,
+    ModelBinding,
+    ModelSource,
+)
 
 
 def _settings(tmp_path: Path) -> AgentSettings:
@@ -110,6 +116,54 @@ async def test_start_vllm_uses_all_gpus_when_gpu_ids_are_empty(
     run_command = commands[1]
     gpus_index = run_command.index("--gpus")
     assert run_command[gpus_index + 1] == "all"
+
+
+@pytest.mark.asyncio
+async def test_start_vllm_mounts_lora_adapters(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
+
+    async def fake_run_command(command: list[str], **_: object) -> str:
+        commands.append(command)
+        return "container-id"
+
+    adapter_path = tmp_path / "adapter"
+    adapter_path.mkdir()
+    monkeypatch.setattr(docker_runtime, "run_command", fake_run_command)
+    runtime = DockerRuntime(_settings(tmp_path))
+    spec = DeploymentSpec(
+        deployment_id="deployment-id",
+        generation=1,
+        model=ModelBinding(
+            model_id="model-id",
+            name="Qwen",
+            served_name="qwen",
+            source=ModelSource(type="local", uri="local:///model"),
+        ),
+        lora_adapters=[
+            LoraAdapterBinding(
+                adapter_id="adapter/id",
+                name="Customer SFT",
+                served_name="customer-sft",
+                source=ModelSource(type="local", uri=f"local://{adapter_path}"),
+            )
+        ],
+        engine=EngineSpec(
+            api_key="runtime-token",
+            image="vllm/vllm-openai:latest",
+            gpu_ids=[0],
+            tensor_parallel_size=1,
+        ),
+    )
+
+    await runtime.start_vllm(spec, Path("/tmp/model"), {"adapter/id": adapter_path})
+
+    run_command = commands[1]
+    assert f"{adapter_path}:/adapters/adapter-id:ro" in run_command
+    lora_modules_index = run_command.index("--lora-modules")
+    assert run_command[lora_modules_index + 1] == "customer-sft=/adapters/adapter-id"
 
 
 @pytest.mark.asyncio
