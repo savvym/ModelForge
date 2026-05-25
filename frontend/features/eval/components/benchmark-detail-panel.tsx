@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Download } from "lucide-react";
+import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { ConsoleListTableSurface } from "@/components/console/list-surface";
 import {
   AlertDialog,
@@ -65,6 +65,7 @@ type JsonlPreviewResult = {
 };
 
 const JSONL_PREVIEW_PAGE_SIZE = 20;
+const ROOT_JSON_PATH = "$";
 
 const PREFERRED_JSONL_COLUMNS = [
   "id",
@@ -547,6 +548,7 @@ function BenchmarkVersionPreviewTab({
         ) : (
           <JsonlTableView
             columns={jsonlPreview.columns}
+            key={version.id}
             loading={loading}
             page={boundedPreviewPage}
             pageCount={previewPageCount}
@@ -724,31 +726,80 @@ function JsonlRowDetailSheet({
   row: JsonlPreviewRow | null;
 }) {
   const fieldCount = row ? Object.keys(row.record).length : 0;
+  const [selectedJsonPath, setSelectedJsonPath] = React.useState<string>(ROOT_JSON_PATH);
+  const [expandedJsonPaths, setExpandedJsonPaths] = React.useState<string[]>([ROOT_JSON_PATH]);
+
+  React.useEffect(() => {
+    setSelectedJsonPath(ROOT_JSON_PATH);
+    setExpandedJsonPaths(row ? getInitialExpandedJsonPaths(row.record) : [ROOT_JSON_PATH]);
+  }, [row]);
 
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
       <SheetContent className="w-full gap-0 overflow-hidden border-l border-border bg-card p-0 text-foreground shadow-[-30px_0_70px_rgba(2,6,23,0.6)] sm:max-w-[640px] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-md [&>button]:text-muted-foreground [&>button]:hover:bg-card/80 [&>button]:hover:text-foreground">
         <SheetHeader className="border-b border-border bg-card/80 px-5 py-4 pr-16 text-left">
-          <SheetTitle className="text-[17px] font-semibold text-foreground">
-            第 {row?.lineNumber ?? "--"} 行
+          <SheetTitle className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            line:{row?.lineNumber ?? "--"}
           </SheetTitle>
           <SheetDescription className="text-[12px] leading-5 text-muted-foreground">
-            {fieldCount} 个字段
+            格式化 JSON 结构 · {fieldCount} 个字段
           </SheetDescription>
         </SheetHeader>
-        <div className="console-scrollbar-drawer min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="console-scrollbar-drawer min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {row ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <JsonSummaryBlock label="行号" value={String(row.lineNumber)} />
-                <JsonSummaryBlock label="字段数" value={String(fieldCount)} />
-              </div>
-              <StructuredJsonValue value={row.record} />
-            </div>
+            <JsonStructureTree
+              expandedPaths={expandedJsonPaths}
+              onSelectPath={setSelectedJsonPath}
+              onTogglePath={(path) =>
+                setExpandedJsonPaths((current) =>
+                  current.includes(path)
+                    ? current.filter((item) => item !== path)
+                    : [...current, path]
+                )
+              }
+              selectedPath={selectedJsonPath}
+              value={row.record}
+            />
           ) : null}
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function JsonStructureTree({
+  expandedPaths,
+  onSelectPath,
+  onTogglePath,
+  selectedPath,
+  value
+}: {
+  expandedPaths: string[];
+  onSelectPath: (path: string) => void;
+  onTogglePath: (path: string) => void;
+  selectedPath: string;
+  value: unknown;
+}) {
+  if (!isJsonContainer(value)) {
+    return (
+      <div className="font-mono text-[12px] leading-7 text-foreground">
+        {renderJsonNodeValue(value)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {renderJsonTreeChildren({
+        depth: 0,
+        expandedPaths,
+        onSelectPath,
+        onTogglePath,
+        parentPath: ROOT_JSON_PATH,
+        selectedPath,
+        value
+      })}
+    </div>
   );
 }
 
@@ -774,78 +825,6 @@ function PrimaryTabButton({
     >
       {label}
     </button>
-  );
-}
-
-function JsonSummaryBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/40 px-3 py-3">
-      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className="mt-2 text-base font-medium text-foreground">{value}</div>
-    </div>
-  );
-}
-
-function StructuredJsonValue({
-  fieldName,
-  value
-}: {
-  fieldName?: string;
-  value: unknown;
-}) {
-  const valueType = getJsonValueType(value);
-  const nested =
-    Array.isArray(value) || (typeof value === "object" && value !== null);
-
-  if (nested) {
-    const entries = Array.isArray(value)
-      ? value.map((item, index) => [`[${index}]`, item] as const)
-      : Object.entries(value as Record<string, unknown>);
-
-    return (
-      <section className="rounded-lg border border-border bg-muted/25">
-        {fieldName ? (
-          <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-            <div className="min-w-0 truncate font-mono text-xs font-medium text-foreground">
-              {fieldName}
-            </div>
-            <Badge variant="secondary">
-              {valueType}
-              {entries.length > 0 ? ` · ${entries.length}` : ""}
-            </Badge>
-          </div>
-        ) : null}
-        <div className="space-y-2 p-3">
-          {entries.length > 0 ? (
-            entries.map(([key, item]) => (
-              <StructuredJsonValue
-                fieldName={key}
-                key={key}
-                value={item}
-              />
-            ))
-          ) : (
-            <div className="rounded-md border border-border bg-card/70 px-3 py-2 text-sm text-muted-foreground">
-              {Array.isArray(value) ? "空数组" : "空对象"}
-            </div>
-          )}
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 truncate font-mono text-xs font-medium text-foreground">
-          {fieldName ?? "value"}
-        </div>
-        <Badge variant="secondary">{valueType}</Badge>
-      </div>
-      <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
-        {formatJsonPrimitiveDetail(value)}
-      </div>
-    </div>
   );
 }
 
@@ -990,34 +969,172 @@ function formatJsonlValuePreview(value: unknown): string {
   return String(value);
 }
 
-function formatJsonPrimitiveDetail(value: unknown): string {
-  if (value === null) {
-    return "null";
-  }
-  if (value === undefined) {
-    return "undefined";
-  }
-  if (typeof value === "string") {
-    return value || "空字符串";
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return String(value);
-}
-
-function getJsonValueType(value: unknown) {
-  if (Array.isArray(value)) {
-    return "array";
-  }
-  if (value === null) {
-    return "null";
-  }
-  return typeof value;
-}
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isJsonContainer(value: unknown): value is Record<string, unknown> | unknown[] {
+  return isPlainRecord(value) || Array.isArray(value);
+}
+
+function getInitialExpandedJsonPaths(value: unknown) {
+  return collectExpandedJsonPaths(value, ROOT_JSON_PATH, 1);
+}
+
+function collectExpandedJsonPaths(value: unknown, path: string, depth: number): string[] {
+  if (!isJsonContainer(value)) {
+    return [];
+  }
+
+  const next = [path];
+  if (depth <= 0) {
+    return next;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      if (isJsonContainer(item)) {
+        next.push(...collectExpandedJsonPaths(item, appendJsonPath(path, index), depth - 1));
+      }
+    });
+    return next;
+  }
+
+  Object.entries(value).forEach(([key, item]) => {
+    if (isJsonContainer(item)) {
+      next.push(...collectExpandedJsonPaths(item, appendJsonPath(path, key), depth - 1));
+    }
+  });
+
+  return next;
+}
+
+function renderJsonTreeChildren({
+  depth,
+  expandedPaths,
+  onSelectPath,
+  onTogglePath,
+  parentPath,
+  selectedPath,
+  value
+}: {
+  depth: number;
+  expandedPaths: string[];
+  onSelectPath: (path: string) => void;
+  onTogglePath: (path: string) => void;
+  parentPath: string;
+  selectedPath: string;
+  value: Record<string, unknown> | unknown[];
+}) {
+  const entries = Array.isArray(value)
+    ? value.map((item, index) => [index, item] as const)
+    : Object.entries(value);
+
+  return entries.map(([key, child]) => {
+    const path = appendJsonPath(parentPath, key);
+    const container = isJsonContainer(child);
+    const expanded = container ? expandedPaths.includes(path) : false;
+    const active = selectedPath === path;
+    const label = Array.isArray(value) ? `[${key}]` : String(key);
+
+    return (
+      <div key={path}>
+        <div
+          className="flex items-start gap-2"
+          style={{ paddingLeft: `${depth * 18}px` }}
+        >
+          {container ? (
+            <button
+              className="mt-[3px] flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-card/80 hover:text-foreground"
+              onClick={() => onTogglePath(path)}
+              type="button"
+            >
+              {expanded ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+            </button>
+          ) : (
+            <span className="block h-5 w-5 shrink-0" />
+          )}
+
+          <button
+            className={cn(
+              "flex min-w-0 flex-1 items-start gap-2 rounded-lg px-2 py-1.5 text-left font-mono text-[12px] leading-6 transition-colors",
+              active
+                ? "bg-primary/10 text-foreground"
+                : "text-foreground hover:bg-muted/40 hover:text-foreground"
+            )}
+            onClick={() => onSelectPath(path)}
+            type="button"
+          >
+            <span className="shrink-0 text-primary">{label}</span>
+            <span className="shrink-0 text-muted-foreground">:</span>
+            {container ? (
+              <span className="truncate text-muted-foreground">{summarizeJsonContainer(child)}</span>
+            ) : (
+              renderJsonNodeValue(child)
+            )}
+          </button>
+        </div>
+
+        {container && expanded ? (
+          <div className="space-y-1">
+            {renderJsonTreeChildren({
+              depth: depth + 1,
+              expandedPaths,
+              onSelectPath,
+              onTogglePath,
+              parentPath: path,
+              selectedPath,
+              value: child
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  });
+}
+
+function appendJsonPath(parentPath: string, segment: string | number) {
+  if (typeof segment === "number") {
+    return parentPath === ROOT_JSON_PATH ? `${ROOT_JSON_PATH}[${segment}]` : `${parentPath}[${segment}]`;
+  }
+
+  return parentPath === ROOT_JSON_PATH ? `${ROOT_JSON_PATH}.${segment}` : `${parentPath}.${segment}`;
+}
+
+function summarizeJsonContainer(value: Record<string, unknown> | unknown[]) {
+  if (Array.isArray(value)) {
+    return `[${value.length}]`;
+  }
+
+  return `{${Object.keys(value).length}}`;
+}
+
+function renderJsonNodeValue(value: unknown) {
+  if (value === null) {
+    return <span className="text-muted-foreground">null</span>;
+  }
+
+  if (typeof value === "string") {
+    return <span className="break-words text-emerald-300">"{value}"</span>;
+  }
+
+  if (typeof value === "number") {
+    return <span className="text-amber-300">{value}</span>;
+  }
+
+  if (typeof value === "boolean") {
+    return <span className="text-primary">{String(value)}</span>;
+  }
+
+  if (value === undefined) {
+    return <span className="text-muted-foreground">undefined</span>;
+  }
+
+  return <span className="break-words text-foreground">{String(value)}</span>;
 }
 
 function formatNumber(value?: number | null) {
