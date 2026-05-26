@@ -267,7 +267,7 @@ def test_build_spec_leaves_plain_models_without_reasoning_parser_args() -> None:
     assert spec.engine.extra_args == {}
 
 
-def test_build_spec_disables_lora_for_unsupported_architecture() -> None:
+def test_build_spec_enables_lora_for_gemma4_architecture() -> None:
     model = SimpleNamespace(
         id=uuid4(),
         name="Gemma 4",
@@ -306,7 +306,7 @@ def test_build_spec_disables_lora_for_unsupported_architecture() -> None:
         system_huggingface_config={},
     )
 
-    assert spec.engine.enable_lora is False
+    assert spec.engine.enable_lora is True
 
 
 def test_serialize_deployment_task_keeps_superseded_task_terminal() -> None:

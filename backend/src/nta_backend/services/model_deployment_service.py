@@ -77,11 +77,7 @@ VLLM_REASONING_PARSER_RULES: tuple[tuple[str, str], ...] = (
     ("glm-4.5", "glm45"),
     ("glm45", "glm45"),
 )
-VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset(
-    {
-        "Gemma4ForConditionalGeneration",
-    }
-)
+VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset()
 
 
 def _now() -> datetime:

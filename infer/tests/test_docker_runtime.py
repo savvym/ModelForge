@@ -167,7 +167,7 @@ async def test_start_vllm_mounts_lora_adapters(
 
 
 @pytest.mark.asyncio
-async def test_start_vllm_skips_lora_for_unsupported_model_architecture(
+async def test_start_vllm_enables_lora_for_gemma4_model_architecture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -205,9 +205,9 @@ async def test_start_vllm_skips_lora_for_unsupported_model_architecture(
     await runtime.start_vllm(spec, model_path)
 
     run_command = commands[1]
-    assert "--enable-lora" not in run_command
-    assert "--max-loras" not in run_command
-    assert "--max-lora-rank" not in run_command
+    assert "--enable-lora" in run_command
+    assert "--max-loras" in run_command
+    assert "--max-lora-rank" in run_command
 
 
 @pytest.mark.asyncio

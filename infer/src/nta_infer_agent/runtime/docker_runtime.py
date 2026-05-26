@@ -31,11 +31,7 @@ VLLM_RUNTIME_AUTH_MIDDLEWARE = dedent(
     """
 ).strip()
 
-VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset(
-    {
-        "Gemma4ForConditionalGeneration",
-    }
-)
+VLLM_LORA_UNSUPPORTED_ARCHITECTURES = frozenset()
 
 
 def _docker_gpu_arg(gpu_ids: list[int]) -> str:
